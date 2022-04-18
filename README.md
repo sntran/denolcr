@@ -11,7 +11,7 @@ const rclone = new Rclone();
 rclone.rc("core/version");
 ```
 
-By default, the provided `rclone.wasm`[rclone.wasm] module is used. This can be
+By default, the provided [`rclone.wasm`](rclone.wasm) module is used. This can be
 changed by providing another compiled module in the constructor. For example:
 
 ```ts
