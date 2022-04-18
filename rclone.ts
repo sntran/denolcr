@@ -1,8 +1,13 @@
 import "https://raw.githubusercontent.com/rclone/rclone/master/fs/rc/js/wasm_exec.js";
 
+// Provides a default WASM module.
+const wasm = await WebAssembly.compileStreaming(
+  fetch(new URL("./rclone.wasm", import.meta.url))
+);
+
 // A Rclone instance from a compiled WebAssemble module.
 export class Rclone extends WebAssembly.Instance {
-  constructor(module: WebAssembly.Module) {
+  constructor(module: WebAssembly.Module = wasm) {
     // Patches for rclone.
     // @ts-ignore
     globalThis.document ??= {};
