@@ -22,3 +22,13 @@ const rclone = new Rclone(module);
 
 rclone.rc("core/version");
 ```
+
+The default module provides the following backends:
+
+- alias
+- chunker
+- crypt
+- ftp
+- http
+- memory
+- union
