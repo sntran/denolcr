@@ -1,0 +1,7 @@
+{
+  "tasks": {
+    "start": "deno run --unstable -A main.ts",
+    "test": "deno test --unstable -A"
+  },
+  "importMap": "./import_map.json"
+}

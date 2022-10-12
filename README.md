@@ -1,31 +1,13 @@
 # denolcr
 
-Deno web interface to Rclone, using WebAssembly build.
+Deno port of Rclone
 
-## Usage
+## Contributing
 
-```ts
-import { Rclone } from "https://raw.githubusercontent.com/sntran/denolcr/main/rclone.ts";
+### Adds a new backend
 
-const rclone = new Rclone();
-rclone.rc("core/version");
-```
-
-By default, the provided [`rclone.wasm`](rclone.wasm) module is used. This can
-be changed by providing another compiled module in the constructor. For example:
-
-```ts
-import { Rclone } from "https://raw.githubusercontent.com/sntran/denolcr/main/rclone.ts";
-const rclone = Rclone.from("https://sntran.github.io/denolcr/rclone.wasm");
-rclone.rc("core/version");
-```
-
-The default module provides the following backends:
-
-- alias
-- chunker
-- crypt
-- ftp
-- http
-- memory
-- union
+- `deno init backend/name`
+- Edit "backend/name/main.ts" and "backend/name/main_test.ts" for the new
+  backend.
+- Implements a `fetch` export function that handles "HEAD", "GET", "PUT" and "DELETE".
+- Uses `backend/local/main.ts` as reference.
