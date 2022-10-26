@@ -204,6 +204,25 @@ Deno.test("fetch", async (t) => {
 
   await t.step("TRACE", async (t) => {
 
+    await t.step("/path/to/dir/", async () => {
+      const cwd = Deno.cwd();
+      const response  = await fetch(cwd, {
+        method: "TRACE",
+      });
+      const { status, headers } = response;
+
+      assertEquals(status, 200);
+      assertEquals(headers.get("Content-Type"), "message/http");
+
+      assertEquals(headers.get("Via"), "local/1.1");
+
+      const body = await response.text();
+      const [, _method, url] = body.match(/^(TRACE) (.*) HTTP\/1.1$/m) || [];
+      const { pathname } = new URL(url, "file:");
+
+      assertEquals(pathname, cwd);
+    });
+
     // Sets up
     await Deno.writeFile("rclone.conf", new Uint8Array());
     await Rclone.config("create", "source", {

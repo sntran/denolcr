@@ -71,7 +71,7 @@ const globalFetch = globalThis.fetch;
  * the configuration for the backend should be provided on the command line
  * (or in environment variables).
  */
-globalThis.fetch = async function fetch(
+export async function fetch(
   input: string | Request | URL,
   init?: RequestInit,
 ): Promise<Response> {
@@ -156,7 +156,9 @@ globalThis.fetch = async function fetch(
   const url = new URL(`${pathname}?${params}`, import.meta.url);
   const request = new Request(url, init);
   return fetch(request);
-};
+}
+
+globalThis.fetch = fetch;
 
 /**
  * Handles configuration of rclone.
