@@ -1,23 +1,22 @@
 import { contentType, digest, extname, join } from "../../deps.ts";
-import { assert, assertEquals, assertRejects } from "../../dev_deps.ts";
+import {
+  assert,
+  assertEquals,
+  assertHeader,
+  assertRejects,
+} from "../../dev_deps.ts";
 
 import { fetch } from "./main.ts";
 
 const encoder = new TextEncoder();
 const cwd = Deno.cwd();
 
-function assertHeader(headers: Headers, name: string, value: string) {
-  assertEquals(
-    headers.get(name),
-    value,
-    `should have ${name} header of ${value} instead of ${headers.get(name)}`,
-  );
-}
-
 Deno.test("HEAD", async (t) => {
   const requestInit = {
     method: "HEAD",
   };
+
+  const files: string[] = [];
 
   await t.step("base ./", async () => {
     const url = new URL(join(cwd, "./"), import.meta.url);
@@ -30,18 +29,26 @@ Deno.test("HEAD", async (t) => {
     assert(Array.isArray(links), "should have Link headers");
 
     let index = 0;
-    for await (const { name } of Deno.readDir(url)) {
+    for await (let { name, isDirectory } of Deno.readDir(url)) {
+      if (isDirectory) {
+        name += "/";
+      }
       const link = links![index++];
       assert(
-        link.includes(`<${name}>`),
+        link.includes(`<${encodeURIComponent(name)}>`),
         `should have ${name} enclosed between < and > and percent encoded`,
       );
+
+      const [_, uri] = link.match(/<(.*)>/) || [];
+      files.push(decodeURIComponent(uri));
     }
   });
 
   await t.step("a file ./main.ts", async () => {
-    for await (const { name, isFile } of Deno.readDir(cwd)) {
-      if (!isFile) continue;
+    for await (const name of files) {
+      // Checking links for now
+      if (name.endsWith("/")) continue;
+
       const path = join(cwd, name);
       const file = await Deno.stat(path);
 
@@ -67,8 +74,10 @@ Deno.test("GET", async (t) => {
     method: "GET",
   };
 
+  const files: string[] = [];
+
   // `GET /folder` is same as `HEAD /folder`.
-  await t.step("base ./", async () => {
+  await t.step("./", async () => {
     const url = new URL(join(cwd, "./"), import.meta.url);
     const request = new Request(url, requestInit);
     const { headers, body } = await fetch(request);
@@ -79,18 +88,26 @@ Deno.test("GET", async (t) => {
     assert(Array.isArray(links), "should have Link headers");
 
     let index = 0;
-    for await (const { name } of Deno.readDir(url)) {
+    for await (let { name, isDirectory } of Deno.readDir(url)) {
+      if (isDirectory) {
+        name += "/";
+      }
       const link = links![index++];
       assert(
-        link.includes(`<${name}>`),
+        link.includes(`<${encodeURIComponent(name)}>`),
         `should have ${name} enclosed between < and > and percent encoded`,
       );
+
+      const [_, uri] = link.match(/<(.*)>/) || [];
+      files.push(decodeURIComponent(uri));
     }
   });
 
   await t.step("a file ./main.ts", async () => {
-    for await (const { name, isFile } of Deno.readDir(cwd)) {
-      if (!isFile) continue;
+    for await (const name of files) {
+      // Checking links for now
+      if (name.endsWith("/")) continue;
+
       const path = join(cwd, name);
       const file = await Deno.stat(path);
 

@@ -1,4 +1,4 @@
-import { contentType, digest, extname, sep } from "../../deps.ts";
+import { contentType, digest, extname } from "../../deps.ts";
 
 /** Main export */
 async function router(request: Request): Promise<Response> {
@@ -16,19 +16,23 @@ async function router(request: Request): Promise<Response> {
     file.close();
 
     if (stats.isDirectory) {
-      for await (const { name } of Deno.readDir(pathname)) {
-        headers.append("Link", `<${name}>`);
+      headers.append("Content-Type", "inode/directory");
+      for await (let { name, isDirectory } of Deno.readDir(pathname)) {
+        if (isDirectory) {
+          name += "/";
+        }
+        headers.append("Link", `<${encodeURIComponent(name)}>`);
       }
     } else {
       headers.append("Content-Type", contentType(extname(pathname)) || "");
       headers.append("Content-Length", stats.size.toString());
 
-      const mtime = stats.mtime?.toUTCString();
-      if (mtime) headers.append("Last-Modified", mtime);
-
       /** @TODO: choose hash method with `hash` param. */
       headers.append("ETag", `"${await digest(pathname)}"`);
     }
+
+    const mtime = stats.mtime?.toUTCString();
+    if (mtime) headers.append("Last-Modified", mtime);
   }
 
   if (method === "GET") {
@@ -43,7 +47,7 @@ async function router(request: Request): Promise<Response> {
   /** `PUT` upserts a file at `pathname`. */
   if (method === "PUT") {
     // Folder ending with trailing slash.
-    if (pathname.endsWith(sep)) {
+    if (pathname.endsWith("/")) {
       await Deno.mkdir(pathname, { recursive: true });
     } else {
       const file = await Deno.open(pathname, { write: true, create: true });
