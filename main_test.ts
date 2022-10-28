@@ -299,6 +299,7 @@ Deno.test("fetch", async (t) => {
         const { searchParams } = new URL(url, "file:");
 
         assertEquals(searchParams.get("remote"), `/tmp/1`);
+        assert(!searchParams.has("alias-remote"), "should not have param prefixed with backend type");
       });
 
       await t.step("overriden by remote specific environment vars", async () => {
@@ -311,6 +312,7 @@ Deno.test("fetch", async (t) => {
         const { searchParams } = new URL(url, "file:");
 
         assertEquals(searchParams.get("remote"), `/tmp/2`);
+        assert(!searchParams.has("config-target-remote"), "should not have param prefixed with remote name");
       });
 
       await t.step("overriden by flags prefixed with backend type", async () => {

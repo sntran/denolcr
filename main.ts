@@ -160,6 +160,9 @@ export async function fetch(
     if (key.startsWith(envPrefix)) {
       const shortKey = key.slice(envPrefix.length).toLowerCase().replace(/_/g, "-");
       params.set(shortKey, value);
+
+      // Deletes any params that are already set by environment vars.
+      params.delete(`${type}-${shortKey}`);
     }
   }
 
@@ -169,6 +172,9 @@ export async function fetch(
     if (key.startsWith(envPrefix)) {
       const shortKey = key.slice(envPrefix.length).toLowerCase().replace(/_/g, "-");
       params.set(shortKey, value);
+
+      // Deletes any params that are already set by environment vars.
+      params.delete(`config-${name}-${shortKey}`);
     }
   }
 
