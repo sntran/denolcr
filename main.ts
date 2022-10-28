@@ -31,6 +31,8 @@ export interface Backend {
   fetch(request: Request): Response | Promise<Response>;
 }
 
+const encoder = new TextEncoder();
+
 const NAME_REGEX = /^[\w.][\w.\s-]*$/;
 const REMOTE_REGEX = /^(:)?(?:([\w.][\w.\s-]*(?:,[\w=,"':@\/]+)?):)?(.*)$/;
 
@@ -349,17 +351,59 @@ export async function config(
   }
 }
 
-export async function lsjson(location: string, flags?: Options): Promise<Response> {
+/**
+ * List directories and objects in the path in JSON format.
+ *
+ * The output is an array of Items, where each Item looks like this
+ *
+ * ```json
+ * {
+ *   "Hashes" : {
+ *     "SHA-1" : "f572d396fae9206628714fb2ce00f72e94f2258f",
+ *     "MD5" : "b1946ac92492d2347c6235b4d2611184",
+ *     "DropboxHash" : "ecb65bb98f9d905b70458986c39fcbad7715e5f2fcc3b1f07767d7c83e2438cc"
+ *   },
+ *   "ID": "y2djkhiujf83u33",
+ *   "OrigID": "UYOJVTUW00Q1RzTDA",
+ *   "IsBucket" : false,
+ *   "IsDir" : false,
+ *   "MimeType" : "application/octet-stream",
+ *   "ModTime" : "2017-05-31T16:15:57.034468261+01:00",
+ *   "Name" : "file.txt",
+ *   "Encrypted" : "v0qpsdq8anpci8n929v3uu9338",
+ *   "EncryptedPath" : "kja9098349023498/v0qpsdq8anpci8n929v3uu9338",
+ *   "Path" : "full/path/goes/here/file.txt",
+ *   "Size" : 6,
+ *   "Tier" : "hot",
+ * }
+ * ```
+ *
+ * The whole output can be processed as a JSON blob, or alternatively it can be
+ * processed line by line as each item is written one to a line.
+ *
+ */
+export async function lsjson(location: string, flags: Options = {}): Promise<Response> {
   const init = { method: "HEAD" };
   const url = `${location}?${new URLSearchParams(flags)}`;
-  const { headers } = await fetch(url, init);
+  const response = await fetch(url, init);
+  const { headers, ok } = response;
+
+  if (!ok) {
+    return response;
+  }
+
+  const { readable, writable } = new TransformStream();
+  const writer = writable.getWriter();
+
+  writer.write(encoder.encode("[\n"));
 
   const links = headers.get("Link")?.split(",").map((link) => {
     const [_, uri] = link.match(/<(.*)>/) || [];
     return decodeURIComponent(uri);
   }) || [];
 
-  const files = [];
+  const items = [];
+  let count = links.length;
 
   for await (let link of links) {
     const url = `${location}/${link}?${new URLSearchParams(flags)}`;
@@ -370,17 +414,29 @@ export async function lsjson(location: string, flags?: Options): Promise<Respons
       link = link.slice(0, -1);
     }
 
-    files.push({
+    const item = {
       Path: `${link}`,
       Name: link,
       Size: IsDir ? -1 : size,
-      MimeType: headers.get("Content-Type"),
+      MimeType: IsDir ? "inode/directory" : headers.get("Content-Type"),
       ModTime: toLocaleISOString(headers.get("Last-Modified")),
       IsDir,
-    });
+    }
+
+    items.push(item);
+    count--;
+    const suffix = count ? ",\n" : "\n";
+
+    writer.write(encoder.encode(JSON.stringify(item) + suffix));
   }
 
-  return Response.json(files);
+  writer.write(encoder.encode("]\n"));
+
+  return new Response(readable, {
+    headers: {
+      "Content-Type": "application/json",
+    },
+  });
 }
 
 export function cat(location: string, flags?: Options): Promise<Response> {

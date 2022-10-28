@@ -16,7 +16,6 @@ async function router(request: Request): Promise<Response> {
     file.close();
 
     if (stats.isDirectory) {
-      headers.append("Content-Type", "inode/directory");
       for await (let { name, isDirectory } of Deno.readDir(pathname)) {
         if (isDirectory) {
           name += "/";
