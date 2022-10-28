@@ -276,8 +276,45 @@ Deno.test("fetch", async (t) => {
         assertEquals(searchParams.get("remote"), `source:`);
       });
 
+      await t.step("overriden by backend generic environment vars", async () => {
+        Deno.env.set("RCLONE_SKIP_LINKS", "true");
+        const response = await fetch("target:", {
+          method: "TRACE",
+        });
+        const body = await response.text();
+        const [, _method, url] = body.match(/^(TRACE) (.*) HTTP\/1.1$/m) || [];
+        const { searchParams } = new URL(url, "file:");
+
+        assertEquals(searchParams.get("remote"), `source:`);
+        assertEquals(searchParams.get("skip-links"), `true`);
+      });
+
+      await t.step("overriden by backend-specific environment vars", async () => {
+        Deno.env.set("RCLONE_ALIAS_REMOTE", "/tmp/1");
+        const response = await fetch("target:", {
+          method: "TRACE",
+        });
+        const body = await response.text();
+        const [, _method, url] = body.match(/^(TRACE) (.*) HTTP\/1.1$/m) || [];
+        const { searchParams } = new URL(url, "file:");
+
+        assertEquals(searchParams.get("remote"), `/tmp/1`);
+      });
+
+      await t.step("overriden by remote specific environment vars", async () => {
+        Deno.env.set("RCLONE_CONFIG_TARGET_REMOTE", "/tmp/2");
+        const response = await fetch("target:", {
+          method: "TRACE",
+        });
+        const body = await response.text();
+        const [, _method, url] = body.match(/^(TRACE) (.*) HTTP\/1.1$/m) || [];
+        const { searchParams } = new URL(url, "file:");
+
+        assertEquals(searchParams.get("remote"), `/tmp/2`);
+      });
+
       await t.step("overriden by flags prefixed with backend type", async () => {
-        const response = await fetch("target:?alias-remote='/tmp'", {
+        const response = await fetch("target:?alias-remote='/tmp/3'", {
           method: "TRACE",
         });
         const { status, headers } = response;
@@ -292,11 +329,11 @@ Deno.test("fetch", async (t) => {
         const { pathname, searchParams } = new URL(url, "file:");
 
         assertEquals(pathname, "/");
-        assertEquals(searchParams.get("remote"), `'/tmp'`);
+        assertEquals(searchParams.get("remote"), `'/tmp/3'`);
       });
 
       await t.step("overriden by params in connection string", async () => {
-        const response = await fetch(`target,remote='${cwd}':?alias-remote='/tmp'`, {
+        const response = await fetch(`target,remote='${cwd}':?alias-remote='/tmp/3'`, {
           method: "TRACE",
         });
         const body = await response.text();
@@ -354,5 +391,8 @@ Deno.test("fetch", async (t) => {
 
     // Tears down
     await Deno.remove("rclone.conf");
+    Deno.env.delete("RCLONE_SKIP_LINKS");
+    Deno.env.delete("RCLONE_ALIAS_REMOTE");
+    Deno.env.delete("RCLONE_CONFIG_TARGET_REMOTE");
   });
 });

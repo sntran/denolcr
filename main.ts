@@ -70,6 +70,31 @@ const globalFetch = globalThis.fetch;
  * be the name or prefix of a backend (the `type` in the config file) and all
  * the configuration for the backend should be provided on the command line
  * (or in environment variables).
+ *
+ * ## Precedence
+ *
+ * The various different methods of backend configuration are read in this
+ * order and the first one with a value is used.
+ *
+ * - Parameters in connection strings, e.g. `myRemote,skip_links:`
+ * - Flag values as supplied on the command line, e.g. `--skip-links`
+ * - Remote specific environment vars, e.g. `RCLONE_CONFIG_MYREMOTE_SKIP_LINKS`
+ * - Backend-specific environment vars, e.g. `RCLONE_LOCAL_SKIP_LINKS`
+ * - Backend generic environment vars, e.g. `RCLONE_SKIP_LINKS`
+ * - Config file, e.g. `skip_links = true`.
+ * - Default values, e.g. `false` - these can't be changed.
+ *
+ * So if both `--skip-links` is supplied on the command line and an environment
+ * variable `RCLONE_LOCAL_SKIP_LINKS` is set, the command line flag will take
+ * preference.
+ *
+ * For non backend configuration the order is as follows:
+ *
+ * - Flag values as supplied on the command line, e.g. `--stats 5s`.
+ * - Environment vars, e.g. `RCLONE_STATS=5s`.
+ * - Default values, e.g. `1m` - these can't be changed.
+ *
+ * ## Other environment variables
  */
 export async function fetch(
   input: string | Request | URL,
@@ -87,16 +112,27 @@ export async function fetch(
     return globalFetch(input, init);
   }
 
-  // `searchParams` may contain other flags not for the current backend.
-  const { pathname, searchParams } = new URL(path, "file:");
+  // The final params.
+  const params = new URLSearchParams();
+
+  /**
+   * Sets backend generic environment vars first.
+   */
+  const env = Deno.env.toObject();
+  for (const [key, value] of Object.entries(env)) {
+    if (key.startsWith("RCLONE_")) {
+      const shortKey = key.slice(7).toLowerCase().replace(/_/g, "-");
+      params.set(shortKey, value);
+    }
+  }
 
   // Remote can be connection string with arguments separated by commas.
   let [name, ...args] = remote.split(",");
 
-  let type = "";
+  let config: Options;
 
   if (colon || remote === "local") { // the location has format `:type:path/to/file`
-    type = name;
+    config = { type: name };
     name = "";
   } else {
     const response = await Rclone.config("show", name, undefined, {
@@ -105,34 +141,51 @@ export async function fetch(
     if (!response.ok) {
       throw new Error(`Remote ${name} not found in config.`);
     }
-    const config: Options = await response.json();
-    type = config.type;
-
-    Object.entries(config).forEach(([key, value]) => {
-      if (key === "type") {
-        return;
-      }
-
-      key = `${type}-${key}`;
-      // Config has lower precedence to only supplement flags.
-      if (!searchParams.has(key)) {
-        searchParams.set(key, value);
-      }
-    });
+    config = await response.json();
   }
 
-  // Overrides flags with arguments for current backend from connection string.
-  args.forEach((arg) => {
-    const [key, value = "true"] = arg.split("=");
-    searchParams.set(`${type}-${key.replace(/_/g, "-")}`, value);
+  const type = config.type;
+  delete config.type;
+
+  // Stores config into params if not already set, with lowest precedence.
+  Object.entries(config).forEach(([key, value]) => {
+    if (!params.has(key)) {
+      params.set(key, value);
+    }
   });
 
-  /** Uses only flags for the current backend. */
-  const params = new URLSearchParams();
+  // Overrides with backend-specific environment vars.
+  let envPrefix = `RCLONE_${type.toUpperCase()}_`;
+  for (const [key, value] of Object.entries(env)) {
+    if (key.startsWith(envPrefix)) {
+      const shortKey = key.slice(envPrefix.length).toLowerCase().replace(/_/g, "-");
+      params.set(shortKey, value);
+    }
+  }
+
+  // Overrides with remote specific environment vars
+  envPrefix = `RCLONE_CONFIG_${name.toUpperCase()}_`;
+  for (const [key, value] of Object.entries(env)) {
+    if (key.startsWith(envPrefix)) {
+      const shortKey = key.slice(envPrefix.length).toLowerCase().replace(/_/g, "-");
+      params.set(shortKey, value);
+    }
+  }
+
+  // `searchParams` may contain other flags not for the current backend.
+  const { pathname, searchParams } = new URL(path, "file:");
+
+  // Overrides with flags in request's search params.
   searchParams.forEach((value, key) => {
     if (key.startsWith(`${type}-`)) {
       params.set(key.replace(`${type}-`, ""), value);
     }
+  });
+
+  // Overrides with parameters in connection string.
+  args.forEach((arg) => {
+    const [key, value = "true"] = arg.split("=");
+    params.set(`${key.replace(/_/g, "-")}`, value);
   });
 
   const headers = new Headers(init.headers);
@@ -379,16 +432,6 @@ if (import.meta.main) {
 
   /** All optional params for the command as an object. */
   const options: Options = {};
-  /**
-   * Sets default options from environment variables first.
-   * They can be overridden by command line flags resolved in `unknown` fn.
-   */
-  const env = Deno.env.toObject();
-  for (const [key, value] of Object.entries(env)) {
-    if (key.startsWith("RCLONE_")) {
-      options[key.slice(7).toLowerCase().replace(/_/g, "-")] = value;
-    }
-  }
 
   const {
     _: [command, ...args],
