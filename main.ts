@@ -407,58 +407,55 @@ export async function lsjson(location: string, flags: Options = {}): Promise<Res
     maxDepth = 1;
   }
 
-  const { readable, writable } = new TransformStream();
+  const body = new ReadableStream({
+    async start(controller) {
+      controller.enqueue(encoder.encode("["));
 
-  // Uses IIFE to write lines asynchronously.
-  (async () => {
-    const writer = writable.getWriter();
+      const links = getLinks(headers);
+      let count = 0;
 
-    writer.write(encoder.encode("["));
+      while (maxDepth > 0) {
+        const nextLinks = [];
 
-    const links = getLinks(headers);
-    let count = 0;
+        for await (let link of links) {
+          const url = `${location}/${link}?${new URLSearchParams(flags)}`;
+          const { headers } = await fetch(url, init);
+          const size = Number(headers.get("Content-Length"));
+          const IsDir = link.endsWith("/");
+          if (IsDir) {
+            nextLinks.push(...getLinks(headers, link));
+            link = link.slice(0, -1);
+          }
 
-    while (maxDepth > 0) {
-      const nextLinks = [];
+          const item = {
+            Path: `${link}`,
+            Name: basename(link),
+            Size: IsDir ? -1 : size,
+            MimeType: IsDir ? "inode/directory" : headers.get("Content-Type"),
+            ModTime: toLocaleISOString(headers.get("Last-Modified")),
+            IsDir,
+          }
 
-      for await (let link of links) {
-        const url = `${location}/${link}?${new URLSearchParams(flags)}`;
-        const { headers } = await fetch(url, init);
-        const size = Number(headers.get("Content-Length"));
-        const IsDir = link.endsWith("/");
-        if (IsDir) {
-          nextLinks.push(...getLinks(headers, link));
-          link = link.slice(0, -1);
+          const prefix = count == 0 ? "\n" : ",\n";
+          count++;
+
+          controller.enqueue(encoder.encode(prefix + JSON.stringify(item)));
         }
 
-        const item = {
-          Path: `${link}`,
-          Name: basename(link),
-          Size: IsDir ? -1 : size,
-          MimeType: IsDir ? "inode/directory" : headers.get("Content-Type"),
-          ModTime: toLocaleISOString(headers.get("Last-Modified")),
-          IsDir,
+        if (!nextLinks.length) {
+          break;
         }
 
-        const prefix = count == 0 ? "\n" : ",\n";
-        count++;
-
-        writer.write(encoder.encode(prefix + JSON.stringify(item)));
+        links.length = 0;
+        links.push(...nextLinks);
+        maxDepth--;
       }
 
-      if (!nextLinks.length) {
-        break;
-      }
-
-      links.length = 0;
-      links.push(...nextLinks);
-      maxDepth--;
+      controller.enqueue(encoder.encode("\n]\n"));
     }
+  });
 
-    writer.write(encoder.encode("\n]\n"));
-  })();
-
-  return new Response(readable, {
+  return new Response(body, {
     headers: {
       "Content-Type": "application/json",
     },
