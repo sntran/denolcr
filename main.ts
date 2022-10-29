@@ -378,9 +378,19 @@ export async function config(
  * }
  * ```
  *
+ * The `Path` field will only show folders below the remote path being listed.
+ * If "remote:path" contains the file "subfolder/file.txt", the `Path` for
+ * "file.txt" will be "subfolder/file.txt", not "remote:path/subfolder/file.txt".
+ * When used without `--recursive` the `Path` will always be same as `Name`.
+ *
  * The whole output can be processed as a JSON blob, or alternatively it can be
  * processed line by line as each item is written one to a line.
  *
+ * Note that `ls` and `lsl` recurse by default - use `--max-depth 1` to stop
+ * the recursion.
+ *
+ * The other list commands `lsd`, `lsf`, `lsjson` do not recurse by default -
+ * use `--recursive` to make them recurse.
  */
 export async function lsjson(location: string, flags: Options = {}): Promise<Response> {
   const init = { method: "HEAD" };
@@ -392,51 +402,74 @@ export async function lsjson(location: string, flags: Options = {}): Promise<Res
     return response;
   }
 
-  const { readable, writable } = new TransformStream();
-  const writer = writable.getWriter();
-
-  writer.write(encoder.encode("[\n"));
-
-  const links = headers.get("Link")?.split(",").map((link) => {
-    const [_, uri] = link.match(/<(.*)>/) || [];
-    return decodeURIComponent(uri);
-  }) || [];
-
-  const items = [];
-  let count = links.length;
-
-  for await (let link of links) {
-    const url = `${location}/${link}?${new URLSearchParams(flags)}`;
-    const { headers } = await fetch(url, init);
-    const size = Number(headers.get("Content-Length"));
-    const IsDir = link.endsWith("/");
-    if (IsDir) {
-      link = link.slice(0, -1);
-    }
-
-    const item = {
-      Path: `${link}`,
-      Name: link,
-      Size: IsDir ? -1 : size,
-      MimeType: IsDir ? "inode/directory" : headers.get("Content-Type"),
-      ModTime: toLocaleISOString(headers.get("Last-Modified")),
-      IsDir,
-    }
-
-    items.push(item);
-    count--;
-    const suffix = count ? ",\n" : "\n";
-
-    writer.write(encoder.encode(JSON.stringify(item) + suffix));
+  let maxDepth = Number(flags["max-depth"] || (flags.recursive ? Infinity : 1));
+  if (!flags.recursive) {
+    maxDepth = 1;
   }
 
-  writer.write(encoder.encode("]\n"));
+  const { readable, writable } = new TransformStream();
+
+  // Uses IIFE to write lines asynchronously.
+  (async () => {
+    const writer = writable.getWriter();
+
+    writer.write(encoder.encode("["));
+
+    const links = getLinks(headers);
+    let count = 0;
+
+    while (maxDepth > 0) {
+      const nextLinks = [];
+
+      for await (let link of links) {
+        const url = `${location}/${link}?${new URLSearchParams(flags)}`;
+        const { headers } = await fetch(url, init);
+        const size = Number(headers.get("Content-Length"));
+        const IsDir = link.endsWith("/");
+        if (IsDir) {
+          nextLinks.push(...getLinks(headers, link));
+          link = link.slice(0, -1);
+        }
+
+        const item = {
+          Path: `${link}`,
+          Name: basename(link),
+          Size: IsDir ? -1 : size,
+          MimeType: IsDir ? "inode/directory" : headers.get("Content-Type"),
+          ModTime: toLocaleISOString(headers.get("Last-Modified")),
+          IsDir,
+        }
+
+        const prefix = count == 0 ? "\n" : ",\n";
+        count++;
+
+        writer.write(encoder.encode(prefix + JSON.stringify(item)));
+      }
+
+      if (!nextLinks.length) {
+        break;
+      }
+
+      links.length = 0;
+      links.push(...nextLinks);
+      maxDepth--;
+    }
+
+    writer.write(encoder.encode("\n]\n"));
+  })();
 
   return new Response(readable, {
     headers: {
       "Content-Type": "application/json",
     },
   });
+}
+
+function getLinks(headers: Headers, parent = "") {
+  return headers.get("Link")?.split(",").map((link) => {
+    const [_, uri] = link.match(/<(.*)>/) || [];
+    return decodeURIComponent(join(parent, uri));
+  }) || [];
 }
 
 export function cat(location: string, flags?: Options): Promise<Response> {
