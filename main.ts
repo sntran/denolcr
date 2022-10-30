@@ -649,6 +649,21 @@ export async function lsf(location: string, flags: Options = {}): Promise<Respon
   });
 }
 
+/**
+ * List the objects in the path with size and path.
+ */
+export function ls(location: string, flags: Options = {}): Promise<Response> {
+  flags = {
+    recursive: "true",
+    "max-depth": "Infinity",
+    "files-only": "true",
+    format: "sp",
+    separator: "\t",
+    ...flags,
+  }
+  return lsf(location, flags);
+}
+
 export function cat(location: string, flags?: Options): Promise<Response> {
   return fetch(location, flags);
 }
@@ -695,6 +710,7 @@ export const Rclone = {
   config,
   lsjson,
   lsf,
+  ls,
   cat,
   rcat,
   copy,
