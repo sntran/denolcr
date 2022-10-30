@@ -1,180 +1,6 @@
-import { config_dir, join } from "./deps.ts";
-import {
-  assert,
-  assertEquals,
-  fc,
-} from "./dev_deps.ts";
+import { assert, assertEquals } from "./dev_deps.ts";
 
 import { Rclone } from "./main.ts";
-
-Deno.test("config", async (t) => {
-  let command = "file";
-  await t.step(command, async () => {
-    const configDir = config_dir()!;
-    let path = await Rclone.config(command).then((res) => res.text());
-
-    assertEquals(
-      path,
-      join(configDir, "rclone", "rclone.conf"),
-      "should default to config directory",
-    );
-
-    await Deno.writeFile("rclone.conf", new Uint8Array());
-    path = await Rclone.config(command).then((res) => res.text());
-    assertEquals(
-      path,
-      "rclone.conf",
-      "should use rclone.conf at current directory first",
-    );
-  });
-
-  command = "create";
-  await t.step(command, async () => {
-    let config = await Deno.readTextFile("rclone.conf");
-    assertEquals(config, "", "initial empty config");
-
-    await fc.assert(
-      fc.asyncProperty(fc.string(), async (name: string) => {
-        fc.pre(!/^[\w.][\w.\s-]*$/.test(name));
-
-        const response = await Rclone.config(command, name, {
-          type: "local",
-        });
-
-        assert(!response.ok, "name may only contain 0-9, A-Z, a-z, _, -, . and space, but not start with - or space");
-      }
-    ));
-
-    let response = await Rclone.config(command, "source", {
-      type: "local",
-    });
-
-    config = await Deno.readTextFile("rclone.conf");
-    assertEquals(
-      config,
-      "[source]\ntype = local",
-      "should have the new remote added",
-    );
-    assertEquals(
-      await response.text(),
-      config,
-      "should return the new remote in response",
-    );
-
-    // Adds another remote
-    response = await Rclone.config(command, "target", {
-      type: "local",
-    });
-
-    config = await Deno.readTextFile("rclone.conf");
-    assertEquals(
-      config,
-      "[source]\ntype = local\n\n[target]\ntype = local",
-      "should have both remotes",
-    );
-    assertEquals(
-      await response.text(),
-      `[target]\ntype = local`,
-      "should have only the new remote in response",
-    );
-  });
-
-  command = "show";
-  await t.step(command, async () => {
-    const config = await Deno.readTextFile("rclone.conf");
-    let response = await Rclone.config(command);
-    assertEquals(
-      await response.text(),
-      config,
-      "should return the full config when name is not specified",
-    );
-
-    response = await Rclone.config(command, "source");
-    assertEquals(
-      await response.text(),
-      "[source]\ntype = local",
-      "should return only remote specified by name",
-    );
-
-    response = await Rclone.config(command, "target");
-    assertEquals(
-      await response.text(),
-      "[target]\ntype = local",
-      "should return only remote specified by name",
-    );
-
-    response = await Rclone.config(command, "404");
-    assertEquals(response.status, 404, "should return 404 when remote not found");
-
-    response = await Rclone.config(command, "source", undefined, {
-      headers: {
-        "Accept": "application/json",
-      },
-    });
-    assert(await response.json());
-  });
-
-  command = "update";
-  await t.step(command, async () => {
-    let response = await Rclone.config(command, "target", {
-      type: "alias",
-      remote: "source:",
-    });
-
-    const remote = `[target]\ntype = alias\nremote = source:`;
-
-    const config = await Deno.readTextFile("rclone.conf");
-    assertEquals(
-      config,
-      `[source]\ntype = local\n\n${remote}`,
-      "should have the remote updated",
-    );
-    assertEquals(
-      await response.text(),
-      remote,
-      "should return the updated remote in response",
-    );
-
-    response = await Rclone.config(command, "404", {});
-    assertEquals(response.status, 404, "should return 404 when remote not found");
-  });
-
-  command = "dump";
-  await t.step(command, async () => {
-    const response = await Rclone.config(command);
-    assertEquals(await response.json(), {
-      source: {
-        type: "local",
-      },
-      target: {
-        type: "alias",
-        remote: "source:",
-      },
-    }, "should return the config as JSON");
-  });
-
-  command = "delete";
-  await t.step(command, async () => {
-    let response = await Rclone.config(command, "target");
-    const config = await Deno.readTextFile("rclone.conf");
-    assertEquals(
-      config,
-      "[source]\ntype = local",
-      "should have the remote deleted",
-    );
-    assertEquals(
-      await response.text(),
-      "",
-      "should not return the deleted remote in response",
-    );
-
-    response = await Rclone.config(command, "404");
-    assertEquals(response.status, 200, "should still return 200 when remote not found");
-  });
-
-  // Cleans up
-  await Deno.remove("rclone.conf");
-});
 
 Deno.test("fetch", async (t) => {
   await t.step("global", async () => {
@@ -203,10 +29,9 @@ Deno.test("fetch", async (t) => {
   });
 
   await t.step("TRACE", async (t) => {
-
     await t.step("/path/to/dir/", async () => {
       const cwd = Deno.cwd();
-      const response  = await fetch(cwd, {
+      const response = await fetch(cwd, {
         method: "TRACE",
       });
       const { status, headers } = response;
@@ -276,68 +101,93 @@ Deno.test("fetch", async (t) => {
         assertEquals(searchParams.get("remote"), `source:`);
       });
 
-      await t.step("overriden by backend generic environment vars", async () => {
-        Deno.env.set("RCLONE_SKIP_LINKS", "true");
-        const response = await fetch("target:", {
-          method: "TRACE",
-        });
-        const body = await response.text();
-        const [, _method, url] = body.match(/^(TRACE) (.*) HTTP\/1.1$/m) || [];
-        const { searchParams } = new URL(url, "file:");
+      await t.step(
+        "overriden by backend generic environment vars",
+        async () => {
+          Deno.env.set("RCLONE_SKIP_LINKS", "true");
+          const response = await fetch("target:", {
+            method: "TRACE",
+          });
+          const body = await response.text();
+          const [, _method, url] = body.match(/^(TRACE) (.*) HTTP\/1.1$/m) ||
+            [];
+          const { searchParams } = new URL(url, "file:");
 
-        assertEquals(searchParams.get("remote"), `source:`);
-        assertEquals(searchParams.get("skip-links"), `true`);
-      });
+          assertEquals(searchParams.get("remote"), `source:`);
+          assertEquals(searchParams.get("skip-links"), `true`);
+        },
+      );
 
-      await t.step("overriden by backend-specific environment vars", async () => {
-        Deno.env.set("RCLONE_ALIAS_REMOTE", "/tmp/1");
-        const response = await fetch("target:", {
-          method: "TRACE",
-        });
-        const body = await response.text();
-        const [, _method, url] = body.match(/^(TRACE) (.*) HTTP\/1.1$/m) || [];
-        const { searchParams } = new URL(url, "file:");
+      await t.step(
+        "overriden by backend-specific environment vars",
+        async () => {
+          Deno.env.set("RCLONE_ALIAS_REMOTE", "/tmp/1");
+          const response = await fetch("target:", {
+            method: "TRACE",
+          });
+          const body = await response.text();
+          const [, _method, url] = body.match(/^(TRACE) (.*) HTTP\/1.1$/m) ||
+            [];
+          const { searchParams } = new URL(url, "file:");
 
-        assertEquals(searchParams.get("remote"), `/tmp/1`);
-        assert(!searchParams.has("alias-remote"), "should not have param prefixed with backend type");
-      });
+          assertEquals(searchParams.get("remote"), `/tmp/1`);
+          assert(
+            !searchParams.has("alias-remote"),
+            "should not have param prefixed with backend type",
+          );
+        },
+      );
 
-      await t.step("overriden by remote specific environment vars", async () => {
-        Deno.env.set("RCLONE_CONFIG_TARGET_REMOTE", "/tmp/2");
-        const response = await fetch("target:", {
-          method: "TRACE",
-        });
-        const body = await response.text();
-        const [, _method, url] = body.match(/^(TRACE) (.*) HTTP\/1.1$/m) || [];
-        const { searchParams } = new URL(url, "file:");
+      await t.step(
+        "overriden by remote specific environment vars",
+        async () => {
+          Deno.env.set("RCLONE_CONFIG_TARGET_REMOTE", "/tmp/2");
+          const response = await fetch("target:", {
+            method: "TRACE",
+          });
+          const body = await response.text();
+          const [, _method, url] = body.match(/^(TRACE) (.*) HTTP\/1.1$/m) ||
+            [];
+          const { searchParams } = new URL(url, "file:");
 
-        assertEquals(searchParams.get("remote"), `/tmp/2`);
-        assert(!searchParams.has("config-target-remote"), "should not have param prefixed with remote name");
-      });
+          assertEquals(searchParams.get("remote"), `/tmp/2`);
+          assert(
+            !searchParams.has("config-target-remote"),
+            "should not have param prefixed with remote name",
+          );
+        },
+      );
 
-      await t.step("overriden by flags prefixed with backend type", async () => {
-        const response = await fetch("target:?alias-remote='/tmp/3'", {
-          method: "TRACE",
-        });
-        const { status, headers } = response;
+      await t.step(
+        "overriden by flags prefixed with backend type",
+        async () => {
+          const response = await fetch("target:?alias-remote='/tmp/3'", {
+            method: "TRACE",
+          });
+          const { status, headers } = response;
 
-        assertEquals(status, 200);
-        assertEquals(headers.get("Content-Type"), "message/http");
+          assertEquals(status, 200);
+          assertEquals(headers.get("Content-Type"), "message/http");
 
-        assertEquals(headers.get("Via"), "alias/1.1 target");
+          assertEquals(headers.get("Via"), "alias/1.1 target");
 
-        const body = await response.text();
-        const [, _method, url] = body.match(/^(TRACE) (.*) HTTP\/1.1$/m) || [];
-        const { pathname, searchParams } = new URL(url, "file:");
+          const body = await response.text();
+          const [, _method, url] = body.match(/^(TRACE) (.*) HTTP\/1.1$/m) ||
+            [];
+          const { pathname, searchParams } = new URL(url, "file:");
 
-        assertEquals(pathname, "/");
-        assertEquals(searchParams.get("remote"), `'/tmp/3'`);
-      });
+          assertEquals(pathname, "/");
+          assertEquals(searchParams.get("remote"), `'/tmp/3'`);
+        },
+      );
 
       await t.step("overriden by params in connection string", async () => {
-        const response = await fetch(`target,remote='${cwd}':?alias-remote='/tmp/3'`, {
-          method: "TRACE",
-        });
+        const response = await fetch(
+          `target,remote='${cwd}':?alias-remote='/tmp/3'`,
+          {
+            method: "TRACE",
+          },
+        );
         const body = await response.text();
         const [, _method, url] = body.match(/^(TRACE) (.*) HTTP\/1.1$/m) || [];
         const { pathname, searchParams } = new URL(url, "file:");
@@ -345,7 +195,6 @@ Deno.test("fetch", async (t) => {
         assertEquals(pathname, "/");
         assertEquals(searchParams.get("remote"), `'${cwd}'`);
       });
-
     });
 
     await t.step("Authorization", async (t) => {
@@ -361,11 +210,19 @@ Deno.test("fetch", async (t) => {
 
         const [, _method, url] = body.match(/^(TRACE) (.*) HTTP\/1.1$/m) || [];
         const { searchParams } = new URL(url, "file:");
-        assert(!searchParams.get("user"), "should not have `user` in search params");
+        assert(
+          !searchParams.get("user"),
+          "should not have `user` in search params",
+        );
 
-        const [, base64 = ""] = body.match(/^authorization: Basic\s+(.*)$/m) || [];
+        const [, base64 = ""] = body.match(/^authorization: Basic\s+(.*)$/m) ||
+          [];
         const [user, pass] = atob(base64).split(":");
-        assertEquals(user, "sntran", "should have the user from config in Authorization header");
+        assertEquals(
+          user,
+          "sntran",
+          "should have the user from config in Authorization header",
+        );
         assert(!pass, "should not have pass in Authorization header");
       });
 
@@ -382,12 +239,24 @@ Deno.test("fetch", async (t) => {
 
         const [, _method, url] = body.match(/^(TRACE) (.*) HTTP\/1.1$/m) || [];
         const { searchParams } = new URL(url, "file:");
-        assert(!searchParams.get("pass"), "should not have `pass` in search params");
+        assert(
+          !searchParams.get("pass"),
+          "should not have `pass` in search params",
+        );
 
-        const [, base64 = ""] = body.match(/^authorization: Basic\s+(.*)$/m) || [];
+        const [, base64 = ""] = body.match(/^authorization: Basic\s+(.*)$/m) ||
+          [];
         const [user, pass] = atob(base64).split(":");
-        assertEquals(user, "sntran", "should have the user from config in Authorization header");
-        assertEquals(pass, "rclone", "should have password from config in Authorization header");
+        assertEquals(
+          user,
+          "sntran",
+          "should have the user from config in Authorization header",
+        );
+        assertEquals(
+          pass,
+          "rclone",
+          "should have password from config in Authorization header",
+        );
       });
     });
 

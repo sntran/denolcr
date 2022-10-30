@@ -3,7 +3,7 @@ import { assert } from "../../dev_deps.ts";
 
 import { fetch } from "./main.ts";
 
-Deno.test("local path", async (t) => {
+Deno.test("local path", async () => {
   const requestInit = {
     method: "HEAD",
   };
@@ -11,7 +11,7 @@ Deno.test("local path", async (t) => {
   const files: string[] = [];
 
   const cwd = Deno.cwd();
-  const __dirname = new URL('.', import.meta.url).pathname;
+  const __dirname = new URL(".", import.meta.url).pathname;
   const url = new URL(`/backend?remote=${cwd}`, import.meta.url);
 
   const request = new Request(url, requestInit);

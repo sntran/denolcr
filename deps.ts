@@ -40,13 +40,13 @@ export function toLocaleISOString(value: string | null) {
 
   let date = new Date(value);
   const off = date.getTimezoneOffset() * -1;
-  const del = date.getMilliseconds() ? 'Z' : '.'; // have milliseconds ?
+  const del = date.getMilliseconds() ? "Z" : "."; // have milliseconds ?
   date = new Date(date.getTime() + off * 60000); // add or subtract time zone
   return date
-      .toISOString()
-      .split(del)[0]
-      + (off < 0 ? '-' : '+')
-      + ('0' + Math.abs(Math.floor(off / 60))).substr(-2)
-      + ':'
-      + ('0' + Math.abs(off % 60)).substr(-2);
+    .toISOString()
+    .split(del)[0] +
+    (off < 0 ? "-" : "+") +
+    ("0" + Math.abs(Math.floor(off / 60))).substr(-2) +
+    ":" +
+    ("0" + Math.abs(off % 60)).substr(-2);
 }

@@ -1,13 +1,25 @@
 # denolcr
 
-Deno port of Rclone
+Deno port of Rclone, rewriting functionality using Web API.
 
-## Contributing
+## Storage providers
 
-### Adds a new backend
+- The local filesystem [:page_facing_up:](https://rclone.org/local/)
 
-- `deno init backend/name`
-- Edit "backend/name/main.ts" and "backend/name/main_test.ts" for the new
-  backend.
-- Implements a `fetch` export function that handles "HEAD", "GET", "PUT" and "DELETE".
-- Uses `backend/local/main.ts` as reference.
+### Virtual storage providers
+
+These backends adapt or modify other storage providers
+
+- Alias: rename existing remotes [:page_facing_up:](https://rclone.org/alias/)
+
+## Commands
+
+- `config`
+- `lsjson`
+- `lsf`
+- `ls`
+- `lsl`
+- `lsd`
+- `cat`
+- `rcat`
+- `copy`
