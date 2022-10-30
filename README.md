@@ -4,6 +4,7 @@ Deno port of Rclone, rewriting functionality using Web API.
 
 ## Storage providers
 
+- Fshare.vn
 - The local filesystem [:page_facing_up:](https://rclone.org/local/)
 
 ### Virtual storage providers
@@ -23,3 +24,4 @@ These backends adapt or modify other storage providers
 - `cat`
 - `rcat`
 - `copy`
+- `copyurl`
