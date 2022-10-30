@@ -651,6 +651,21 @@ export async function lsf(location: string, flags: Options = {}): Promise<Respon
 
 /**
  * List the objects in the path with size and path.
+ *
+ * Lists the objects in the source path in a human readable format with size
+ * and path. Recurses by default.
+ *
+ * Example:
+ *
+ * ```ts
+ * import { Rclone } from "./mod.ts";
+ * const response = await Rclone.ls("remote:path");
+ * console.log(await response.text());
+ * // 60295 bevajer5jef
+ * // 90613 canole
+ * // 94467 diwogej7
+ * // 37600 fubuwic
+ * ```
  */
 export function ls(location: string, flags: Options = {}): Promise<Response> {
   flags = {
@@ -658,6 +673,36 @@ export function ls(location: string, flags: Options = {}): Promise<Response> {
     "max-depth": "Infinity",
     "files-only": "true",
     format: "sp",
+    separator: "\t",
+    ...flags,
+  }
+  return lsf(location, flags);
+}
+
+/**
+ * List the objects in path with modification time, size and path.
+ *
+ * Lists the objects in the source path in a human readable format with
+ * modification time, size and path. Recurses by default.
+ *
+ * Example:
+ *
+ * ```ts
+ * import { Rclone } from "./mod.ts";
+ * const response = await Rclone.lsl("remote:path");
+ * console.log(await response.text());
+ * // 60295 2016-06-25 18:55:41.062626927 bevajer5jef
+ * // 90613 2016-06-25 18:55:43.302607074 canole
+ * // 94467 2016-06-25 18:55:43.046609333 diwogej7
+ * // 37600 2016-06-25 18:55:40.814629136 fubuwic
+ * ```
+ */
+export function lsl(location: string, flags: Options = {}): Promise<Response> {
+  flags = {
+    recursive: "true",
+    "max-depth": "Infinity",
+    "files-only": "true",
+    format: "stp",
     separator: "\t",
     ...flags,
   }
@@ -711,6 +756,7 @@ export const Rclone = {
   lsjson,
   lsf,
   ls,
+  lsl,
   cat,
   rcat,
   copy,
