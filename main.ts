@@ -20,6 +20,7 @@ import { lsd } from "./cmd/lsd/main.ts";
 import { cat } from "./cmd/cat/main.ts";
 import { rcat } from "./cmd/rcat/main.ts";
 import { copy } from "./cmd/copy/main.ts";
+import { copyurl } from "./cmd/copyurl/main.ts";
 
 export type Options = Record<string, string>;
 export type Command<T extends unknown[]> = (
@@ -272,6 +273,7 @@ export const Rclone = {
   cat,
   rcat,
   copy,
+  copyurl,
 };
 
 if (import.meta.main) {
