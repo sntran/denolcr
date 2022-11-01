@@ -14,7 +14,7 @@ async function digest(path: string, algorithm: DigestAlgorithm = "MD5") {
 
 export { crypto, digest };
 
-export * as INI from "https://deno.land/x/ini@v2.1.0/mod.ts";
+export * as INI from "https://esm.sh/ini@3.0.1";
 
 export function config_dir(): string | null {
   switch (Deno.build.os) {
