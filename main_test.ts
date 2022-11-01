@@ -114,7 +114,7 @@ Deno.test("fetch", async (t) => {
           const { searchParams } = new URL(url, "file:");
 
           assertEquals(searchParams.get("remote"), `source:`);
-          assertEquals(searchParams.get("skip-links"), `true`);
+          assertEquals(searchParams.get("skip_links"), `true`);
         },
       );
 
@@ -132,7 +132,7 @@ Deno.test("fetch", async (t) => {
 
           assertEquals(searchParams.get("remote"), `/tmp/1`);
           assert(
-            !searchParams.has("alias-remote"),
+            !searchParams.has("alias_remote"),
             "should not have param prefixed with backend type",
           );
         },
@@ -152,7 +152,7 @@ Deno.test("fetch", async (t) => {
 
           assertEquals(searchParams.get("remote"), `/tmp/2`);
           assert(
-            !searchParams.has("config-target-remote"),
+            !searchParams.has("config_target_remote"),
             "should not have param prefixed with remote name",
           );
         },
@@ -161,7 +161,7 @@ Deno.test("fetch", async (t) => {
       await t.step(
         "overriden by flags prefixed with backend type",
         async () => {
-          const response = await fetch("target:?alias-remote='/tmp/3'", {
+          const response = await fetch("target:?alias_remote='/tmp/3'", {
             method: "TRACE",
           });
           const { status, headers } = response;
@@ -183,7 +183,7 @@ Deno.test("fetch", async (t) => {
 
       await t.step("overriden by params in connection string", async () => {
         const response = await fetch(
-          `target,remote='${cwd}':?alias-remote='/tmp/3'`,
+          `target,remote='${cwd}':?alias_remote='/tmp/3'`,
           {
             method: "TRACE",
           },

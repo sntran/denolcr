@@ -60,7 +60,7 @@ export async function lsjson(
     return response;
   }
 
-  let maxDepth = Number(flags["max-depth"] || (flags.recursive ? Infinity : 1));
+  let maxDepth = Number(flags.max_depth || (flags.recursive ? Infinity : 1));
   if (!flags.recursive) {
     maxDepth = 1;
   }

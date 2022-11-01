@@ -21,8 +21,8 @@ import { Options, Rclone } from "rclone";
 export function lsl(location: string, flags: Options = {}): Promise<Response> {
   flags = {
     recursive: "true",
-    "max-depth": "Infinity",
-    "files-only": "true",
+    max_depth: "Infinity",
+    files_only: "true",
     format: "stp",
     separator: "\t",
     ...flags,

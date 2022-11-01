@@ -7,7 +7,7 @@ import { Options, Rclone } from "rclone";
  */
 export function lsd(location: string, flags: Options = {}): Promise<Response> {
   flags = {
-    "dirs-only": "true",
+    dirs_only: "true",
     format: "stp",
     separator: "\t",
     ...flags,

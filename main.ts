@@ -145,7 +145,7 @@ export async function fetch(
   const env = Deno.env.toObject();
   for (const [key, value] of Object.entries(env)) {
     if (key.startsWith("RCLONE_")) {
-      const shortKey = key.slice(7).toLowerCase().replace(/_/g, "-");
+      const shortKey = key.slice(7).toLowerCase();
       params.set(shortKey, value);
     }
   }
@@ -182,14 +182,11 @@ export async function fetch(
   let envPrefix = `RCLONE_${type.toUpperCase()}_`;
   for (const [key, value] of Object.entries(env)) {
     if (key.startsWith(envPrefix)) {
-      const shortKey = key.slice(envPrefix.length).toLowerCase().replace(
-        /_/g,
-        "-",
-      );
+      const shortKey = key.slice(envPrefix.length).toLowerCase();
       params.set(shortKey, value);
 
       // Deletes any params that are already set by environment vars.
-      params.delete(`${type}-${shortKey}`);
+      params.delete(`${type}_${shortKey}`);
     }
   }
 
@@ -197,14 +194,11 @@ export async function fetch(
   envPrefix = `RCLONE_CONFIG_${name.toUpperCase()}_`;
   for (const [key, value] of Object.entries(env)) {
     if (key.startsWith(envPrefix)) {
-      const shortKey = key.slice(envPrefix.length).toLowerCase().replace(
-        /_/g,
-        "-",
-      );
+      const shortKey = key.slice(envPrefix.length).toLowerCase();
       params.set(shortKey, value);
 
       // Deletes any params that are already set by environment vars.
-      params.delete(`config-${name}-${shortKey}`);
+      params.delete(`config_${name}_${shortKey}`);
     }
   }
 
@@ -213,15 +207,15 @@ export async function fetch(
 
   // Overrides with flags in request's search params.
   searchParams.forEach((value, key) => {
-    if (key.startsWith(`${type}-`)) {
-      params.set(key.replace(`${type}-`, ""), value);
+    if (key.startsWith(`${type}_`)) {
+      params.set(key.replace(`${type}_`, ""), value);
     }
   });
 
   // Overrides with parameters in connection string.
   args.forEach((arg) => {
     const [key, value = "true"] = arg.split("=");
-    params.set(`${key.replace(/_/g, "-")}`, value);
+    params.set(key, value);
   });
 
   const headers = new Headers(init.headers);
@@ -317,7 +311,7 @@ if (import.meta.main) {
     /** Collects other optional params */
     unknown: (_arg: string, key?: string, value?: unknown) => {
       if (key) { // key is the flag name
-        options[key] = `${value}`;
+        options[key.replace(/-/g, "_")] = `${value}`;
         return false;
       }
     },

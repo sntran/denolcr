@@ -94,7 +94,7 @@ const FORMATS: Record<string, string> = {
  * import { Rclone } from "./mod.ts";
  * const response = await Rclone.lsf("remote:path", {
  *   csv: true,
- *   "files-only": true,
+ *   files_only: true,
  *   format: "ps",
  * });
  * console.log(await response.text());
@@ -109,9 +109,9 @@ export async function lsf(
 ): Promise<Response> {
   const {
     csv = false,
-    "dir-slash": dirSlash = true,
-    "dirs-only": dirsOnly = false,
-    "files-only": filesOnly = false,
+    dir_slash: dirSlash = true,
+    dirs_only: dirsOnly = false,
+    files_only: filesOnly = false,
     format = "p",
     separator = ";",
   } = flags;
