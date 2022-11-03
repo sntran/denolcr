@@ -11,7 +11,6 @@ Deno.test("local path", async () => {
   const files: string[] = [];
 
   const cwd = Deno.cwd();
-  const __dirname = new URL(".", import.meta.url).pathname;
   const url = new URL(`/backend?remote=${cwd}`, import.meta.url);
 
   const request = new Request(url, requestInit);
