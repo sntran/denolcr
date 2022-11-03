@@ -1,4 +1,5 @@
 import {} from "../../deps.ts";
+import { reveal } from "rclone/cmd/obscure/main.ts";
 
 const TOKEN_URL = "https://www.googleapis.com/oauth2/v4/token";
 const DRIVE_URL = "https://www.googleapis.com/drive/v3/files";
@@ -7,7 +8,9 @@ const FILE_ATTRS =
 const FOLDER_TYPE = "application/vnd.google-apps.folder";
 
 const CLIENT_ID = "202264815644.apps.googleusercontent.com";
-const CLIENT_SECRET = "eX8GpZTVx3vxMWVkuuBdDWmAUE6rGhTwVrvG9GhllYccSdj2-mvHVg";
+const CLIENT_SECRET = await reveal(
+  "eX8GpZTVx3vxMWVkuuBdDWmAUE6rGhTwVrvG9GhllYccSdj2-mvHVg",
+).then((r) => r.text());
 const scopes = [
   "https://www.googleapis.com/auth/drive",
 ];
