@@ -51,8 +51,35 @@
  */
 
 // @TODO: Reimplement this dependency the Deno way.
-import { Rclone } from "https://esm.sh/rclone@1.4.0";
+import PathCipher from "https://esm.sh/rclone/dist/ciphers/PathCipher.js";
+import { scrypt } from "https://deno.land/x/scrypto@v1.0.0/scrypt.ts";
 import { join } from "../../deps.ts";
+import { reveal } from "rclone/cmd/obscure/main.ts";
+
+const DEFAULT_SALT = new Uint8Array([
+  0xa8,
+  0x0d,
+  0xf4,
+  0x3a,
+  0x8f,
+  0xbd,
+  0x03,
+  0x08,
+  0xa7,
+  0xca,
+  0xb8,
+  0x3e,
+  0x58,
+  0x1f,
+  0x86,
+  0xb1,
+]);
+
+// Params for scrypt
+const N = 16384;
+const r = 8;
+const p = 1;
+const keySize = 32 + 32 + 16;
 
 const HEADER_SIZE = 32;
 const CHUNK_SIZE = 64 * 1024; // 64KB
@@ -66,18 +93,17 @@ async function router(request: Request) {
   if (!remote) {
     throw new Error("Missing remote");
   }
+
   const password = searchParams.get("password");
   const salt = searchParams.get("password2");
 
-  const { Path } = await Rclone({
-    password,
-    salt,
-  });
+  const keys = await generateKeys(password!, salt!);
+  const pathCipher = PathCipher(keys);
 
   pathname = decodeURIComponent(pathname).slice(1);
   let encryptedPathname = pathname;
   if (pathname !== "") {
-    encryptedPathname = Path.encrypt(pathname);
+    encryptedPathname = pathCipher.encrypt(pathname);
   }
 
   // Delegates to the underlying remote.
@@ -89,7 +115,7 @@ async function router(request: Request) {
   const links = headers.get("Link")?.split(",").map((link) => {
     const [_, uri] = link.match(/<([^>]*)>/) || [];
     try {
-      return `<${Path.decrypt(uri)}>`;
+      return `<${pathCipher.decrypt(uri)}>`;
     } catch (_error) {
       return undefined;
     }
