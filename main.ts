@@ -11,6 +11,7 @@
  * ```
  */
 
+import { backend } from "./cmd/backend/main.ts";
 import { config } from "./cmd/config/main.ts";
 import { lsjson } from "./cmd/lsjson/main.ts";
 import { lsf } from "./cmd/lsf/main.ts";
@@ -259,6 +260,7 @@ globalThis.fetch = fetch;
 
 // @TODO: Type `Rclone` as `API`.
 export const Rclone = {
+  backend,
   config,
   lsjson,
   lsf,
