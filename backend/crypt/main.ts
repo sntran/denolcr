@@ -143,11 +143,88 @@ async function router(request: Request) {
   });
 }
 
+/**
+ * Encode the given filename(s)
+ *
+ * ```ts
+ * import { encode } from "./main.ts";
+ * await encode("remote:", options, ...arguments);
+ * ```
+ *
+ * This encodes the filenames given as arguments returning a list of strings of
+ * the encoded results.
+ *
+ * Usage Exampe:
+ *
+ * ```ts
+ * import { encode } from "./main.ts";
+ * const response = await encode("crypt:", {}, file1, file2);
+ * await response.text();
+ * ```
+ */
+async function encode(options: Record<string, string>, ...args: string[]) {
+  const keys = await generateKeys(options.password!, options.password2)!;
+  const pathCipher = PathCipher(keys);
+  const encoded = args.map((path) => pathCipher.encrypt(path) + "\n");
+
+  return new Response(encoded.join(""));
+}
+
+/**
+ * Decode the given filename(s)
+ *
+ * ```ts
+ * import { decode } from "./main.ts";
+ * await decode("remote:", options, ..arguments);
+ * ```
+ *
+ * This decodes the filenames given as arguments returning a list of strings of
+ * the decoded results. It will return an error if any of the inputs are
+ * invalid.
+ *
+ * Usage Exampe:
+ *
+ * ```ts
+ * import { decode } from "./main.ts";
+ * const response = await decode("crypt:", {}, encryptedfile1, encryptedfile2);
+ * await response.text();
+ * ```
+ */
+async function decode(options: Record<string, string>, ...args: string[]) {
+  const keys = await generateKeys(options.password!, options.password2!);
+  const pathCipher = PathCipher(keys);
+
+  const decoded = args.map((arg) => pathCipher.decrypt(arg) + "\n");
+  return new Response(decoded.join(""));
+}
+
+async function generateKeys(encPass: string, encSalt: string) {
+  const password = await reveal(encPass).then((r) => r.arrayBuffer()).then(
+    (buf) => new Uint8Array(buf),
+  );
+  const decryptedSalt = await reveal(encSalt).then((r) => r.arrayBuffer()).then(
+    (buf) => new Uint8Array(buf),
+  );
+  const salt = decryptedSalt.length ? decryptedSalt : DEFAULT_SALT;
+
+  const derivedKey = await scrypt(password, salt, N, r, p, keySize);
+  const key = new Uint8Array(derivedKey!);
+  return {
+    password: encPass,
+    salt: encSalt,
+    dataKey: new Uint8Array(key.slice(0, 32)),
+    nameKey: new Uint8Array(key.slice(32, 64)),
+    nameTweak: new Uint8Array(key.slice(64)),
+  };
+}
+
 const exports = {
   fetch: router,
 };
 
 export {
+  decode,
+  encode,
   // For Cloudflare Workers.
   exports as default,
   router as fetch,
