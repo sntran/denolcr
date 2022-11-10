@@ -1,7 +1,8 @@
 {
   "tasks": {
     "start": "deno run --unstable -A main.ts",
-    "test": "deno test --unstable -A"
+    "install": "deno install --unstable -A -n dclone main.ts",
+    "test": "deno test --unstable -A --fail-fast"
   },
   "importMap": "./import_map.json"
 }
