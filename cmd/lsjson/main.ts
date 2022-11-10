@@ -124,7 +124,7 @@ export async function lsjson(
 
 function getLinks(headers: Headers, parent = "") {
   return headers.get("Link")?.split(",").map((link) => {
-    const [_, uri] = link.match(/<(.*)>/) || [];
+    const [_, uri] = link.match(/<([^>]*)>/) || [];
     return decodeURIComponent(join(parent, uri));
   }) || [];
 }

@@ -1,4 +1,4 @@
-import { contentType, digest, extname, join } from "../../deps.ts";
+import { contentType, extname, join } from "../../deps.ts";
 import {
   assert,
   assertEquals,
@@ -62,9 +62,6 @@ Deno.test("HEAD", async (t) => {
       assertHeader(headers, "Content-Type", contentType(extname(name)) || "");
       assertHeader(headers, "Content-Length", `${file.size}`);
       assertHeader(headers, "Last-Modified", file.mtime?.toUTCString() || "");
-
-      // For local files, the ETag is the MD5 hash of the file.
-      assertHeader(headers, "ETag", `"${await digest(path)}"`);
     }
   });
 });

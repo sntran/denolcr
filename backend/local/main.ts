@@ -1,4 +1,4 @@
-import { contentType, digest, extname } from "../../deps.ts";
+import { contentType, extname } from "../../deps.ts";
 
 /** Main export */
 async function router(request: Request): Promise<Response> {
@@ -25,9 +25,6 @@ async function router(request: Request): Promise<Response> {
     } else {
       headers.append("Content-Type", contentType(extname(pathname)) || "");
       headers.append("Content-Length", stats.size.toString());
-
-      /** @TODO: choose hash method with `hash` param. */
-      headers.append("ETag", `"${await digest(pathname)}"`);
     }
 
     const mtime = stats.mtime?.toUTCString();

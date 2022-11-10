@@ -51,7 +51,7 @@
  */
 
 // @TODO: Reimplement this dependency the Deno way.
-import PathCipher from "https://esm.sh/rclone/dist/ciphers/PathCipher.js";
+import PathCipher from "https://esm.sh/rclone@1.4.0/dist/ciphers/PathCipher.js";
 import { scrypt } from "https://deno.land/x/scrypto@v1.0.0/scrypt.ts";
 import { join } from "../../deps.ts";
 import { reveal } from "rclone/cmd/obscure/main.ts";
@@ -97,8 +97,13 @@ async function router(request: Request) {
   const password = searchParams.get("password");
   const salt = searchParams.get("password2");
 
-  const keys = await generateKeys(password!, salt!);
-  const pathCipher = PathCipher(keys);
+  let response = await deriveKey(password!, salt!)!;
+  const key = new Uint8Array(await response.arrayBuffer());
+
+  const pathCipher = PathCipher({
+    nameKey: key.slice(32, 64),
+    nameTweak: key.slice(64),
+  });
 
   pathname = decodeURIComponent(pathname).slice(1);
   let encryptedPathname = pathname;
@@ -107,7 +112,7 @@ async function router(request: Request) {
   }
 
   // Delegates to the underlying remote.
-  const response = await fetch(join(remote, encryptedPathname), request);
+  response = await fetch(join(remote, encryptedPathname), request);
   let { status, statusText, headers, body } = response;
   headers = new Headers(headers);
 
@@ -148,7 +153,7 @@ async function router(request: Request) {
  *
  * ```ts
  * import { encode } from "./main.ts";
- * await encode("remote:", options, ...arguments);
+ * await encode(options, ...arguments);
  * ```
  *
  * This encodes the filenames given as arguments returning a list of strings of
@@ -158,14 +163,20 @@ async function router(request: Request) {
  *
  * ```ts
  * import { encode } from "./main.ts";
- * const response = await encode("crypt:", {}, file1, file2);
+ * const response = await encode({password, password2}, file1, file2);
  * await response.text();
  * ```
  */
 async function encode(options: Record<string, string>, ...args: string[]) {
-  const keys = await generateKeys(options.password!, options.password2)!;
-  const pathCipher = PathCipher(keys);
-  const encoded = args.map((path) => pathCipher.encrypt(path) + "\n");
+  const response = await deriveKey(options.password!, options.password2)!;
+  const key = new Uint8Array(await response.arrayBuffer());
+  const pathCipher = PathCipher({
+    nameKey: key.slice(32, 64),
+    nameTweak: key.slice(64),
+  });
+  const encoded = args.map((path) =>
+    (path ? pathCipher.encrypt(path) : "") + "\n"
+  );
 
   return new Response(encoded.join(""));
 }
@@ -175,7 +186,7 @@ async function encode(options: Record<string, string>, ...args: string[]) {
  *
  * ```ts
  * import { decode } from "./main.ts";
- * await decode("remote:", options, ..arguments);
+ * await decode(options, ..arguments);
  * ```
  *
  * This decodes the filenames given as arguments returning a list of strings of
@@ -186,19 +197,25 @@ async function encode(options: Record<string, string>, ...args: string[]) {
  *
  * ```ts
  * import { decode } from "./main.ts";
- * const response = await decode("crypt:", {}, encryptedfile1, encryptedfile2);
+ * const response = await decode({password, password2}, encryptedfile1, encryptedfile2);
  * await response.text();
  * ```
  */
 async function decode(options: Record<string, string>, ...args: string[]) {
-  const keys = await generateKeys(options.password!, options.password2!);
-  const pathCipher = PathCipher(keys);
+  const response = await deriveKey(options.password!, options.password2)!;
+  const key = new Uint8Array(await response.arrayBuffer());
+  const pathCipher = PathCipher({
+    nameKey: key.slice(32, 64),
+    nameTweak: key.slice(64),
+  });
 
-  const decoded = args.map((arg) => pathCipher.decrypt(arg) + "\n");
+  const decoded = args.map((arg) =>
+    (arg ? pathCipher.decrypt(arg) : "") + "\n"
+  );
   return new Response(decoded.join(""));
 }
 
-async function generateKeys(encPass: string, encSalt: string) {
+async function deriveKey(encPass: string, encSalt: string) {
   const password = await reveal(encPass).then((r) => r.arrayBuffer()).then(
     (buf) => new Uint8Array(buf),
   );
@@ -208,14 +225,8 @@ async function generateKeys(encPass: string, encSalt: string) {
   const salt = decryptedSalt.length ? decryptedSalt : DEFAULT_SALT;
 
   const derivedKey = await scrypt(password, salt, N, r, p, keySize);
-  const key = new Uint8Array(derivedKey!);
-  return {
-    password: encPass,
-    salt: encSalt,
-    dataKey: new Uint8Array(key.slice(0, 32)),
-    nameKey: new Uint8Array(key.slice(32, 64)),
-    nameTweak: new Uint8Array(key.slice(64)),
-  };
+
+  return new Response(derivedKey);
 }
 
 const exports = {
