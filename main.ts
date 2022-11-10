@@ -22,7 +22,7 @@ import { cat } from "./cmd/cat/main.ts";
 import { rcat } from "./cmd/rcat/main.ts";
 import { copy } from "./cmd/copy/main.ts";
 import { copyurl } from "./cmd/copyurl/main.ts";
-import { obscure } from "./cmd/obscure/main.ts";
+import { obscure, reveal } from "./cmd/obscure/main.ts";
 
 export type Options = Record<string, string>;
 export type Command<T extends unknown[]> = (
@@ -272,6 +272,7 @@ export const Rclone = {
   copy,
   copyurl,
   obscure,
+  reveal,
 };
 
 if (import.meta.main) {
