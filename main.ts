@@ -249,11 +249,12 @@ export async function fetch(
   const { fetch } = await import(`rclone/backend/${type}/main.ts`);
 
   const url = new URL(`${pathname}?${params}`, import.meta.url);
-  const request = new Request(url, {
-    ...init,
+  // Creates a new request with the initial init.
+  const request = new Request(url, init);
+  // Clones that request and updates the headers.
+  return fetch(new Request(request, {
     headers,
-  });
-  return fetch(request);
+  }));
 }
 
 globalThis.fetch = fetch;
