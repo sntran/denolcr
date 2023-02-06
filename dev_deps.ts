@@ -13,4 +13,4 @@ export function assertHeader(headers: Headers, name: string, value?: string) {
   }
 }
 
-export * as fc from "https://cdn.skypack.dev/fast-check";
+export * as fc from "https://cdn.skypack.dev/fast-check@3.6.2";
