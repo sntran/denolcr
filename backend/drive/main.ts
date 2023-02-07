@@ -1,6 +1,8 @@
 import { Chunker } from "../../deps.ts";
 import { reveal } from "rclone/cmd/obscure/main.ts";
 
+import { createJWT, ServiceAccount } from "./crypto.ts";
+
 const TOKEN_URL = "https://www.googleapis.com/oauth2/v4/token";
 const DRIVE_URL = "https://www.googleapis.com/drive/v3/files";
 const FILE_ATTRS =
@@ -11,9 +13,7 @@ const CLIENT_ID = "202264815644.apps.googleusercontent.com";
 const CLIENT_SECRET = await reveal(
   "eX8GpZTVx3vxMWVkuuBdDWmAUE6rGhTwVrvG9GhllYccSdj2-mvHVg",
 ).then((r) => r.text());
-const scopes = [
-  "https://www.googleapis.com/auth/drive",
-];
+const SCOPE = "drive";
 
 type Token = {
   access_token: string;
@@ -132,27 +132,43 @@ async function authorize(request: Request): Promise<Response> {
     });
   }
 
+  const body = new URLSearchParams();
   const { searchParams } = new URL(url);
-  const { refresh_token }: Token = JSON.parse(
-    searchParams.get("token") || "{}",
-  );
-  // const serviceAccountFile = searchParams.get("service_account_file");
+
+  const scopes: string[] = (searchParams.get("scope") || SCOPE)
+    .split(",").map(scope => `https://www.googleapis.com/auth/${scope.trim()}`);
+
+  let serviceAccountCredentials = searchParams.get("service_account_credentials");
+  const serviceAccountFile = searchParams.get("service_account_file");
+  if (serviceAccountFile) {
+    serviceAccountCredentials = await fetch(serviceAccountFile).then(res => res.text());
+  }
+
+  if (serviceAccountCredentials) {
+    const serviceAccount: ServiceAccount = JSON.parse(serviceAccountCredentials);;
+    const jwt = await createJWT(serviceAccount, scopes);
+    body.set("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer");
+    body.set("assertion", jwt);
+  } else {
+    const client_id = searchParams.get("client_id") || CLIENT_ID;
+    const client_secret = searchParams.get("client_secret") || CLIENT_SECRET;
+    const { refresh_token }: Token = JSON.parse(
+      searchParams.get("token") || "{}",
+    );
+    body.set("grant_type", "refresh_token");
+    body.set("client_id", client_id);
+    body.set("client_secret", client_secret);
+    body.set("refresh_token", refresh_token);
+  }
 
   const tokenURL = searchParams.get("token_url") || TOKEN_URL;
-  const client_id = searchParams.get("client_id") || CLIENT_ID;
-  const client_secret = searchParams.get("client_secret") || CLIENT_SECRET;
 
   const response = await fetch(tokenURL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
     },
-    body: new URLSearchParams({
-      client_id,
-      client_secret,
-      refresh_token,
-      grant_type: "refresh_token",
-    }),
+    body,
   });
 
   const {
@@ -175,11 +191,6 @@ async function authorize(request: Request): Promise<Response> {
 
   if (expires_in <= 0) {
     // @TODO: refresh token
-    return new Response();
-  }
-
-  if (scope !== "https://www.googleapis.com/auth/drive") {
-    // @TODO: throws error?
     return new Response();
   }
 
