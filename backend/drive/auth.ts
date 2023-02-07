@@ -2,7 +2,7 @@ import { base64url } from "../../deps.ts";
 
 import { reveal } from "rclone/cmd/obscure/main.ts";
 
-const TOKEN_URL = "https://www.googleapis.com/oauth2/v4/token";
+const TOKEN_URL = "https://oauth2.googleapis.com/token";
 
 const CLIENT_ID = "202264815644.apps.googleusercontent.com";
 const CLIENT_SECRET = await reveal(
@@ -130,7 +130,7 @@ async function createJWT(serviceAccount: ServiceAccount, scopes: string[]): Prom
   const payload = {
     iss: client_email,
     scope: scopes.join(" "),
-    aud: "https://oauth2.googleapis.com/token",
+    aud: TOKEN_URL,
     iat: now,
     exp: now + 3600,
   };
@@ -144,27 +144,18 @@ async function createJWT(serviceAccount: ServiceAccount, scopes: string[]): Prom
   return `${jwt}.${signatureEncoded}`;
 }
 
+const PEM_HEADER = "-----BEGIN PRIVATE KEY-----";
+const PEM_FOOTER = "-----END PRIVATE KEY-----";
+
 function importPrivateKey(pem: string): Promise<CryptoKey> {
   const format = "pkcs8";
-  const pemHeader = "-----BEGIN PRIVATE KEY-----";
-  const pemFooter = "-----END PRIVATE KEY-----";
   const pemContents = pem
-      .substring(pemHeader.length, pem.length - pemFooter.length - 1)
-      .replaceAll("\n", "") // Attempt to remove any abnormalities
-      .replaceAll(" ", "");
+      .substring(PEM_HEADER.length, pem.length - PEM_FOOTER.length - 1)
+      .replaceAll(/\n|\s/g, "");
 
   // base64 decode the string to get the binary data
   const binaryDerString: string = atob(pemContents);
-  const keyData: ArrayBuffer = str2ab(binaryDerString);
+  const keyData = Uint8Array.from(binaryDerString, x => x.charCodeAt(0));
   const extractable = false;
   return subtle.importKey(format, keyData, algorithm, extractable, keyUsages);
-}
-
-function str2ab(str: string): ArrayBuffer {
-  const buf = new ArrayBuffer(str.length);
-  const bufView = new Uint8Array(buf);
-  for (let i = 0, strLen = str.length; i < strLen; i++) {
-    bufView[i] = str.charCodeAt(i);
-  }
-  return buf;
 }
