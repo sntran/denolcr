@@ -110,6 +110,7 @@ export async function auth(request: Request): Promise<Response> {
   });
 }
 
+//#region JWT
 const subtle = crypto.subtle;
 
 const algorithm = { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" };
@@ -159,3 +160,4 @@ function importPrivateKey(pem: string): Promise<CryptoKey> {
   const extractable = false;
   return subtle.importKey(format, keyData, algorithm, extractable, keyUsages);
 }
+//#endregion JWT
