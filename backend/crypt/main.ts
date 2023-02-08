@@ -54,7 +54,8 @@
 import PathCipher from "https://esm.sh/rclone@1.4.0/dist/ciphers/PathCipher.js";
 import { scrypt } from "https://deno.land/x/scrypto@v1.0.0/scrypt.ts";
 import { join } from "../../deps.ts";
-import { reveal } from "rclone/cmd/obscure/main.ts";
+import { fetch } from "../../main.ts";
+import { reveal } from "../../cmd/obscure/main.ts";
 
 const DEFAULT_SALT = new Uint8Array([
   0xa8,

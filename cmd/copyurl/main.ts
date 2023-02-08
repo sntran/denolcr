@@ -1,6 +1,6 @@
 import { basename, resolve } from "../../deps.ts";
 
-import { fetch, Options } from "rclone";
+import { fetch, Options } from "../../main.ts";
 
 /**
  * Copy url content to dest.

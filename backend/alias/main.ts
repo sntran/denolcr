@@ -20,7 +20,7 @@
  */
 
 import { join } from "../../deps.ts";
-import { fetch } from "rclone";
+import { fetch } from "../../main.ts";
 
 function router(request: Request): Promise<Response> {
   const { pathname, searchParams } = new URL(request.url);

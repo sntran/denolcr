@@ -1,4 +1,4 @@
-import { File, Options, Rclone } from "rclone";
+import { File, Options, Rclone } from "../../main.ts";
 
 const FORMATS: Record<string, string> = {
   "p": "Path",

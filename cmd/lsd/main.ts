@@ -1,4 +1,4 @@
-import { Options, Rclone } from "rclone";
+import { Options, Rclone } from "../../main.ts";
 /**
  * List all directories/containers/buckets in the path.
  *

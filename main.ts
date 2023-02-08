@@ -246,7 +246,7 @@ export async function fetch(
     });
   }
 
-  const { fetch } = await import(`rclone/backend/${type}/main.ts`);
+  const { fetch } = await import(`./backend/${type}/main.ts`);
 
   const url = new URL(`${pathname}?${params}`, import.meta.url);
   // Creates a new request with the initial init.

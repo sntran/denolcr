@@ -1,6 +1,6 @@
 import { basename, join, toLocaleISOString } from "../../deps.ts";
 
-import { File } from "rclone";
+import { File } from "../../main.ts";
 
 type Options = Record<string, string>;
 

@@ -1,4 +1,4 @@
-import { Options, Rclone } from "rclone";
+import { Options, Rclone } from "../../main.ts";
 
 /**
  * List the objects in path with modification time, size and path.

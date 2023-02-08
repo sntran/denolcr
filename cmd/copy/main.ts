@@ -1,4 +1,4 @@
-import { fetch, Options } from "rclone";
+import { fetch, Options } from "../../main.ts";
 /**
  * Copy files from source to dest, skipping identical files.
  *

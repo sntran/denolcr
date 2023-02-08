@@ -1,6 +1,6 @@
 import { base64url } from "../../deps.ts";
 
-import { reveal } from "rclone/cmd/obscure/main.ts";
+import { reveal } from "../../cmd/obscure/main.ts";
 
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 

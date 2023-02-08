@@ -1,4 +1,4 @@
-import { fetch, Options } from "rclone";
+import { fetch, Options } from "../../main.ts";
 
 export function rcat(destination: string, flags?: Options): Promise<Response> {
   return fetch(`${destination}?${new URLSearchParams(flags)}`, {

@@ -1,4 +1,4 @@
-import { Options, Rclone } from "rclone";
+import { Options, Rclone } from "../../main.ts";
 /**
  * List the objects in the path with size and path.
  *
