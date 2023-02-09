@@ -11,18 +11,8 @@
  * ```
  */
 
-import { backend } from "./cmd/backend/main.ts";
-import { config } from "./cmd/config/main.ts";
-import { lsjson } from "./cmd/lsjson/main.ts";
-import { lsf } from "./cmd/lsf/main.ts";
-import { ls } from "./cmd/ls/main.ts";
-import { lsl } from "./cmd/lsl/main.ts";
-import { lsd } from "./cmd/lsd/main.ts";
-import { cat } from "./cmd/cat/main.ts";
-import { rcat } from "./cmd/rcat/main.ts";
-import { copy } from "./cmd/copy/main.ts";
-import { copyurl } from "./cmd/copyurl/main.ts";
-import { obscure, reveal } from "./cmd/obscure/main.ts";
+import * as commands from "./cmd/main.ts";
+import * as backends from "./backend/main.ts";
 
 export type Options = Record<string, string>;
 export type Command<T extends unknown[]> = (
@@ -246,7 +236,7 @@ export async function fetch(
     });
   }
 
-  const { fetch } = await import(`./backend/${type}/main.ts`);
+  const { fetch } = backends[type as keyof typeof backends];
 
   const url = new URL(`${pathname}?${params}`, import.meta.url);
   // Creates a new request with the initial init.
@@ -261,19 +251,7 @@ globalThis.fetch = fetch;
 
 // @TODO: Type `Rclone` as `API`.
 export const Rclone = {
-  backend,
-  config,
-  lsjson,
-  lsf,
-  ls,
-  lsl,
-  lsd,
-  cat,
-  rcat,
-  copy,
-  copyurl,
-  obscure,
-  reveal,
+  ...commands,
 };
 
 if (import.meta.main) {
@@ -285,6 +263,7 @@ if (import.meta.main) {
   const {
     _: [command, ...args],
     ..._globalFlags
+    // @ts-ignore - Deno.args is not typed.
   } = parseFlags(Deno.args, {
     alias: {
       "progress": "P", // Show progress during transfer
