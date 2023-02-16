@@ -1,44 +1,52 @@
+// deno-lint-ignore-file no-var
 // Copyright 2018-2021 Trần Nguyễn Sơn. All rights reserved. MIT license.
 import "https://raw.githubusercontent.com/rclone/rclone/master/fs/rc/js/wasm_exec.js";
 
-function compile(url: string): Promise<WebAssembly.Module> {
-  url = new URL(url, import.meta.url).href;
-  return WebAssembly.compileStreaming(fetch(url));
+declare class Go {
+  argv: string[];
+  env: { [envKey: string]: string };
+  exit: (code: number) => void;
+  importObject: WebAssembly.Imports;
+  exited: boolean;
+  mem: DataView;
+  run(instance: WebAssembly.Instance): Promise<void>;
+}
+
+declare global  {
+  var document: Record<string, unknown>;
+  function rcValidResolve(): void;
+  var Go: Go;
+  function rc(command: string, params: Record<string, unknown> | null): void;
 }
 
 /** Provides a default WASM module. */
-const wasm = await compile("./rclone.wasm");
+const wasm = await WebAssembly.compileStreaming(
+  fetch(new URL("./rclone.wasm", import.meta.url))
+);
 
 /** A Rclone instance from a compiled WebAssemble module. */
 export class Rclone extends WebAssembly.Instance {
-  static async from(url: string): Promise<Rclone> {
-    const module = await compile(url);
-    return new Rclone(module);
-  }
-
   /**
    * Create a rclone instance.
    */
   constructor(module: WebAssembly.Module = wasm) {
-    // @ts-ignore: Patches for rclone.
+    // Patches for rclone.
     globalThis.document ??= {};
-    // @ts-ignore: Patches for rclone.
-    globalThis.rcValidResolve ??= function () {
+    globalThis.rcValidResolve ??= function() {
       // Invoked by rclone at the end of initialization.
-    };
-    // @ts-ignore: Instantiates WASM module.
-    const go = new globalThis.Go(); // From `wasm_exec.js`
+    }
+    // Instantiates WASM module.
+    const go = new Go(); // From `wasm_exec.js`
 
     super(module, go.importObject);
 
     go.run(this);
   }
 
-  /**
-   * Remote controls rclone
+  /** Remote controls rclone
    *
    * ```ts
-   * import { Rclone } from "https://deno.land/x/rclone@v0.0.2/mod.ts";
+   * import { Rclone } from "./rclone.ts";
    * const { rc } = new Rclone();
    * console.log("core/version", rc("core/version", null))
    * console.log("rc/noop", rc("rc/noop", {"string":"one",number:2}))
@@ -46,11 +54,30 @@ export class Rclone extends WebAssembly.Instance {
    * console.log("operations/list", rc("operations/list", {"fs":":memory:","remote":"bucket"}))
    * ```
    */
-  rc(
-    command: string,
-    args: Record<string, unknown> | null = null,
-  ): Record<string, unknown> {
-    // @ts-ignore: Use global `rc` function.
+  rc(command: string, args: Record<string, unknown> |  null) {
     return globalThis.rc(command, args);
   }
+}
+
+// Learn more at https://deno.land/manual/examples/module_metadata#concepts
+if (import.meta.main) {
+  const { rc } = new Rclone();
+  const [command, ...args] = Deno.args;
+  const params: Record<string, string|number> = {};
+
+  let argCount = args.length;
+  while (argCount--) {
+    const arg = args[argCount];
+    if (arg.includes("=")) {
+      const [key, value] = arg.split("=");
+      if (isNaN(Number(value))) {
+        params[key] = value;
+      } else {
+        params[key] = Number(value);
+      }
+      args.splice(argCount, 1);
+    }
+  }
+
+  console.log(rc(command, params));
 }
