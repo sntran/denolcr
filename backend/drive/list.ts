@@ -1,24 +1,61 @@
+const BASE_URL = "https://www.googleapis.com/drive/v3/files";
 const FILE_ATTRS =
-  "id, name, mimeType, size, modifiedTime, description, iconLink, thumbnailLink, imageMediaMetadata";
+  "id, name, mimeType, size, md5Checksum, modifiedTime, parents";
 
-export async function list(request: Request): Promise<Response> {
-  const { headers, url } = request;
-  const { pathname, searchParams } = new URL(url);
+export async function list(input: string | URL | Request, init?: RequestInit): Promise<Response> {
+  if (typeof input === "string") {
+    input = new URL(input, "drive:/");
+  }
+
+  if (input instanceof URL) {
+    input = new Request(input);
+  }
+
+  input = new Request(input, init);
+
+  const headers = input.headers;
+  const { searchParams } = new URL(input.url);
 
   // Shared Drive or My Drive
   const driveId = searchParams.get("team_drive") || "";
-  const folderId = searchParams.get("root_folder_id") || "root";
+  const rootFolderId = searchParams.get("root_folder_id");
 
-  const params = new URLSearchParams({
-    corpora: driveId ? "drive" : "user",
-    driveId,
-    includeItemsFromAllDrives: "true",
-    supportsAllDrives: "true",
-    q: `'${folderId}' in parents and trashed = false`,
-    fields: `files(${FILE_ATTRS})`,
-  });
+  const url = new URL(BASE_URL);
+  const params = url.searchParams;
+  params.set("corpora", driveId ? "drive" : "user");
+  params.set("fields", `files(${FILE_ATTRS})`);
 
-  return await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, {
-    headers,
-  });
+  if (driveId) {
+    params.set("driveId", driveId);
+    params.set("includeItemsFromAllDrives", "true");
+    params.set("supportsAllDrives", "true");
+  }
+
+  let query = "trashed = false";
+
+  if (rootFolderId) {
+    query += ` and '${rootFolderId}' in parents`;
+  }
+
+  const mimeType = headers.get("Content-Type");
+  if (mimeType) {
+    query += ` and mimeType = '${mimeType}'`;
+  }
+
+  params.set("pageSize", "1000");
+  params.set("fields", `files(${FILE_ATTRS}),nextPageToken`);
+  params.set("q", query);
+
+  const data = [];
+
+  let nextPageToken = "";
+  do {
+    url.searchParams.set("pageToken", nextPageToken);
+    const response = await fetch(url, { headers });
+    const {error, code, message, files = [], nextPageToken: token} = await response.json();
+    data.push(...files);
+    nextPageToken = token;
+  } while (nextPageToken);
+
+  return Response.json(data);
 }
