@@ -44,12 +44,9 @@ export async function create(request: Request): Promise<Response> {
     throw new Error("Location header not found");
   }
 
-  const chunkSize = Number(searchParams.get("chunk_size"));
-  let body = request.body!;
-  // Ensures the body is read into desired chunks.
-  if (chunkSize) {
-    body = body.pipeThrough(new Chunker(chunkSize));
-  }
+  // Minimum chunk size is 256 KiB.
+  const chunkSize = Number(searchParams.get("chunk_size")) || 256 * 1024;
+  const body = request.body!.pipeThrough(new Chunker(chunkSize));
   const reader = body.getReader();
 
   let chunk = new Uint8Array(chunkSize);
