@@ -13,7 +13,7 @@ type File = {
   md5Checksum: string;
   modifiedTime: string;
   parents: ID[];
-}
+};
 
 async function router(request: Request): Promise<Response> {
   //#region Auth
@@ -59,8 +59,8 @@ async function router(request: Request): Promise<Response> {
     headers: {
       Authorization,
       "Content-Type": FOLDER_TYPE,
-    }
-  }).then(res => res.json());
+    },
+  }).then((response) => response.json());
 
   parentId = getId(pathname, folders, parentId);
 
@@ -72,7 +72,7 @@ async function router(request: Request): Promise<Response> {
         Authorization,
         "Content-Type": request.headers.get("Content-Type") || "",
       },
-    }).then(res => res.json());
+    }).then((response) => response.json());
 
     // For request to folder, the file name list is returned in the Link header.
     if (isDirectory) {
@@ -102,8 +102,7 @@ async function router(request: Request): Promise<Response> {
   }
 
   if (method === "PUT") {
-    // Folder ending with trailing slash.
-    if (pathname.endsWith("/")) {
+    if (isDirectory) {
       request.headers.set("Content-Type", FOLDER_TYPE);
     }
 
@@ -131,10 +130,12 @@ async function router(request: Request): Promise<Response> {
  * @returns The ID of the file or folder for that `pathname`.
  */
 function getId(pathname: string, files: File[], parentId = "1") {
-  const segments = pathname.split("/").filter(d => d);
+  const segments = pathname.split("/").filter((d) => d);
 
   for (const segment of segments) {
-    const file = files.find(f => f.name === segment && f.parents[0] === parentId);
+    const file = files.find((f) =>
+      f.name === segment && f.parents[0] === parentId
+    );
     if (!file) {
       return "";
     }

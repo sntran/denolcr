@@ -1,5 +1,10 @@
 export { parse as parseFlags } from "https://deno.land/std@0.177.0/flags/mod.ts";
-export { basename, extname, join, resolve } from "https://deno.land/std@0.177.0/path/mod.ts";
+export {
+  basename,
+  extname,
+  join,
+  resolve,
+} from "https://deno.land/std@0.177.0/path/mod.ts";
 export { contentType } from "https://deno.land/std@0.177.0/media_types/mod.ts";
 
 export * as base64url from "https://deno.land/std@0.177.0/encoding/base64url.ts";

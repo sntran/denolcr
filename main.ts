@@ -242,9 +242,11 @@ export async function fetch(
   // Creates a new request with the initial init.
   const request = new Request(url, init);
   // Clones that request and updates the headers.
-  return fetch(new Request(request, {
-    headers,
-  }));
+  return fetch(
+    new Request(request, {
+      headers,
+    }),
+  );
 }
 
 globalThis.fetch = fetch;

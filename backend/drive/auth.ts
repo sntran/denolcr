@@ -22,7 +22,7 @@ export type ServiceAccount = {
   client_email: string;
   private_key_id: string;
   private_key: string;
-}
+};
 
 /**
  * Authorizes a Request.
@@ -44,16 +44,24 @@ export async function auth(request: Request): Promise<Response> {
   const { searchParams } = new URL(url);
 
   const scopes: string[] = (searchParams.get("scope") || SCOPE)
-    .split(",").map(scope => `https://www.googleapis.com/auth/${scope.trim()}`);
+    .split(",").map((scope) =>
+      `https://www.googleapis.com/auth/${scope.trim()}`
+    );
 
-  let serviceAccountCredentials = searchParams.get("service_account_credentials");
+  let serviceAccountCredentials = searchParams.get(
+    "service_account_credentials",
+  );
   const serviceAccountFile = searchParams.get("service_account_file");
   if (serviceAccountFile) {
-    serviceAccountCredentials = await fetch(serviceAccountFile).then(res => res.text());
+    serviceAccountCredentials = await fetch(serviceAccountFile).then((res) =>
+      res.text()
+    );
   }
 
   if (serviceAccountCredentials) {
-    const serviceAccount: ServiceAccount = JSON.parse(serviceAccountCredentials);;
+    const serviceAccount: ServiceAccount = JSON.parse(
+      serviceAccountCredentials,
+    );
     const jwt: string = await createJWT(serviceAccount, scopes);
     body.set("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer");
     body.set("assertion", jwt);
@@ -118,14 +126,17 @@ const keyUsages: KeyUsage[] = ["sign"];
 
 const header = btoa(JSON.stringify({
   alg: "RS256",
-  typ: "JWT"
+  typ: "JWT",
 }));
 
 /**
  * Generates a JWT for a Service Account with specified scopes.
  */
-async function createJWT(serviceAccount: ServiceAccount, scopes: string[]): Promise<string> {
-  const { client_email, private_key} = serviceAccount;
+async function createJWT(
+  serviceAccount: ServiceAccount,
+  scopes: string[],
+): Promise<string> {
+  const { client_email, private_key } = serviceAccount;
 
   const now: number = Math.floor(Date.now() / 1000);
   const payload = {
@@ -139,7 +150,11 @@ async function createJWT(serviceAccount: ServiceAccount, scopes: string[]): Prom
   const jwt = `${header}.${btoa(JSON.stringify(payload))}`;
   const key: CryptoKey = await importPrivateKey(private_key);
 
-  const signature: ArrayBuffer = await subtle.sign(algorithm, key, encoder.encode(jwt));
+  const signature: ArrayBuffer = await subtle.sign(
+    algorithm,
+    key,
+    encoder.encode(jwt),
+  );
   const signatureEncoded: string = base64url.encode(new Uint8Array(signature));
 
   return `${jwt}.${signatureEncoded}`;
@@ -151,12 +166,12 @@ const PEM_FOOTER = "-----END PRIVATE KEY-----";
 function importPrivateKey(pem: string): Promise<CryptoKey> {
   const format = "pkcs8";
   const pemContents = pem
-      .substring(PEM_HEADER.length, pem.length - PEM_FOOTER.length - 1)
-      .replaceAll(/\n|\s/g, "");
+    .substring(PEM_HEADER.length, pem.length - PEM_FOOTER.length - 1)
+    .replaceAll(/\n|\s/g, "");
 
   // base64 decode the string to get the binary data
   const binaryDerString: string = atob(pemContents);
-  const keyData = Uint8Array.from(binaryDerString, x => x.charCodeAt(0));
+  const keyData = Uint8Array.from(binaryDerString, (x) => x.charCodeAt(0));
   const extractable = false;
   return subtle.importKey(format, keyData, algorithm, extractable, keyUsages);
 }

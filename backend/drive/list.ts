@@ -2,7 +2,10 @@ const BASE_URL = "https://www.googleapis.com/drive/v3/files";
 const FILE_ATTRS =
   "id, name, mimeType, size, md5Checksum, modifiedTime, parents";
 
-export async function list(input: string | URL | Request, init?: RequestInit): Promise<Response> {
+export async function list(
+  input: string | URL | Request,
+  init?: RequestInit,
+): Promise<Response> {
   if (typeof input === "string") {
     input = new URL(input, "drive:/");
   }
@@ -52,7 +55,8 @@ export async function list(input: string | URL | Request, init?: RequestInit): P
   do {
     url.searchParams.set("pageToken", nextPageToken);
     const response = await fetch(url, { headers });
-    const {error, code, message, files = [], nextPageToken: token} = await response.json();
+    const { error, code, message, files = [], nextPageToken: token } =
+      await response.json();
     data.push(...files);
     nextPageToken = token;
   } while (nextPageToken);
