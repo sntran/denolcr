@@ -49,40 +49,45 @@ export async function create(request: Request): Promise<Response> {
   const body = request.body!.pipeThrough(new Chunker(chunkSize));
   const reader = body.getReader();
 
-  let chunk = new Uint8Array(chunkSize);
+  let chunk = null;
   let start = 0;
 
   // Because we don't know the size of the stream, we have to read them chunks by
   // chunks, until the reader reports that it has reached the end of the stream.
   while (true) {
     const { done, value } = await reader.read();
+
+    if (chunk) {
+      const byteLength = chunk.byteLength;
+      const end = start + byteLength;
+
+      let total = "*";
+      if (done) {
+        // Last chunk
+        total = `${end}`;
+      }
+
+      headers.set("Content-Length", `${byteLength}`);
+      headers.set("Content-Range", `bytes ${start}-${end - 1}/${total}`);
+
+      response = await fetch(location, {
+        method: "PUT",
+        headers: headers,
+        body: chunk,
+      });
+
+      if (response.status >= 500) {
+        throw new Error(await response.text());
+      }
+
+      start = end;
+    }
+
     if (done) {
       break;
     }
 
     chunk = value;
-    const byteLength = chunk.byteLength;
-    const end = start + byteLength;
-    let total = "*";
-    if (byteLength < chunkSize) {
-      // Last chunk
-      total = `${end}`;
-    }
-
-    headers.set("Content-Length", `${byteLength}`);
-    headers.set("Content-Range", `bytes ${start}-${end - 1}/${total}`);
-
-    response = await fetch(location, {
-      method: "PUT",
-      headers: headers,
-      body: chunk,
-    });
-
-    if (response.status >= 500) {
-      throw new Error(await response.text());
-    }
-
-    start = end;
   }
 
   return response;
@@ -96,7 +101,10 @@ class Chunker extends TransformStream<Uint8Array, Uint8Array> {
     let partialChunk = new Uint8Array(chunkSize);
     let offset = 0;
 
-    function transform(chunk: Uint8Array, controller: TransformStreamDefaultController) {
+    function transform(
+      chunk: Uint8Array,
+      controller: TransformStreamDefaultController,
+    ) {
       let i = 0;
 
       if (offset > 0) {
