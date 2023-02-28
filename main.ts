@@ -212,15 +212,6 @@ export async function fetch(
 
   const headers = new Headers(init.headers);
 
-  /** Converts `user` and `pass` params into Authorization header */
-  const user = params.get("user") || "";
-  const pass = params.get("pass") || "";
-  if (user) {
-    headers.set("Authorization", `Basic ${btoa(`${user}:${pass}`)}`);
-    params.delete("user");
-    params.delete("pass");
-  }
-
   if (init.method === "TRACE") {
     let body = `TRACE ${pathname}?${params} HTTP/1.1\r`;
     // Reflects the request as response body.

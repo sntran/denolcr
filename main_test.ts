@@ -197,69 +197,6 @@ Deno.test("fetch", async (t) => {
       });
     });
 
-    await t.step("Authorization", async (t) => {
-      await t.step("user", async () => {
-        await Rclone.config("update", "source", {
-          user: "sntran",
-        });
-
-        const response = await fetch("source:", {
-          method: "TRACE",
-        });
-        const body = await response.text();
-
-        const [, _method, url] = body.match(/^(TRACE) (.*) HTTP\/1.1$/m) || [];
-        const { searchParams } = new URL(url, "file:");
-        assert(
-          !searchParams.get("user"),
-          "should not have `user` in search params",
-        );
-
-        const [, base64 = ""] = body.match(/^authorization: Basic\s+(.*)$/m) ||
-          [];
-        const [user, pass] = atob(base64).split(":");
-        assertEquals(
-          user,
-          "sntran",
-          "should have the user from config in Authorization header",
-        );
-        assert(!pass, "should not have pass in Authorization header");
-      });
-
-      await t.step("pass", async () => {
-        await Rclone.config("update", "source", {
-          user: "sntran",
-          pass: "rclone",
-        });
-
-        const response = await fetch("source:", {
-          method: "TRACE",
-        });
-        const body = await response.text();
-
-        const [, _method, url] = body.match(/^(TRACE) (.*) HTTP\/1.1$/m) || [];
-        const { searchParams } = new URL(url, "file:");
-        assert(
-          !searchParams.get("pass"),
-          "should not have `pass` in search params",
-        );
-
-        const [, base64 = ""] = body.match(/^authorization: Basic\s+(.*)$/m) ||
-          [];
-        const [user, pass] = atob(base64).split(":");
-        assertEquals(
-          user,
-          "sntran",
-          "should have the user from config in Authorization header",
-        );
-        assertEquals(
-          pass,
-          "rclone",
-          "should have password from config in Authorization header",
-        );
-      });
-    });
-
     // Tears down
     await Deno.remove("rclone.conf");
     Deno.env.delete("RCLONE_SKIP_LINKS");
