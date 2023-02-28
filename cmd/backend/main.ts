@@ -23,7 +23,7 @@ export async function backend(
   const { searchParams } = new URL(url, "file:");
 
   // Retrieves all exported functions as commands.
-  const exports = await import(`rclone/backend/${type}/main.ts`);
+  const exports = await import(`../../backend/${type}/main.ts`);
 
   // Fills the options with the remote's configuration.
   searchParams.forEach((value, key) => {
