@@ -2,7 +2,7 @@ import {
   assert,
   assertEquals,
   assertRejects,
-} from "https://deno.land/std@0.177.0/testing/asserts.ts";
+} from "https://deno.land/std@0.178.0/testing/asserts.ts";
 export { assert, assertEquals, assertRejects };
 
 export function assertHeader(headers: Headers, name: string, value?: string) {

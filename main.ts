@@ -14,6 +14,8 @@
 import * as commands from "./cmd/main.ts";
 import * as backends from "./backend/main.ts";
 
+export { Progress } from "./lib/progress/main.ts";
+
 export type Options = Record<string, string>;
 export type Command<T extends unknown[]> = (
   ...args: [...T, Options?]

@@ -1,16 +1,18 @@
-export { parse as parseFlags } from "https://deno.land/std@0.177.0/flags/mod.ts";
+export { parse as parseFlags } from "https://deno.land/std@0.178.0/flags/mod.ts";
 export {
   basename,
   extname,
   join,
   resolve,
-} from "https://deno.land/std@0.177.0/path/mod.ts";
-export { contentType } from "https://deno.land/std@0.177.0/media_types/mod.ts";
+} from "https://deno.land/std@0.178.0/path/mod.ts";
+export { contentType } from "https://deno.land/std@0.178.0/media_types/mod.ts";
+export { format as formatBytes } from "https://deno.land/std@0.178.0/fmt/bytes.ts";
+export { format as formatDuration } from "https://deno.land/std@0.178.0/fmt/duration.ts";
 
-export * as base64url from "https://deno.land/std@0.177.0/encoding/base64url.ts";
+export * as base64url from "https://deno.land/std@0.178.0/encoding/base64url.ts";
 
-import { crypto } from "https://deno.land/std@0.177.0/crypto/mod.ts";
-import { DigestAlgorithm } from "https://deno.land/std@0.177.0/crypto/_wasm/mod.ts";
+import { crypto } from "https://deno.land/std@0.178.0/crypto/mod.ts";
+import { DigestAlgorithm } from "https://deno.land/std@0.178.0/crypto/_wasm/mod.ts";
 
 async function digest(path: string, algorithm: DigestAlgorithm = "MD5") {
   const payload = await Deno.readFile(path);
