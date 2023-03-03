@@ -247,6 +247,13 @@ async function download(
   }
 
   url = new URL(url, "https://www.fshare.vn/file/");
+
+  if (url.host !== "fshare.vn" && url.host !== "www.fshare.vn") {
+    return new Response(null, {
+      status: 400,
+    });
+  }
+
   let token = url.searchParams.get("token");
   if (!token || !headers.has("Cookie")) {
     const response = await auth(config);
