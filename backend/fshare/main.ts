@@ -234,6 +234,14 @@ async function download(
   url: string | URL,
   init: RequestInit = {},
 ): Promise<Response> {
+  url = new URL(url, "https://www.fshare.vn/file/");
+
+  if (url.host !== "fshare.vn" && url.host !== "www.fshare.vn") {
+    return new Response(null, {
+      status: 400,
+    });
+  }
+
   const {
     method = "POST",
     redirect = "follow",
@@ -244,14 +252,6 @@ async function download(
   headers.set("Content-Type", "application/json; charset=utf-8");
   if (!headers.has("User-Agent")) {
     headers.set("User-Agent", "rclone/backend/fshare");
-  }
-
-  url = new URL(url, "https://www.fshare.vn/file/");
-
-  if (url.host !== "fshare.vn" && url.host !== "www.fshare.vn") {
-    return new Response(null, {
-      status: 400,
-    });
   }
 
   let token = url.searchParams.get("token");
