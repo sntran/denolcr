@@ -42,7 +42,7 @@ export class Progress extends TransformStream {
   }
 
   get completedh() {
-    return formatBytes(this.completed);
+    return formatBytes(this.completed, { binary: true });
   }
 
   get etah() {
@@ -50,7 +50,7 @@ export class Progress extends TransformStream {
   }
 
   get rateh() {
-    return formatBytes(this.rate);
+    return formatBytes(this.rate, { binary: true });
   }
 
   get timeh() {
@@ -58,6 +58,6 @@ export class Progress extends TransformStream {
   }
 
   get totalh() {
-    return formatBytes(this.total);
+    return formatBytes(this.total, { binary: true });
   }
 }
