@@ -1,5 +1,40 @@
 // deno-lint-ignore-file no-var
 // Copyright 2018-2021 Trần Nguyễn Sơn. All rights reserved. MIT license.
+/**
+ * Deno wrapper for rclone using WebAssembly build.
+ *
+ * @example
+ * ```ts
+ * import { Rclone } from "https://deno.land/x/rclone/rclone.ts";
+ *
+ * const rclone = new Rclone();
+ * rclone.rc("core/version");
+ * ```
+ *
+ * By default, provided [rclone.wasm](https://deno.land/x/rclone/rclone.wasm)
+ * module is used. This can be changed by providing another compiled module in
+ * the constructor.
+ *
+ * @example
+ * ```ts
+ * import { Rclone } from "https://deno.land/x/rclone/";
+ *
+ * const module = await WebAssembly.compileStreaming(fetch("https://deno.land/x/rclone/rclone.wasm"));
+ * const rclone = new Rclone(module);
+ *
+ * rclone.rc("core/version");
+ * ```
+ *
+ * The default module provides the following backends:
+ *
+ * - alias
+ * - chunker
+ * - crypt
+ * - ftp
+ * - http
+ * - memory
+ * - union
+ */
 import "https://raw.githubusercontent.com/rclone/rclone/master/fs/rc/js/wasm_exec.js";
 
 declare class Go {

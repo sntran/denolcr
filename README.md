@@ -2,6 +2,8 @@
 
 Deno port of Rclone, rewriting functionality using Web API.
 
+A [Rclone wrapper for WebAssembly build](./rclone.ts) is also available.
+
 ## Storage providers
 
 - Fshare.vn
