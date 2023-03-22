@@ -7,6 +7,7 @@ A [Rclone wrapper for WebAssembly build](./rclone.ts) is also available.
 ## Storage providers
 
 - Fshare.vn
+- Google Drive [:page_facing_up:](https://rclone.org/drive/)
 - The local filesystem [:page_facing_up:](https://rclone.org/local/)
 
 ### Virtual storage providers
@@ -14,6 +15,7 @@ A [Rclone wrapper for WebAssembly build](./rclone.ts) is also available.
 These backends adapt or modify other storage providers
 
 - Alias: rename existing remotes [:page_facing_up:](https://rclone.org/alias/)
+- Crypt: encrypt files [:page_facing_up:](https://rclone.org/crypt/)
 
 ## Commands
 
