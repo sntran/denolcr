@@ -1,34 +1,43 @@
 # denolcr
 
-Deno web interface to Rclone, using WebAssembly build.
+Deno port of Rclone, rewriting functionality using Web API.
 
-## Usage
+A [Rclone wrapper for WebAssembly build](./rclone.ts) is also available.
 
-```ts
-import { Rclone } from "https://raw.githubusercontent.com/sntran/denolcr/main/rclone.ts";
+## Storage providers
 
-const rclone = new Rclone();
-rclone.rc("core/version");
-```
+- Fshare.vn
+- Google Drive [:page_facing_up:](https://rclone.org/drive/)
+- The local filesystem [:page_facing_up:](https://rclone.org/local/)
 
-By default, the provided [`rclone.wasm`](rclone.wasm) module is used. This can be
-changed by providing another compiled module in the constructor. For example:
+### Virtual storage providers
 
-```ts
-import { Rclone } from "https://raw.githubusercontent.com/sntran/denolcr/main/rclone.ts";
+These backends adapt or modify other storage providers
 
-const module = await WebAssembly.compileStreaming(fetch("https://sntran.github.io/denolcr/rclone.wasm"));
-const rclone = new Rclone(module);
+- Alias: rename existing remotes [:page_facing_up:](https://rclone.org/alias/)
+- Crypt: encrypt files [:page_facing_up:](https://rclone.org/crypt/)
 
-rclone.rc("core/version");
-```
+## Commands
 
-The default module provides the following backends:
+- `backend`
+- `config`
+- `lsjson`
+- `lsf`
+- `ls`
+- `lsl`
+- `lsd`
+- `cat`
+- `rcat`
+- `copy`
+- `copyurl`
+- `obscure`
+- `reveal`
 
-- alias
-- chunker
-- crypt
-- ftp
-- http
-- memory
-- union
+## Development
+
+- Clone the repository and navigate to the folder.
+- `deno task start` to execute commands.
+- Alternatively, `deno task install` to install a `dclone` executable in PATH
+  that is symbolic linked to the `main.ts` file and use `dclone` in place of
+  `deno task start`.
+- `deno task test` to run the test suites.
