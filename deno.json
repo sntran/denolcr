@@ -3,6 +3,7 @@
     "start": "deno run --unstable -A main.ts",
     "install": "deno install --unstable -A -n dclone main.ts",
     "bundle": "deno bundle --unstable -A main.ts",
-    "test": "deno test --unstable -A --fail-fast"
+    "test": "deno test --unstable -A --fail-fast",
+    "bench": "deno bench --unstable -A"
   }
 }

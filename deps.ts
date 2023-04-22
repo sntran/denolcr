@@ -11,7 +11,7 @@ export { format as formatDuration } from "https://deno.land/std@0.178.0/fmt/dura
 
 export * as base64url from "https://deno.land/std@0.178.0/encoding/base64url.ts";
 
-import { crypto } from "https://deno.land/std@0.178.0/crypto/mod.ts";
+import { crypto, toHashString } from "https://deno.land/std@0.178.0/crypto/mod.ts";
 import { DigestAlgorithm } from "https://deno.land/std@0.178.0/crypto/_wasm/mod.ts";
 
 async function digest(path: string, algorithm: DigestAlgorithm = "MD5") {
@@ -21,7 +21,7 @@ async function digest(path: string, algorithm: DigestAlgorithm = "MD5") {
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-export { crypto, digest };
+export { crypto, toHashString, digest };
 
 export * as INI from "https://cdn.skypack.dev/ini@3.0.1";
 
