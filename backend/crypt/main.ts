@@ -50,12 +50,11 @@
  * possible to turned off.
  */
 
-// @TODO: Reimplement this dependency the Deno way.
-import PathCipher from "https://esm.sh/rclone@1.4.0/dist/ciphers/PathCipher.js";
 import { scrypt } from "https://deno.land/x/scrypto@v1.0.0/scrypt.ts";
 import { join } from "../../deps.ts";
 import { fetch } from "../../main.ts";
 import { reveal } from "../../cmd/obscure/main.ts";
+import PathCipher from "./PathCipher.ts";
 
 const DEFAULT_SALT = new Uint8Array([
   0xa8,
@@ -194,7 +193,7 @@ async function encode(options: Record<string, string>, ...args: string[]) {
  * the decoded results. It will return an error if any of the inputs are
  * invalid.
  *
- * Usage Exampe:
+ * Usage Example:
  *
  * ```ts
  * import { decode } from "./main.ts";
