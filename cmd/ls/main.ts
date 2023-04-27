@@ -1,4 +1,4 @@
-import { Options, Rclone } from "../../main.ts";
+import { Options, lsf } from "../../main.ts";
 /**
  * List the objects in the path with size and path.
  *
@@ -8,8 +8,8 @@ import { Options, Rclone } from "../../main.ts";
  * Example:
  *
  * ```ts
- * import { Rclone } from "./mod.ts";
- * const response = await Rclone.ls("remote:path");
+ * import { ls } from "./mod.ts";
+ * const response = await ls("remote:path");
  * console.log(await response.text());
  * // 60295 bevajer5jef
  * // 90613 canole
@@ -26,5 +26,5 @@ export function ls(location: string, flags: Options = {}): Promise<Response> {
     separator: "\t",
     ...flags,
   };
-  return Rclone.lsf(location, flags);
+  return lsf(location, flags);
 }

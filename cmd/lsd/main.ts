@@ -1,4 +1,4 @@
-import { Options, Rclone } from "../../main.ts";
+import { Options, lsf } from "../../main.ts";
 /**
  * List all directories/containers/buckets in the path.
  *
@@ -12,5 +12,5 @@ export function lsd(location: string, flags: Options = {}): Promise<Response> {
     separator: "\t",
     ...flags,
   };
-  return Rclone.lsf(location, flags);
+  return lsf(location, flags);
 }

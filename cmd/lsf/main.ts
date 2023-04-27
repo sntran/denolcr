@@ -1,4 +1,4 @@
-import { File, Options, Rclone } from "../../main.ts";
+import { File, Options, lsjson } from "../../main.ts";
 
 const FORMATS: Record<string, string> = {
   "p": "Path",
@@ -24,8 +24,8 @@ const FORMATS: Record<string, string> = {
  * Example
  *
  * ```ts
- * import { Rclone } from "./mod.ts";
- * const response = await Rclone.lsf("remote:path");
+ * import { lsf } from "./mod.ts";
+ * const response = await lsf("remote:path");
  * console.log(await response.text());
  * // bevajer5jef
  * // canole
@@ -57,7 +57,7 @@ const FORMATS: Record<string, string> = {
  *
  * ```ts
  * import { Rclone } from "./mod.ts";
- * const response = await Rclone.lsf("remote:path", { format: "tsp" });
+ * const response = await lsf("remote:path", { format: "tsp" });
  * console.log(await response.text());
  * // 2016-06-25 18:55:41;60295;bevajer5jef
  * // 2016-06-25 18:55:43;90613;canole
@@ -74,7 +74,7 @@ const FORMATS: Record<string, string> = {
  *
  * ```ts
  * import { Rclone } from "./mod.ts";
- * const response = await Rclone.lsf("remote:path", {
+ * const response = await lsf("remote:path", {
  *   separator: ",",
  *   format: "tshp",
  * });
@@ -92,7 +92,7 @@ const FORMATS: Record<string, string> = {
  *
  * ```ts
  * import { Rclone } from "./mod.ts";
- * const response = await Rclone.lsf("remote:path", {
+ * const response = await lsf("remote:path", {
  *   csv: true,
  *   files_only: true,
  *   format: "ps",
@@ -116,7 +116,7 @@ export async function lsf(
     separator = ";",
   } = flags;
 
-  const response = await Rclone.lsjson(location, flags);
+  const response = await lsjson(location, flags);
   const { headers, ok } = response;
 
   if (!ok) {

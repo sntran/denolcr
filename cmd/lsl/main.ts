@@ -1,4 +1,4 @@
-import { Options, Rclone } from "../../main.ts";
+import { Options, lsf } from "../../main.ts";
 
 /**
  * List the objects in path with modification time, size and path.
@@ -9,8 +9,8 @@ import { Options, Rclone } from "../../main.ts";
  * Example:
  *
  * ```ts
- * import { Rclone } from "./mod.ts";
- * const response = await Rclone.lsl("remote:path");
+ * import { lsl } from "./mod.ts";
+ * const response = await lsl("remote:path");
  * console.log(await response.text());
  * // 60295 2016-06-25 18:55:41.062626927 bevajer5jef
  * // 90613 2016-06-25 18:55:43.302607074 canole
@@ -27,5 +27,5 @@ export function lsl(location: string, flags: Options = {}): Promise<Response> {
     separator: "\t",
     ...flags,
   };
-  return Rclone.lsf(location, flags);
+  return lsf(location, flags);
 }

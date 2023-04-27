@@ -4,15 +4,18 @@
  * DenoLCR - Deno Lite Clone of Rclone.
  *
  * ```shell
- * rclone ls remote:path/to/folder/or/file
- * rclone cat remote:path/to/file
- * rclone check source:path dest:path
- * rclone copy source:/path/to/file destination:/path/to/file
+ * ./main.ts ls remote:path/to/folder/or/file
+ * ./main.ts cat remote:path/to/file
+ * ./main.ts check source:path dest:path
+ * ./main.ts copy source:/path/to/file destination:/path/to/file
  * ```
  */
 
-import * as commands from "./cmd/main.ts";
 import * as backends from "./backend/main.ts";
+import type { Backend } from "./backend/main.ts";
+import * as commands from "./cmd/main.ts";
+
+export * from "./cmd/main.ts";
 
 export { Progress } from "./lib/streams/progress.ts";
 
@@ -21,18 +24,7 @@ export type Command<T extends unknown[]> = (
   ...args: [...T, Options?]
 ) => Promise<Response>;
 
-type API = {
-  [key: string]:
-    | Command<[]>
-    | Command<[string]>
-    | Command<[string, string]>;
-};
-
 export type Remote = { type: string } & Options;
-
-export interface Backend {
-  fetch(request: Request): Response | Promise<Response>;
-}
 
 export interface File {
   [key: string]: unknown;
@@ -153,7 +145,7 @@ export async function fetch(
     config = { type: name };
     name = "";
   } else {
-    const response = await Rclone.config("show", name, undefined, {
+    const response = await commands.config("show", name, undefined, {
       headers: { "Accept": "application/json" },
     });
     if (!response.ok) {
@@ -229,7 +221,7 @@ export async function fetch(
     });
   }
 
-  const { fetch } = backends[type as keyof typeof backends];
+  const { fetch } = backends[type as keyof typeof backends] as Backend;
 
   const url = new URL(`${pathname}?${params}`, import.meta.url);
   // Creates a new request with the initial init.
@@ -243,11 +235,6 @@ export async function fetch(
 }
 
 globalThis.fetch = fetch;
-
-// @TODO: Type `Rclone` as `API`.
-export const Rclone = {
-  ...commands,
-};
 
 if (import.meta.main) {
   const { parseFlags } = await import("./deps.ts");
@@ -301,6 +288,6 @@ if (import.meta.main) {
 
   /** @TODO merge global flags into config */
   // @ts-ignore valid arguments.
-  const response = await Rclone[command](...args, options);
+  const response = await commands[command](...args, options);
   response.body?.pipeTo(Deno.stdout.writable);
 }
