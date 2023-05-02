@@ -110,6 +110,10 @@ async function router(request: Request): Promise<Response> {
 
     status = response.status;
     headers.append("Content-Location", pathname);
+    const location = response.headers.get("Location");
+    if (location) {
+      headers.append("Location", location);
+    }
   }
 
   if (method === "DELETE") {

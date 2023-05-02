@@ -1,7 +1,7 @@
 import { Chunker } from "../../lib/streams/chunker.ts";
 
 export async function create(request: Request): Promise<Response> {
-  const headers = request.headers;
+  const { headers, redirect = "follow" } = request;
   const { pathname, searchParams } = new URL(request.url);
 
   const mimeType = headers.get("Content-Type");
@@ -44,6 +44,13 @@ export async function create(request: Request): Promise<Response> {
   const location = response.headers.get("Location");
   if (!location) {
     throw new Error("Location header not found");
+  }
+
+  if (redirect === "manual") {
+    return Response.redirect(location, 303);
+  }
+  if (redirect === "error") {
+    throw new Error(`Redirected to ${location}`);
   }
 
   // Minimum chunk size is 256 KiB.
