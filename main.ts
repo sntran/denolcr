@@ -112,7 +112,7 @@ export async function fetch(
 ): Promise<Response> {
   if (
     typeof input !== "string" || input.startsWith("https://") ||
-    input.startsWith("http://")
+    input.startsWith("http://") || input.startsWith("file://")
   ) {
     return globalFetch(input, init);
   }
@@ -128,7 +128,7 @@ export async function fetch(
   /**
    * Sets backend generic environment vars first.
    */
-  const env = Deno.env.toObject();
+  const env = Deno?.env?.toObject() || {};
   for (const [key, value] of Object.entries(env)) {
     if (key.startsWith("RCLONE_")) {
       const shortKey = key.slice(7).toLowerCase();
@@ -219,6 +219,11 @@ export async function fetch(
         "Via": `${type}/1.1 ${name}`.trim(),
       },
     });
+  }
+
+  if (init.body instanceof ReadableStream) {
+    // @ts-ignore: Must have `duplex` for streaming body
+    init.duplex = "half"; // Must set this for stream body.
   }
 
   const { fetch } = backends[type as keyof typeof backends] as Backend;
