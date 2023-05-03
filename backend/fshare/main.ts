@@ -281,7 +281,7 @@ async function download(
   }
 
   if (redirect === "manual") {
-    return Response.redirect(location, 303);
+    return Response.redirect(location, 307);
   }
   if (redirect === "error") {
     throw new Error(`Redirected to ${location}`);

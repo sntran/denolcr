@@ -1,6 +1,16 @@
+import { File } from "./File.ts";
+
 const BASE_URL = "https://www.googleapis.com/drive/v3/files";
 const FILE_ATTRS =
   "id, name, mimeType, size, md5Checksum, modifiedTime, parents";
+
+interface Result {
+  error?: string;
+  code?: number;
+  message?: string;
+  files: File[];
+  nextPageToken?: string;
+}
 
 export async function list(
   input: string | URL | Request,
@@ -55,10 +65,9 @@ export async function list(
   do {
     url.searchParams.set("pageToken", nextPageToken);
     const response = await fetch(url, { headers });
-    const { error, code, message, files = [], nextPageToken: token } =
-      await response.json();
+    const { files = [], nextPageToken: token }: Result = await response.json();
     data.push(...files);
-    nextPageToken = token;
+    nextPageToken = token!;
   } while (nextPageToken);
 
   return Response.json(data);

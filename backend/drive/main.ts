@@ -2,22 +2,13 @@ import { auth } from "./auth.ts";
 import { list } from "./list.ts";
 import { create } from "./create.ts";
 
-const FOLDER_TYPE = "application/vnd.google-apps.folder";
+import { File } from "./File.ts";
 
-type ID = string;
-type File = {
-  id: ID;
-  name: string;
-  mimeType: string;
-  size: string;
-  md5Checksum: string;
-  modifiedTime: string;
-  parents: ID[];
-};
+const FOLDER_TYPE = "application/vnd.google-apps.folder";
 
 async function router(request: Request): Promise<Response> {
   //#region Auth
-  let response = await auth(request);
+  const response = await auth(request);
   if (!response.ok) {
     return response;
   }
@@ -44,7 +35,6 @@ async function router(request: Request): Promise<Response> {
   let { pathname, searchParams } = new URL(url);
 
   pathname = decodeURIComponent(pathname);
-  const dirname = pathname.substring(0, pathname.lastIndexOf("/") + 1);
   const isDirectory = pathname.endsWith("/");
 
   const driveId = searchParams.get("team_drive") || "";
@@ -106,14 +96,7 @@ async function router(request: Request): Promise<Response> {
       request.headers.set("Content-Type", FOLDER_TYPE);
     }
 
-    response = await create(request);
-
-    status = response.status;
-    headers.append("Content-Location", pathname);
-    const location = response.headers.get("Location");
-    if (location) {
-      headers.append("Location", location);
-    }
+    return create(request);
   }
 
   if (method === "DELETE") {
