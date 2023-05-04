@@ -20,7 +20,7 @@ export interface File {
   mimeType: string;
   parents: ID[];
   thumbnailLink?: string;
-  size?: string;
+  size?: number;
   id: ID;
   name: string;
   description?: string;

@@ -6,7 +6,8 @@ export async function create(request: Request): Promise<Response> {
   const { headers, redirect = "follow" } = request;
   const { pathname, searchParams } = new URL(request.url);
 
-  const mimeType = headers.get("Content-Type") || "";
+  const mimeType = headers.get("Content-Type") || "application/octet-stream";
+  const fileSize = headers.get("Content-Length");
   const name = pathname.split("/").pop()!;
   const driveId = searchParams.get("team_drive");
   const rootFolderId = searchParams.get("root_folder_id");
@@ -34,6 +35,7 @@ export async function create(request: Request): Promise<Response> {
     name,
     mimeType,
     parents,
+    size: fileSize ? Number(fileSize) : undefined,
   };
 
   url = new URL("https://www.googleapis.com/upload/drive/v3/files");
@@ -45,12 +47,14 @@ export async function create(request: Request): Promise<Response> {
 
   // Required if metadata is included.
   headers.set("Content-Type", "application/json; charset=UTF-8");
+  const metadataString  = JSON.stringify(metadata);
+  headers.set("Content-Length", `${metadataString.length}`);
 
   // Initializes a request for upload URL.
   response = await fetch(url, {
     method: "POST",
     headers,
-    body: JSON.stringify(metadata),
+    body: metadataString,
   });
 
   if (!response.ok) {

@@ -21,11 +21,7 @@ async function router(request: Request): Promise<Response> {
   const Authorization = `${token_type} ${access_token}`;
 
   // "Upgrade" request to authorized request.
-  request = new Request(request, {
-    headers: {
-      Authorization,
-    },
-  });
+  request.headers.set("Authorization", Authorization);
   //#endregion Auth
 
   const headers = new Headers();
