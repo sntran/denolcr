@@ -11,8 +11,7 @@
  * ```
  */
 
-import * as backends from "./backend/main.ts";
-import type { Backend } from "./backend/main.ts";
+import backend from "./backend/main.ts";
 import * as commands from "./cmd/main.ts";
 
 export * from "./cmd/main.ts";
@@ -47,7 +46,7 @@ const REMOTE_REGEX = /^(:)?(?:([\w.][\w.\s-]*(?:,[\w=,"':@\/]+)?):)?(.*)$/;
 const globalFetch = globalThis.fetch;
 
 /**
- * Extends global `fetch` with support for remote URL.
+ * Extended global `fetch` with support for remote URL.
  *
  * The syntax of the paths passed to the rclone command are as follows.
  *
@@ -226,7 +225,7 @@ export async function fetch(
     init.duplex = "half"; // Must set this for stream body.
   }
 
-  const { fetch } = backends[type as keyof typeof backends] as Backend;
+  const { fetch } = await backend(type);
 
   const url = new URL(`${pathname}?${params}`, import.meta.url);
   // Creates a new request with the initial init.
