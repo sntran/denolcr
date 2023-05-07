@@ -5,6 +5,19 @@
  * a response, or a promise of a response.
  */
 
+// This is *not* an IIFE, it's just a function expression that never gets run.
+// The static analysis will detect these imports and load them at the beginning
+// of the program, just like for static imports.
+(() => {
+  import("./alias/main.ts");
+  import("./chunker/main.ts");
+  import("./crypt/main.ts");
+  import("./drive/main.ts");
+  import("./fshare/main.ts");
+  import("./local/main.ts");
+  import("./memory/main.ts");
+});
+
 export interface Backend {
   fetch(request: Request): Response | Promise<Response>;
 }
