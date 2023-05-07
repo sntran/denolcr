@@ -11,7 +11,8 @@
  * ```
  */
 
-import backend from "./backend/main.ts";
+import * as backends from "./backend/main.ts";
+import type { Backend } from "./backend/main.ts";
 import * as commands from "./cmd/main.ts";
 
 export * from "./cmd/main.ts";
@@ -225,7 +226,7 @@ export async function fetch(
     init.duplex = "half"; // Must set this for stream body.
   }
 
-  const { fetch } = await backend(type);
+  const { fetch } = backends[type as keyof typeof backends] as Backend;
 
   const url = new URL(`${pathname}?${params}`, import.meta.url);
   // Creates a new request with the initial init.
