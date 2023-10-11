@@ -9,9 +9,9 @@
  */
 import {} from "../../deps.ts";
 
-const cache: Map<string, ReadableStream | null> = new Map();
+const cache: Map<string, Uint8Array | null> = new Map();
 
-function router(request: Request): Response {
+async function router(request: Request): Promise<Response> {
   const { method, url } = request;
   const { pathname } = new URL(url);
 
@@ -38,7 +38,7 @@ function router(request: Request): Response {
     // Retrieves file content.
     for (const [key, value] of cache) {
       if (key === pathname) {
-        body = value;
+        body = ReadableStream.from([value!]);
         break;
       }
     }
@@ -55,7 +55,7 @@ function router(request: Request): Response {
       cache.set(pathname, null);
     } else {
       // Creates file.
-      cache.set(pathname, request.body);
+      cache.set(pathname, new Uint8Array(await request.arrayBuffer()));
     }
 
     status = 201;

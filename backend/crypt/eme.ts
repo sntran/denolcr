@@ -45,7 +45,24 @@ function xorBlocks(out: Uint8Array, in1: Uint8Array, in2: Uint8Array) {
 }
 
 function tabulateL(bc: BlockCipher, m: number) {
-  const Li = bc.encrypt([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]) as Uint8Array;
+  const Li = bc.encrypt([
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+  ]) as Uint8Array;
   const LTable = new Array(m);
   for (let i = 0; i < m; i++) {
     multByTwo(Li, Li);
@@ -54,7 +71,11 @@ function tabulateL(bc: BlockCipher, m: number) {
   return LTable;
 }
 
-function aesTransform(src: ByteSource, direction: Direction, bc: BlockCipher): Uint8Array {
+function aesTransform(
+  src: ByteSource,
+  direction: Direction,
+  bc: BlockCipher,
+): Uint8Array {
   if (direction === Direction.Encrypt) {
     return bc.encrypt(src) as Uint8Array;
   } else {
@@ -63,7 +84,12 @@ function aesTransform(src: ByteSource, direction: Direction, bc: BlockCipher): U
   }
 }
 
-function Transform(bc: BlockCipher, tweak: Uint8Array, inputData: Uint8Array, direction: Direction) {
+function Transform(
+  bc: BlockCipher,
+  tweak: Uint8Array,
+  inputData: Uint8Array,
+  direction: Direction,
+) {
   // In the paper, the tweak is just called "T". Call it the same here to
   // make following the paper easy.
   const T = tweak; // in bytes

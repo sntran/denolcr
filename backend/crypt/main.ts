@@ -48,6 +48,49 @@
  * cipher and Poly1305 for integrity. Names (file- and directory names) are
  * also encrypted by default, but this has some implications and is therefore
  * possible to turned off.
+ *
+ * Files are encrypted 1:1 source file to destination object. The file has a
+ * header and is divided into chunks.
+ *
+ * ## Header
+ *
+ * - 8 bytes magic string `RCLONE\x00\x00`
+ * - 24 bytes Nonce (IV)
+ *
+ * The initial nonce is generated from the operating systems crypto strong
+ * random number generator. The nonce is incremented for each chunk read making
+ * sure each nonce is unique for each block written. The chance of a nonce
+ * being re-used is minuscule. If you wrote an exabyte of data (10¹⁸ bytes) you
+ * would have a probability of approximately 2×10⁻³² of re-using a nonce.
+ *
+ * ## Chunk
+ *
+ * Each chunk will contain 64 KiB of data, except for the last one which may
+ * have less data. The data chunk is in standard NaCl SecretBox format.
+ * SecretBox uses XSalsa20 and Poly1305 to encrypt and authenticate messages.
+ *
+ * Each chunk contains:
+ * - 16 Bytes of Poly1305 authenticator
+ * - 1 - 65536 bytes XSalsa20 encrypted data
+ *
+ * 64k chunk size was chosen as the best performing chunk size (the
+ * authenticator takes too much time below this and the performance drops off
+ * due to cache effects above this). Note that these chunks are buffered in
+ * memory so they can't be too big.
+ *
+ * This uses a 32 byte (256 bit key) key derived from the user password.
+ *
+ * ## Examples
+ *
+ * 1 byte file will encrypt to
+ * - 32 bytes header
+ * - 17 bytes data chunk
+ * - 49 bytes total
+
+ * 1 MiB (1048576 bytes) file will encrypt to
+ * - 32 bytes header
+ * - 16 chunks of 65568 bytes
+ * - 1049120 bytes total (a 0.05% overhead). This is the overhead for big files.
  */
 
 import { scrypt } from "https://deno.land/x/scrypto@v1.0.0/scrypt.ts";
@@ -55,6 +98,9 @@ import { join } from "../../deps.ts";
 import { fetch } from "../../main.ts";
 import { reveal } from "../../cmd/obscure/main.ts";
 import PathCipher from "./PathCipher.ts";
+import { DecryptionStream, EncryptionStream } from "./secretbox.js";
+
+const MAGIC = new TextEncoder().encode("RCLONE\x00\x00");
 
 const DEFAULT_SALT = new Uint8Array([
   0xa8,
@@ -81,11 +127,6 @@ const r = 8;
 const p = 1;
 const keySize = 32 + 32 + 16;
 
-const HEADER_SIZE = 32;
-const CHUNK_SIZE = 64 * 1024; // 64KB
-const CHUNK_OVERHEAD = 16;
-const CRYPTED_CHUNK_SIZE = CHUNK_SIZE + CHUNK_OVERHEAD;
-
 async function router(request: Request) {
   let { pathname, searchParams } = new URL(request.url);
 
@@ -101,14 +142,23 @@ async function router(request: Request) {
   const key = new Uint8Array(await response.arrayBuffer());
 
   const pathCipher = PathCipher({
-    nameKey: key.slice(32, 64),
-    nameTweak: key.slice(64),
+    nameKey: key.subarray(32, 64),
+    nameTweak: key.subarray(64),
   });
 
   pathname = decodeURIComponent(pathname).slice(1);
   let encryptedPathname = pathname;
   if (pathname !== "") {
     encryptedPathname = pathCipher.encrypt(pathname);
+  }
+
+  if (request.body) {
+    request = new Request(request, {
+      // Encrypts upload body.
+      body: request.body.pipeThrough(
+        new EncryptionStream(key.subarray(0, 32), { magic: MAGIC }),
+      ),
+    });
   }
 
   // Delegates to the underlying remote.
@@ -130,15 +180,10 @@ async function router(request: Request) {
     headers.set("Link", links.join(","));
   }
 
-  // The Content-Length header is of the encrypted file, so we need to change
-  // it to the decrypted file size.
-  let size = Number(headers.get("Content-Length"));
-  if (size) {
-    size = size - HEADER_SIZE;
-    const chunks = Math.floor(size / CRYPTED_CHUNK_SIZE);
-    const lastChunk = size % CRYPTED_CHUNK_SIZE;
-    size = chunks * CHUNK_SIZE + Math.max(0, lastChunk - CHUNK_OVERHEAD);
-    headers.set("Content-Length", String(size));
+  if (body) {
+    body = body.pipeThrough(
+      new DecryptionStream(key.subarray(0, 32), { magic: MAGIC }),
+    );
   }
 
   return new Response(body, {
