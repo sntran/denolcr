@@ -1,4 +1,4 @@
-import { mkBuffer } from "../../dev_deps.ts";
+import { mkBuffer } from "../../deps.ts";
 import { fetch } from "./main.ts";
 
 const buffer = mkBuffer(1024 * 1024 * 10); // 10M

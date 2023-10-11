@@ -1,4 +1,4 @@
-import { Options, lsf } from "../../main.ts";
+import { lsf, Options } from "../../main.ts";
 
 /**
  * List the objects in path with modification time, size and path.

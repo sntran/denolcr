@@ -42,7 +42,8 @@ export interface File {
   Metadata: Record<string, string>;
 }
 
-const REMOTE_REGEX = /^(:)?(?:([\w.][\w.\s-]*(?:,[\w=,"':@\/]+)?):)?(.*)$/;
+const REMOTE_REGEX =
+  /^(:)?(?:([\w.][\w.\s-]*(?:,[\w=,"'*#.:@%-_\/]+)?):)?([^:]*)$/;
 
 const globalFetch = globalThis.fetch;
 
@@ -201,7 +202,8 @@ export async function fetch(
   // Overrides with parameters in connection string.
   args.forEach((arg) => {
     const [key, value = "true"] = arg.split("=");
-    params.set(key, value);
+    // `value` can be encoded through URLSearchParams.
+    params.set(key, decodeURIComponent(value));
   });
 
   const headers = new Headers(init.headers);
@@ -244,12 +246,11 @@ globalThis.fetch = fetch;
 if (import.meta.main) {
   const { parseFlags } = await import("./deps.ts");
 
-  /** All optional params for the command as an object. */
+  /** All optional params for the subcommand as an object. */
   const options: Options = {};
 
   const {
-    _: [command, ...args],
-    ..._globalFlags
+    _: [subcommand, ...args],
     // @ts-ignore - Deno.args is not typed.
   } = parseFlags(Deno.args, {
     alias: {
@@ -291,8 +292,8 @@ if (import.meta.main) {
     _: [string, ...[string] | [string, string]];
   } & Options;
 
-  /** @TODO merge global flags into config */
+  /** TODO merge global flags into config */
   // @ts-ignore valid arguments.
-  const response = await commands[command](...args, options);
+  const response = await commands[subcommand](...args, options);
   response.body?.pipeTo(Deno.stdout.writable);
 }

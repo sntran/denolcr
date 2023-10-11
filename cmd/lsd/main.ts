@@ -1,4 +1,4 @@
-import { Options, lsf } from "../../main.ts";
+import { lsf, Options } from "../../main.ts";
 /**
  * List all directories/containers/buckets in the path.
  *

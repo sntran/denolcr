@@ -88,7 +88,6 @@ async function router(request: Request) {
       response = await fetch(url, {
         headers: requestHeaders,
       });
-
     } else {
       // Retrieves files from a public folder using linkcode.
       const url = `${API_URL}/fileops/getFolderList`;

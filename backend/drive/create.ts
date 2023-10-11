@@ -47,7 +47,7 @@ export async function create(request: Request): Promise<Response> {
 
   // Required if metadata is included.
   headers.set("Content-Type", "application/json; charset=UTF-8");
-  const metadataString  = JSON.stringify(metadata);
+  const metadataString = JSON.stringify(metadata);
   headers.set("Content-Length", `${metadataString.length}`);
 
   // Initializes a request for upload URL.

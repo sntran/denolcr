@@ -1,6 +1,6 @@
 import { assert, assertEquals } from "./dev_deps.ts";
 
-import { Rclone } from "./main.ts";
+import { config } from "./main.ts";
 
 Deno.test("fetch", async (t) => {
   await t.step("global", async () => {
@@ -50,10 +50,10 @@ Deno.test("fetch", async (t) => {
 
     // Sets up
     await Deno.writeFile("rclone.conf", new Uint8Array());
-    await Rclone.config("create", "source", {
+    await config("create", "source", {
       type: "local",
     });
-    await Rclone.config("create", "target", {
+    await config("create", "target", {
       type: "alias",
       remote: "source:",
     });
@@ -195,6 +195,25 @@ Deno.test("fetch", async (t) => {
         assertEquals(pathname, "/");
         assertEquals(searchParams.get("remote"), `'${cwd}'`);
       });
+
+      await t.step(
+        "overriden by params in connection string that is also a connection string",
+        async () => {
+          const response = await fetch(
+            `target,remote=':local,case_sensitive=true:${cwd}':?alias_remote='/tmp/3'`,
+            {
+              method: "TRACE",
+            },
+          );
+          const body = await response.text();
+          const [, _method, url] = body.match(/^(TRACE) (.*) HTTP\/1.1$/m) ||
+            [];
+          const { pathname, searchParams } = new URL(url, "file:");
+
+          assertEquals(pathname, "/");
+          assertEquals(searchParams.get("remote"), `':local:${cwd}'`);
+        },
+      );
     });
 
     // Tears down

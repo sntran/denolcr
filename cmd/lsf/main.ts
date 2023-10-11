@@ -1,4 +1,4 @@
-import { File, Options, lsjson } from "../../main.ts";
+import { File, lsjson, Options } from "../../main.ts";
 
 const FORMATS: Record<string, string> = {
   "p": "Path",

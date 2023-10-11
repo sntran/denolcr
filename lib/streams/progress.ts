@@ -25,7 +25,7 @@ export class Progress extends TransformStream {
         this.rate = this.completed / this.time;
 
         this.estimated = total / this.rate;
-        this.percent = Math.round(this.completed / total  * 100);
+        this.percent = Math.round(this.completed / total * 100);
         this.eta = this.estimated - this.time;
 
         onProgress?.(this);
