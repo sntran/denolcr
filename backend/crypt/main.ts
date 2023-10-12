@@ -182,7 +182,10 @@ async function router(request: Request) {
 
   if (body) {
     body = body.pipeThrough(
-      new DecryptionStream(key.subarray(0, 32), { magic: MAGIC }),
+      new DecryptionStream(key.subarray(0, 32), {
+        magic: MAGIC,
+        blockSize: 64 * 1024, // 64 KiB
+      }),
     );
   }
 

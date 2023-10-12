@@ -1,5 +1,5 @@
 import { join } from "../../deps.ts";
-import { assert, assertEquals, assertNotEquals, fc } from "../../dev_deps.ts";
+import { assertEquals, assertNotEquals, fc } from "../../dev_deps.ts";
 
 import { decode, encode, fetch as crypt } from "./main.ts";
 
@@ -11,6 +11,7 @@ const fixtures = new URL(join(".", "fixtures"), import.meta.url).pathname;
 const CRYPT: Record<string, string> = {
   "hello.txt": "7656ki2d7s0mgv9ci91hnq77k8",
   "rclone.png": "mtnq34s46g5ntbnut5ftn4r2dc",
+  "1MB.bin": "k6ki5t8t5e5h3qoq78mpd29pns",
 };
 
 const MAGIC = new TextEncoder().encode("RCLONE\x00\x00");
