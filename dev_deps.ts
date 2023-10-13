@@ -18,4 +18,12 @@ export function assertHeader(headers: Headers, name: string, value?: string) {
   }
 }
 
+export function equalBytes(a: Uint8Array, b: Uint8Array): boolean {
+  // Should not happen
+  if (a.length !== b.length) return false;
+  let isSame = true;
+  for (let i = 0; i < a.length; i++) isSame &&= a[i] === b[i]; // Lets hope JIT won't optimize away.
+  return isSame;
+}
+
 export * as fc from "npm:fast-check@3.13.1";

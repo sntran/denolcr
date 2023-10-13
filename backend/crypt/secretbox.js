@@ -3,15 +3,15 @@
  */
 import { xsalsa20poly1305 } from "https://esm.sh/@noble/ciphers@0.3.0/salsa";
 
-// Default magic to be empty.
-const EMPTY_MAGIC = new Uint8Array();
+const DEFAULT_MAGIC = new Uint8Array();
+const DEFAULT_BLOCK_SIZE = 64 * 1024;
 
 export class EncryptionStream extends TransformStream {
   constructor(key = randomBytes(32), options = {}) {
-    const { magic = EMPTY_MAGIC } = options;
+    const { magic = DEFAULT_MAGIC, blockSize = DEFAULT_BLOCK_SIZE } = options;
     // Generates initial nonce from OS's crypto strong random number generator.
-    const nonce = randomBytes(24);
-    const cipher = xsalsa20poly1305(key, nonce);
+    let nonce = randomBytes(24);
+    let buffer = new Uint8Array();
 
     super({
       start(controller) {
@@ -20,9 +20,27 @@ export class EncryptionStream extends TransformStream {
         header.set(nonce, magic.length);
         controller.enqueue(header);
       },
-      transform(plaintext, controller) {
-        const ciphertext = cipher.encrypt(plaintext);
-        controller.enqueue(ciphertext);
+      transform(chunk, controller) {
+        // Concatenate the new chunk with the buffer
+        buffer = concat(buffer, chunk);
+
+        while (buffer.byteLength >= blockSize) {
+          const block = buffer.slice(0, blockSize); // Extract the block
+          const cipher = xsalsa20poly1305(key, nonce);
+          const ciphertext = cipher.encrypt(block);
+          controller.enqueue(ciphertext);
+
+          buffer = buffer.slice(blockSize); // Remove the processed portion from the buffer
+          nonce = increment(nonce);
+        }
+      },
+      flush(controller) {
+        // Encrypts the remaining data in the buffer
+        if (buffer.byteLength > 0) {
+          const cipher = xsalsa20poly1305(key, nonce);
+          const ciphertext = cipher.encrypt(buffer);
+          controller.enqueue(ciphertext);
+        }
       },
     });
   }
@@ -30,7 +48,7 @@ export class EncryptionStream extends TransformStream {
 
 export class DecryptionStream extends TransformStream {
   constructor(key, options = {}) {
-    const { magic = EMPTY_MAGIC, blockSize = 64 * 1024 } = options;
+    const { magic = DEFAULT_MAGIC, blockSize = DEFAULT_BLOCK_SIZE } = options;
     const tagLength = 16;
     const blockLength = blockSize + tagLength;
 
@@ -53,14 +71,13 @@ export class DecryptionStream extends TransformStream {
         buffer = concat(buffer, ciphertext);
 
         // Check if the buffer has enough data for a block
-        if (buffer.byteLength >= blockLength) {
+        while (buffer.byteLength >= blockLength) {
           const block = buffer.slice(0, blockLength); // Extract the block
-          buffer = buffer.slice(blockLength); // Remove the processed portion from the buffer
-
           const cipher = xsalsa20poly1305(key, nonce);
           const plaintext = cipher.decrypt(block);
           controller.enqueue(plaintext);
 
+          buffer = buffer.slice(blockLength); // Remove the processed portion from the buffer
           // The nonce is incremented for each chunk read making sure each nonce is unique for each block written
           nonce = increment(nonce);
         }

@@ -1,5 +1,5 @@
 import { join } from "../../deps.ts";
-import { assertEquals, assertNotEquals, fc } from "../../dev_deps.ts";
+import { assert, assertEquals, equalBytes, fc } from "../../dev_deps.ts";
 
 import { decode, encode, fetch as crypt } from "./main.ts";
 
@@ -77,56 +77,58 @@ Deno.test("GET", async (t) => {
       response = await crypt(request);
 
       const decryptedFile = new Uint8Array(await response.arrayBuffer());
-      assertEquals(decryptedFile, originalFile);
+      assert(equalBytes(decryptedFile, originalFile));
     }
   });
 });
 
 Deno.test("PUT", async () => {
   const remote = ":memory:";
-  const originalFilename = "hello.txt";
-  const originalFile = await Deno.readFile(
-    join(fixtures, "local", originalFilename),
-  );
 
-  const encryptedFilename = CRYPT[originalFilename];
-  const url = new URL(`/${originalFilename}`, "file:");
-  url.searchParams.set("remote", remote);
-  url.searchParams.set("password", PASSWORD);
-  url.searchParams.set("password2", SALT);
+  for await (const originalFilename of Object.keys(CRYPT)) {
+    const originalFile = await Deno.readFile(
+      join(fixtures, "local", originalFilename),
+    );
 
-  let request, response;
+    const encryptedFilename = CRYPT[originalFilename];
+    const url = new URL(`/${originalFilename}`, "file:");
+    url.searchParams.set("remote", remote);
+    url.searchParams.set("password", PASSWORD);
+    url.searchParams.set("password2", SALT);
 
-  // Asserts file does not exist in the original remote.
-  response = await fetch(join(remote, originalFilename));
-  assertEquals(response.status, 404);
+    let request, response;
 
-  response = await fetch(join(remote, encryptedFilename));
-  assertEquals(response.status, 404);
+    // Asserts file does not exist in the original remote.
+    response = await fetch(join(remote, originalFilename));
+    assertEquals(response.status, 404);
 
-  // Uploads the file to the crypt remote.
-  request = new Request(url, {
-    method: "PUT",
-    body: originalFile,
-  });
-  response = await crypt(request);
+    response = await fetch(join(remote, encryptedFilename));
+    assertEquals(response.status, 404);
 
-  // Asserts original file does not exist in the original remote.
-  response = await fetch(join(remote, originalFilename));
-  assertEquals(response.status, 404);
+    // Uploads the file to the crypt remote.
+    request = new Request(url, {
+      method: "PUT",
+      body: originalFile,
+    });
+    response = await crypt(request);
 
-  // Asserts encrypted file exists in the original remote.
-  response = await fetch(join(remote, encryptedFilename));
-  assertEquals(response.status, 200);
-  const encryptedBuffer = new Uint8Array(await response.arrayBuffer());
-  assertNotEquals(encryptedBuffer, originalFile);
+    // Asserts original file does not exist in the original remote.
+    response = await fetch(join(remote, originalFilename));
+    assertEquals(response.status, 404);
 
-  const magic = encryptedBuffer.subarray(0, 8);
-  assertEquals(magic, MAGIC, "should have magic header");
+    // Asserts encrypted file exists in the original remote.
+    response = await fetch(join(remote, encryptedFilename));
+    assertEquals(response.status, 200);
+    const encryptedBuffer = new Uint8Array(await response.arrayBuffer());
+    assert(!equalBytes(encryptedBuffer, originalFile));
 
-  // Gets the new file from the crypt remote.
-  request = new Request(url);
-  response = await crypt(request);
-  const decryptedFile = new Uint8Array(await response.arrayBuffer());
-  assertEquals(decryptedFile, originalFile);
+    const magic = encryptedBuffer.subarray(0, 8);
+    assertEquals(magic, MAGIC, "should have magic header");
+
+    // Gets the new file from the crypt remote.
+    request = new Request(url);
+    response = await crypt(request);
+    const decryptedFile = new Uint8Array(await response.arrayBuffer());
+    assert(equalBytes(decryptedFile, originalFile));
+  }
 });

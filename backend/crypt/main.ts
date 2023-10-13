@@ -100,8 +100,6 @@ import { reveal } from "../../cmd/obscure/main.ts";
 import PathCipher from "./PathCipher.ts";
 import { DecryptionStream, EncryptionStream } from "./secretbox.js";
 
-const MAGIC = new TextEncoder().encode("RCLONE\x00\x00");
-
 const DEFAULT_SALT = new Uint8Array([
   0xa8,
   0x0d,
@@ -126,6 +124,11 @@ const N = 16384;
 const r = 8;
 const p = 1;
 const keySize = 32 + 32 + 16;
+
+const SECRETBOX_OPTIONS = {
+  blockSize: 64 * 1024, // 64 KiB
+  magic: new TextEncoder().encode("RCLONE\x00\x00"),
+};
 
 async function router(request: Request) {
   let { pathname, searchParams } = new URL(request.url);
@@ -156,7 +159,7 @@ async function router(request: Request) {
     request = new Request(request, {
       // Encrypts upload body.
       body: request.body.pipeThrough(
-        new EncryptionStream(key.subarray(0, 32), { magic: MAGIC }),
+        new EncryptionStream(key.subarray(0, 32), SECRETBOX_OPTIONS),
       ),
     });
   }
@@ -182,10 +185,7 @@ async function router(request: Request) {
 
   if (body) {
     body = body.pipeThrough(
-      new DecryptionStream(key.subarray(0, 32), {
-        magic: MAGIC,
-        blockSize: 64 * 1024, // 64 KiB
-      }),
+      new DecryptionStream(key.subarray(0, 32), SECRETBOX_OPTIONS),
     );
   }
 
