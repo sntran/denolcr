@@ -1,4 +1,4 @@
-import { join } from "../../deps.ts";
+import { contentType, extname, join } from "../../deps.ts";
 import { assert, assertEquals, equalBytes, fc } from "../../dev_deps.ts";
 
 import { decode, encode, fetch as crypt } from "./main.ts";
@@ -78,6 +78,29 @@ Deno.test("GET", async (t) => {
 
       const decryptedFile = new Uint8Array(await response.arrayBuffer());
       assert(equalBytes(decryptedFile, originalFile));
+    }
+  });
+
+  await t.step("should return original file info in headers", async () => {
+    for await (const originalFilename of Object.keys(CRYPT)) {
+      const originalFile = await Deno.readFile(
+        join(fixtures, "local", originalFilename),
+      );
+      const url = new URL(`/${originalFilename}`, "file:");
+      url.searchParams.set("remote", remote);
+      url.searchParams.set("password", PASSWORD);
+      url.searchParams.set("password2", SALT);
+
+      request = new Request(url);
+      response = await crypt(request);
+
+      const size = Number(response.headers.get("Content-Length"));
+      assertEquals(size, originalFile.byteLength);
+
+      const type = response.headers.get("Content-Type");
+      assertEquals(type, contentType(extname(originalFilename)));
+
+      response.body?.cancel();
     }
   });
 });

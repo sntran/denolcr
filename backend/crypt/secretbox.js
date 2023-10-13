@@ -3,10 +3,22 @@
  */
 import { xsalsa20poly1305 } from "https://esm.sh/@noble/ciphers@0.3.0/salsa";
 
+/**
+ * Options for secretbox
+ * @typedef {Object} Options
+ * @property {Uint8Array} [magic] Magic bytes to prepend to the encrypted data
+ * @property {number} [blockSize=65536] Block size in bytes
+ */
+
 const DEFAULT_MAGIC = new Uint8Array();
 const DEFAULT_BLOCK_SIZE = 64 * 1024;
 
 export class EncryptionStream extends TransformStream {
+  /**
+   * Creates a new encryption stream
+   * @param {Uint8Array} key
+   * @param {Options} [options]
+   */
   constructor(key = randomBytes(32), options = {}) {
     const { magic = DEFAULT_MAGIC, blockSize = DEFAULT_BLOCK_SIZE } = options;
     // Generates initial nonce from OS's crypto strong random number generator.
@@ -47,6 +59,11 @@ export class EncryptionStream extends TransformStream {
 }
 
 export class DecryptionStream extends TransformStream {
+  /**
+   * Creates a new decryption stream
+   * @param {Uint8Array} key
+   * @param {Options} [options]
+   */
   constructor(key, options = {}) {
     const { magic = DEFAULT_MAGIC, blockSize = DEFAULT_BLOCK_SIZE } = options;
     const tagLength = 16;
@@ -91,6 +108,28 @@ export class DecryptionStream extends TransformStream {
         }
       },
     });
+  }
+
+  /**
+   * Calculates original size from encrypted size
+   * @param {number} size Encrypted size
+   * @param {Options} [options]
+   * @returns {number} Original size
+   */
+  static size(size, options = {}) {
+    const { magic = DEFAULT_MAGIC, blockSize = DEFAULT_BLOCK_SIZE } = options;
+    const tagLength = 16;
+    const blockLength = blockSize + tagLength;
+
+    size = size - magic.length - 24;
+    const blocks = Math.floor(size / blockLength);
+    const decryptedSize = blocks * blockSize;
+    let residue = size % blockLength;
+    if (residue !== 0) {
+      residue -= tagLength;
+    }
+
+    return decryptedSize + residue;
   }
 }
 

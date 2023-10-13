@@ -94,7 +94,7 @@
  */
 
 import { scrypt } from "https://deno.land/x/scrypto@v1.0.0/scrypt.ts";
-import { join } from "../../deps.ts";
+import { contentType, extname, join } from "../../deps.ts";
 import { fetch } from "../../main.ts";
 import { reveal } from "../../cmd/obscure/main.ts";
 import PathCipher from "./PathCipher.ts";
@@ -184,6 +184,17 @@ async function router(request: Request) {
   }
 
   if (body) {
+    let contentLength = Number(headers.get("Content-Length"));
+    if (contentLength) { // Adjusts the content length.
+      contentLength = DecryptionStream.size(contentLength, SECRETBOX_OPTIONS);
+      headers.set("Content-Length", `${contentLength}`);
+    }
+
+    headers.set(
+      "Content-Type",
+      contentType(extname(pathname)) || "application/octet-stream",
+    );
+
     body = body.pipeThrough(
       new DecryptionStream(key.subarray(0, 32), SECRETBOX_OPTIONS),
     );
