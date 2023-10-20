@@ -1,5 +1,6 @@
 export { backend } from "./backend/main.ts";
 export { config } from "./config/main.ts";
+export { help } from "./help/main.ts";
 export { lsjson } from "./lsjson/main.ts";
 export { lsf } from "./lsf/main.ts";
 export { ls } from "./ls/main.ts";

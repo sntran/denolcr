@@ -250,7 +250,7 @@ if (import.meta.main) {
   const options: Options = {};
 
   const {
-    _: [subcommand, ...args],
+    _: [subcommand = "help", ...args],
     // @ts-ignore - Deno.args is not typed.
   } = parseFlags(Deno.args, {
     alias: {
