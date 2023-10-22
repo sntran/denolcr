@@ -1,4 +1,4 @@
-import { auth } from "./auth.ts";
+import { auth } from "./auth.js";
 import { list } from "./list.ts";
 import { create } from "./create.ts";
 
