@@ -1,5 +1,5 @@
 import { auth } from "./auth.js";
-import { list } from "./list.ts";
+import { list } from "./list.js";
 import { create } from "./create.ts";
 
 import { File } from "./File.ts";
