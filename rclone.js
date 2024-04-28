@@ -5,7 +5,7 @@
  *
  * @example
  * ```ts
- * import { Rclone } from "https://deno.land/x/rclone/rclone.ts";
+ * import { Rclone } from "https://deno.land/x/rclone/rclone.js";
  *
  * const rclone = new Rclone();
  * rclone.rc("core/version");
@@ -17,7 +17,7 @@
  *
  * @example
  * ```ts
- * import { Rclone } from "https://deno.land/x/rclone/";
+ * import { Rclone } from "https://deno.land/x/rclone/rclone.js";
  *
  * const module = await WebAssembly.compileStreaming(fetch("https://deno.land/x/rclone/rclone.wasm"));
  * const rclone = new Rclone(module);
@@ -37,23 +37,6 @@
  */
 import "https://raw.githubusercontent.com/rclone/rclone/master/fs/rc/js/wasm_exec.js";
 
-declare class Go {
-  argv: string[];
-  env: { [envKey: string]: string };
-  exit: (code: number) => void;
-  importObject: WebAssembly.Imports;
-  exited: boolean;
-  mem: DataView;
-  run(instance: WebAssembly.Instance): Promise<void>;
-}
-
-declare global {
-  var document: Record<string, unknown>;
-  function rcValidResolve(): void;
-  var Go: Go;
-  function rc(command: string, params: Record<string, unknown> | null): void;
-}
-
 /** Provides a default WASM module. */
 const wasm = await WebAssembly.compileStreaming(
   fetch(new URL("./rclone.wasm", import.meta.url)),
@@ -63,8 +46,9 @@ const wasm = await WebAssembly.compileStreaming(
 export class Rclone extends WebAssembly.Instance {
   /**
    * Create a rclone instance.
+   * @param {WebAssembly.Module} module - Rclone's WASM module
    */
-  constructor(module: WebAssembly.Module = wasm) {
+  constructor(module = wasm) {
     // Patches for rclone.
     globalThis.document ??= {};
     globalThis.rcValidResolve ??= function () {
@@ -79,6 +63,9 @@ export class Rclone extends WebAssembly.Instance {
   }
 
   /** Remote controls rclone
+   * 
+   * @param {string} command
+   * @param {Object|null} args
    *
    * ```ts
    * import { Rclone } from "./rclone.ts";
@@ -89,7 +76,7 @@ export class Rclone extends WebAssembly.Instance {
    * console.log("operations/list", rc("operations/list", {"fs":":memory:","remote":"bucket"}))
    * ```
    */
-  rc(command: string, args: Record<string, unknown> | null) {
+  rc(command, args) {
     return globalThis.rc(command, args);
   }
 }
@@ -98,7 +85,7 @@ export class Rclone extends WebAssembly.Instance {
 if (import.meta.main) {
   const { rc } = new Rclone();
   const [command, ...args] = Deno.args;
-  const params: Record<string, string | number> = {};
+  const params = {};
 
   let argCount = args.length;
   while (argCount--) {
