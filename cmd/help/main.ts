@@ -1,9 +1,10 @@
 import * as backends from "../../backend/main.ts";
 import * as commands from "../../cmd/main.ts";
 
-const usage: Record<string, string> = {};
+const usage: Record<string, () => string> = {};
 
-usage["commands"] = `Usage:
+usage["commands"] = () =>
+  `Usage:
   rclone [flags]
   rclone [command]
 
@@ -15,7 +16,8 @@ Use "rclone help flags" for to see the global flags.
 Use "rclone help backends" for a list of supported services.
 `;
 
-usage["flags"] = `Usage:
+usage["flags"] = () =>
+  `Usage:
   rclone help flags [<regexp to match>] [flags]
 
 Flags:
@@ -26,7 +28,8 @@ Global Flags:
 Backend Flags:
 `;
 
-usage["backends"] = `All backends:
+usage["backends"] = () =>
+  `All backends:
 
   ${Object.keys(backends).join("\n  ")}
 
@@ -43,5 +46,5 @@ export function help(type: string): Response {
   if (typeof type !== "string") {
     type = "commands";
   }
-  return new Response(usage[type]);
+  return new Response(usage[type]());
 }

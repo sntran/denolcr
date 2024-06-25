@@ -1,10 +1,14 @@
-import { basename, join, toLocaleISOString } from "../../deps.ts";
+import { basename, HTMLRewriter, toLocaleISOString } from "../../deps.ts";
 
-import { File } from "../../main.ts";
-
-type Options = Record<string, string>;
+import { fetch, File } from "../../main.ts";
 
 const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+
+interface Options extends Record<string, string> {
+  max_depth: number;
+  recursive: boolean;
+}
 
 /**
  * List directories and objects in the path in JSON format.
@@ -46,17 +50,21 @@ const encoder = new TextEncoder();
  *
  * The other list commands `lsd`, `lsf`, `lsjson` do not recurse by default -
  * use `--recursive` to make them recurse.
+ *
+ * @param {string} location
+ * @param {Record<string, string>} [flags={}]
+ * @returns {Promise<Response>}
  */
 export async function lsjson(
   location: string,
-  flags: Options = {},
-): Promise<Response> {
-  const init = { method: "HEAD" };
+  flags: Record<string, string> = {},
+) {
+  const isDirectory = location.endsWith("/");
+  const init = { method: isDirectory ? "GET" : "HEAD" };
   const url = `${location}?${new URLSearchParams(flags)}`;
-  const response = await fetch(url, init);
-  const { headers, ok } = response;
+  let response = await fetch(url, init);
 
-  if (!ok) {
+  if (!response.ok) {
     return response;
   }
 
@@ -65,55 +73,199 @@ export async function lsjson(
     maxDepth = 1;
   }
 
-  const body = new ReadableStream({
-    async start(controller) {
-      controller.enqueue(encoder.encode("["));
+  if (!isDirectory) {
+    const headers = response.headers;
+    const { pathname } = new URL(location);
+    const Path = pathname.slice(1);
+    const Name = pathname.split("/").pop();
+    const item = {
+      Path,
+      Name,
+      Size: Number(headers.get("Content-Length")),
+      MimeType: headers.get("Content-Type"),
+      ModTime: headers.get("Last-Modified"),
+      IsDir: false,
+    };
 
-      const links = getLinks(headers);
-      let count = 0;
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode("[\n"));
+        controller.enqueue(encoder.encode(JSON.stringify(item) + "\n"));
+        controller.enqueue(encoder.encode("]\n"));
+      },
+    });
 
-      while (maxDepth > 0) {
-        const nextLinks = [];
+    return new Response(body, {
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+  }
 
-        for await (let link of links) {
-          const url = `${location}/${link}?${new URLSearchParams(flags)}`;
-          const { headers } = await fetch(url, init);
-          const size = Number(headers.get("Content-Length"));
-          const IsDir = link.endsWith("/");
-          if (IsDir) {
-            nextLinks.push(...getLinks(headers, link));
-            link = link.slice(0, -1);
-          }
+  /**
+   * A stream of JSON-encoded file objects, one per chunk/line.
+   * Each JSON stringified line is followed by a comma and a newline.
+   * Note: This stream does not wrap the output in an array.
+   * @type {ReadableStream}
+   */
+  let body = new ReadableStream({
+    start(controller) {
+      let item: File;
+      let transformed = Promise.resolve();
+      const promises: Promise[] = [];
 
-          const item: Partial<File> = {
-            Path: `${link}`,
-            Name: basename(link),
-            Size: IsDir ? -1 : size,
-            MimeType: IsDir
-              ? "inode/directory"
-              : headers.get("Content-Type") || "",
-            ModTime: toLocaleISOString(headers.get("Last-Modified")),
-            IsDir,
+      const rewriter = new HTMLRewriter();
+      rewriter.on(`tbody`, {
+        element(element) {
+          element.onEndTag(() => {
+            Promise.all(promises).then(() => {
+              controller.close();
+            });
+          });
+        },
+      });
+      rewriter.on(`tbody tr`, {
+        element(element) {
+          // Start a new item.
+          item = {
+            Path: "",
+            Name: "",
+            Size: -1,
+            MimeType: "",
+            ModTime: "",
+            IsDir: true,
           };
 
-          const prefix = count == 0 ? "\n" : ",\n";
-          count++;
+          element.onEndTag(() => {
+            if (item) {
+              // We always enqueue the item with trailing comma.
+              // Another transform will remove the trailing comma.
+              const line = JSON.stringify(item) + ",\n";
+              controller.enqueue(encoder.encode(line));
+            }
+          });
+        },
+      });
+      // TODO: match only links relative to the current location
+      rewriter.on(`tr a[href]`, {
+        element(element) {
+          const href = element.getAttribute("href");
+          const { pathname } = new URL(href, "file:");
 
-          controller.enqueue(encoder.encode(prefix + JSON.stringify(item)));
-        }
+          if (pathname === "/") {
+            item = null;
+            return;
+          }
 
-        if (!nextLinks.length) {
-          break;
-        }
+          const name = basename(pathname);
+          item.Name = name;
 
-        links.length = 0;
-        links.push(...nextLinks);
-        maxDepth--;
-      }
+          /**
+           * The Path field will only show folders below the remote
+           * path being listed. If "remote:path" contains the file
+           * "subfolder/file.txt", the Path for "file.txt" will be
+           * "subfolder/file.txt", not "remote:path/subfolder/file.txt".
+           * When used without --recursive the Path will always be the
+           * same as Name.
+           */
+          item.Path = name;
 
-      controller.enqueue(encoder.encode("\n]\n"));
+          const isDir = item.IsDir = pathname.endsWith("/");
+
+          const type = element.getAttribute("type");
+          if (type) {
+            item.MimeType = type;
+          }
+
+          if (isDir) {
+            item.MimeType = "inode/directory";
+            item.Size = -1;
+
+            // Recursively list subdirectories if --recursive
+            if (maxDepth > 1) {
+              // We don't want to block the current iteration, so we
+              // start a new promise for each subdirectory using IIFE.
+              // Inside, we await for the `done` promise to be resolved
+              // before enqueueing the next item.
+              const promise = (async () => {
+                const response = await lsjson(`${location}${name}/`, {
+                  ...flags,
+                  max_depth: String(maxDepth - 1),
+                });
+
+                await response.body?.pipeThrough(
+                  new TransformStream({
+                    async transform(chunk) {
+                      let line = decoder.decode(chunk).trim();
+
+                      // skips the `[` line.
+                      if (line === "[" || line === "]") {
+                        return;
+                      }
+
+                      const child = JSON.parse(line.replace(/,$/, ""));
+                      child.Path = `${name}/${child.Path}`;
+                      line = JSON.stringify(child);
+
+                      await transformed;
+                      controller.enqueue(encoder.encode(line + ",\n"));
+                    },
+                  }),
+                ).pipeTo(new WritableStream({}));
+              })();
+              promises.push(promise);
+            }
+          }
+        },
+      });
+      rewriter.on(`tr data[value]`, {
+        element(element) {
+          const value = element.getAttribute("value");
+          item.Size = Number(value);
+        },
+      });
+      rewriter.on(`tr time[datetime]`, {
+        element(element) {
+          const value = element.getAttribute("datetime");
+          if (value) {
+            item.ModTime = toLocaleISOString(value);
+          }
+        },
+      });
+
+      response = rewriter.transform(response);
+      transformed = response.body.pipeTo(new WritableStream());
     },
   });
+
+  // Because the JSON objects always have trailing commas, we need to
+  // do a transform to remove the trailing comma from the last object.
+  let previousChunk: Uint8Array;
+  body = body.pipeThrough(
+    new TransformStream({
+      start(controller) {
+        controller.enqueue(encoder.encode("[\n"));
+      },
+      // Because we want to detect the last chunk, we need to delay the
+      // transform by one step, so we can handle it in `flush`.
+      transform(chunk, controller) {
+        if (previousChunk) {
+          controller.enqueue(previousChunk);
+        }
+        previousChunk = chunk;
+      },
+      flush(controller) {
+        if (previousChunk) {
+          const chunk = concat(
+            previousChunk.slice(0, -2),
+            encoder.encode("\n"),
+          );
+          controller.enqueue(chunk);
+        }
+        controller.enqueue(encoder.encode("]\n"));
+      },
+    }),
+  );
 
   return new Response(body, {
     headers: {
@@ -122,9 +274,15 @@ export async function lsjson(
   });
 }
 
-function getLinks(headers: Headers, parent = "") {
-  return headers.get("Link")?.split(",").map((link) => {
-    const [_, uri] = link.match(/<([^>]*)>/) || [];
-    return decodeURIComponent(join(parent, uri));
-  }) || [];
+/**
+ * Concats two Uint8Arrays
+ * @param {Uint8Array} a
+ * @param {Uint8Array} b
+ * @returns {Uint8Array}
+ */
+function concat(a, b) {
+  const result = new Uint8Array(a.byteLength + b.byteLength);
+  result.set(a, 0);
+  result.set(b, a.byteLength);
+  return result;
 }

@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno run --unstable --allow-all
+#!/usr/bin/env -S deno run --allow-all
 
 /**
  * DenoLCR - Deno Lite Clone of Rclone.
@@ -228,13 +228,13 @@ export async function fetch(
     init.duplex = "half"; // Must set this for stream body.
   }
 
-  const { fetch } = backends[type as keyof typeof backends] as Backend;
+  const backend = backends[type as keyof typeof backends] as Backend;
 
   const url = new URL(`${pathname}?${params}`, import.meta.url);
   // Creates a new request with the initial init.
   const request = new Request(url, init);
   // Clones that request and updates the headers.
-  return fetch(
+  return backend.fetch(
     new Request(request, {
       headers,
     }),
@@ -244,7 +244,7 @@ export async function fetch(
 globalThis.fetch = fetch;
 
 if (import.meta.main) {
-  const { parseFlags } = await import("./deps.ts");
+  const { parseArgs } = await import("./deps.ts");
 
   /** All optional params for the subcommand as an object. */
   const options: Options = {};
@@ -252,7 +252,7 @@ if (import.meta.main) {
   const {
     _: [subcommand = "help", ...args],
     // @ts-ignore - Deno.args is not typed.
-  } = parseFlags(Deno.args, {
+  } = parseArgs(Deno.args, {
     alias: {
       "progress": "P", // Show progress during transfer
     },

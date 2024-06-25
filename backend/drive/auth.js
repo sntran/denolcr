@@ -58,9 +58,8 @@ export async function auth(request) {
   );
   const serviceAccountFile = searchParams.get("service_account_file");
   if (serviceAccountFile) {
-    serviceAccountCredentials = await fetch(serviceAccountFile).then((res) =>
-      res.text()
-    );
+    const response = await fetch(serviceAccountFile);
+    serviceAccountCredentials = await response.text();
   }
 
   if (serviceAccountCredentials) {

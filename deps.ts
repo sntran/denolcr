@@ -1,21 +1,34 @@
-export { parse as parseFlags } from "https://deno.land/std@0.203.0/flags/mod.ts";
+export { parseArgs } from "https://deno.land/std@0.209.0/cli/parse_args.ts";
+export * as INI from "https://deno.land/std@0.209.0/ini/mod.ts";
 export {
   basename,
   extname,
   join,
   resolve,
-} from "https://deno.land/std@0.203.0/path/mod.ts";
-export { contentType } from "https://deno.land/std@0.203.0/media_types/mod.ts";
-export { format as formatBytes } from "https://deno.land/std@0.203.0/fmt/bytes.ts";
-export { format as formatDuration } from "https://deno.land/std@0.203.0/fmt/duration.ts";
+} from "https://deno.land/std@0.209.0/path/mod.ts";
+export { getCookies } from "https://deno.land/std@0.209.0/http/cookie.ts";
+export { contentType } from "https://deno.land/std@0.209.0/media_types/mod.ts";
+export { format as formatBytes } from "https://deno.land/std@0.209.0/fmt/bytes.ts";
+export { format as formatDuration } from "https://deno.land/std@0.209.0/fmt/duration.ts";
 
-export * as base64url from "https://deno.land/std@0.203.0/encoding/base64url.ts";
+export * as base64url from "https://deno.land/std@0.209.0/encoding/base64url.ts";
+export { encodeHex } from "https://deno.land/std@0.209.0/encoding/hex.ts";
+import { crypto } from "https://deno.land/std@0.209.0/crypto/mod.ts";
+import { DigestAlgorithm } from "https://deno.land/std@0.209.0/crypto/_wasm/mod.ts";
 
-import {
-  crypto,
-  toHashString,
-} from "https://deno.land/std@0.203.0/crypto/mod.ts";
-import { DigestAlgorithm } from "https://deno.land/std@0.203.0/crypto/_wasm/mod.ts";
+// Polyfills `HTMLRewriter`, which is available on Cloudflare Workers.
+// @ts-ignore: `HTMLRewriter` is not part of globalThis.
+if (!globalThis.HTMLRewriter) {
+  const { HTMLRewriter } = await import(
+    "https://esm.sh/@worker-tools/html-rewriter@0.1.0-pre.19/base64"
+  );
+  // @ts-ignore: `HTMLRewriter` is not part of globalThis.
+  globalThis.HTMLRewriter = HTMLRewriter;
+}
+
+// @ts-ignore: `HTMLRewriter` is not part of globalThis.
+const HTMLRewriter = globalThis.HTMLRewriter;
+export { HTMLRewriter };
 
 async function digest(path: string, algorithm: DigestAlgorithm = "MD5") {
   const payload = await Deno.readFile(path);
@@ -24,9 +37,7 @@ async function digest(path: string, algorithm: DigestAlgorithm = "MD5") {
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-export { crypto, digest, toHashString };
-
-export * as INI from "https://cdn.skypack.dev/ini@3.0.1";
+export { crypto, digest };
 
 export function config_dir(): string | null {
   switch (Deno.build.os) {
@@ -58,9 +69,9 @@ export function toLocaleISOString(value: string | null) {
     .toISOString()
     .split(del)[0] +
     (off < 0 ? "-" : "+") +
-    ("0" + Math.abs(Math.floor(off / 60))).substr(-2) +
+    ("0" + Math.abs(Math.floor(off / 60))).substring(-2) +
     ":" +
-    ("0" + Math.abs(off % 60)).substr(-2);
+    ("0" + Math.abs(off % 60)).substring(-2);
 }
 
 export function mkBuffer(

@@ -1,38 +1,27 @@
 import { join } from "../../deps.ts";
 import { assert } from "../../dev_deps.ts";
 
-import { fetch } from "./main.ts";
+import backend from "./main.ts";
 
 Deno.test("local path", async () => {
   const requestInit = {
-    method: "HEAD",
+    method: "GET",
   };
 
-  const files: string[] = [];
-
   const cwd = Deno.cwd();
-  const url = new URL(`/backend?remote=${cwd}`, import.meta.url);
+  const url = new URL(`/backend/?remote=.`, import.meta.url);
 
   const request = new Request(url, requestInit);
-  const { headers, body } = await fetch(request);
+  const response = await backend.fetch(request);
+  const html = await response.text();
 
-  assert(!body, "should not have body");
-
-  const links = headers.get("Link")?.split(",");
-  assert(Array.isArray(links), "should have Link headers");
-
-  let index = 0;
   for await (let { name, isDirectory } of Deno.readDir(join(cwd, "backend"))) {
     if (isDirectory) {
       name += "/";
     }
-    const link = links![index++];
     assert(
-      link.includes(`<${encodeURIComponent(name)}>`),
-      `should have ${name} enclosed between < and > and percent encoded`,
+      html.includes(` href="${name}`),
+      `should have link to ${name}`,
     );
-
-    const [_, uri] = link.match(/<(.*)>/) || [];
-    files.push(decodeURIComponent(uri));
   }
 });

@@ -1,3 +1,5 @@
+#!/usr/bin/env -S deno serve --allow-all
+
 /**
  * Chunker
  *
@@ -99,7 +101,7 @@
  * to missing chunk errors (especially missing last chunk) than format with
  * metadata enabled.
  */
-import { crypto, toHashString } from "../../deps.ts";
+import { crypto, encodeHex } from "../../deps.ts";
 import { Chunker } from "../../lib/streams/chunker.ts";
 import { fetch } from "../../main.ts";
 
@@ -116,6 +118,7 @@ interface Metadata {
 
 export const options = {
   string: [
+    "hash_type",
     "name_format",
     "meta_format",
     /**
@@ -129,6 +132,7 @@ export const options = {
   boolean: ["fail_hard"],
   default: {
     chunk_size: 2 * 1024 * 1024 * 1024, // 2 GiB
+    hash_type: "md5", // | "sha1" | "md5all" | "sha1all" | "md5quick" | "sha1quick" | "none"
     meta_format: "simplejson", // | "none"
     name_format: "*.rclone_chunk.###",
     start_from: 1,
@@ -289,7 +293,7 @@ async function router(request: Request): Promise<Response> {
               ver: METADATA_VERSION,
               size: fileSize,
               nchunks: chunkIndex - startFrom,
-              md5: toHashString(await digestStream),
+              md5: encodeHex(await digestStream),
             };
             // Adds metadata.
             await fetch(`${remote}/${fileName}`, {
@@ -362,17 +366,6 @@ async function upload(url: string | URL, { headers, body }: RequestInit) {
   });
 }
 
-const exports = {
+export default {
   fetch: router,
 };
-
-export {
-  // For Cloudflare Workers.
-  exports as default,
-  router as fetch,
-};
-
-// Learn more at https://deno.land/manual/examples/module_metadata#concepts
-if (import.meta.main) {
-  Deno.serve(router);
-}

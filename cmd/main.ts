@@ -11,3 +11,4 @@ export { rcat } from "./rcat/main.ts";
 export { copy } from "./copy/main.ts";
 export { copyurl } from "./copyurl/main.ts";
 export { obscure, reveal } from "./obscure/main.ts";
+export { serve } from "./serve/main.js";

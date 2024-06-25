@@ -1,7 +1,9 @@
-import {} from "../../deps.ts";
+#!/usr/bin/env -S deno serve --allow-all
+
+import { formatBytes } from "../../deps.ts";
 
 const API_URL = "https://api.fshare.vn/api";
-const FSHARE_APP_KEY = "L2S7R6ZMagggC5wWkQhX2+aDi467PPuftWUMRFSn";
+const APP_KEY = "dMnqMMZMUnN5YpvKENaEhdQQ5jxDqddt";
 
 export interface ListParams {
   pageIndex: number | string;
@@ -44,19 +46,13 @@ const authResponse = new Response("401 Unauthorized", {
   },
 });
 
-const CACHE = new Map();
-
 async function router(request: Request) {
   const { method, url } = request;
   let { pathname, searchParams } = new URL(url);
 
+  let response;
+  const requestHeaders = new Headers(request.headers);
   const config = Object.fromEntries(searchParams);
-  let response = await auth(config);
-  if (!response.ok) {
-    return response;
-  }
-
-  searchParams.set("token", await response.text());
 
   pathname = decodeURIComponent(pathname);
   const dirname = pathname.substring(0, pathname.lastIndexOf("/") + 1);
@@ -65,16 +61,13 @@ async function router(request: Request) {
   const headers = new Headers();
   let status = 200, body = null;
 
-  // The response headers from login contain the session_id cookie.
-  const requestHeaders = response.headers;
-
   const linkcode = searchParams.get("linkcode") || "";
   searchParams.delete("linkcode");
 
   if (method === "HEAD" || method === "GET") {
     requestHeaders.set("Content-Type", "application/json; charset=utf-8");
 
-    // Retrieves user's file or folder
+    // Retrieves user's files or folders
     if (!linkcode) {
       const params = new URLSearchParams();
       // @TODO: support other params for `fileops/list`
@@ -85,14 +78,14 @@ async function router(request: Request) {
 
       const url = `${API_URL}/fileops/list?${params}`;
       // const url = `https://www.fshare.vn/api/v3/files?${params}`;
-      response = await fetch(url, {
+      response = await authFetch(url, {
         headers: requestHeaders,
       });
     } else {
       // Retrieves files from a public folder using linkcode.
       const url = `${API_URL}/fileops/getFolderList`;
       // const url = `https://www.fshare.vn/api/v3/files?${params}`;
-      response = await fetch(url, {
+      response = await authFetch(url, {
         method: "POST",
         headers: requestHeaders,
         body: JSON.stringify({
@@ -100,6 +93,14 @@ async function router(request: Request) {
           token: searchParams.get("token")!,
         }),
       });
+    }
+
+    if (!response.ok) {
+      return response;
+    }
+
+    if (response.headers.has("Set-Cookie")) {
+      headers.set("Set-Cookie", response.headers.get("Set-Cookie")!);
     }
 
     const files: File[] = await response.json();
@@ -110,14 +111,79 @@ async function router(request: Request) {
         if (type === "0") { // Folder
           name += "/";
         }
-        headers.append("Link", `<${encodeURIComponent(name)}>`);
+        headers.append("Link", `<${encodeURI(name)}>`);
       }
+
+      if (method === "GET") {
+        body = new ReadableStream({
+          start(controller) {
+            controller.enqueue(`
+            <table cellpadding="4">
+            <thead>
+              <tr>
+                <th></th>
+                <th>Name</th>
+                <th>Size</th>
+                <th>Modified</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>📁</td>
+                <td><a href="../?${searchParams}">Go up</a></td>
+                <td>—</td>
+                <td>—</td>
+              </tr>
+            `);
+
+            for (const { name, type, size, modified, mimetype } of files) {
+              let filePath = name;
+              const isDirectory = type === "0";
+              if (isDirectory) {
+                filePath += "/";
+              }
+              controller.enqueue(`<tr>
+                <td>${isDirectory ? "📁" : "📄"}</td>
+                <td>
+                  <a
+                    href="${filePath}?${searchParams}"
+                    type="${mimetype || ""}"
+                  >${name}</a>
+                </td>
+                <td>
+                  <data
+                    value="${size}"
+                  >${
+                Number(size) ? formatBytes(Number(size), { locale: true }) : "—"
+              }</data>
+                </td>
+                <td>
+                  <time
+                    datetime="${new Date(modified! * 1000).toISOString()}"
+                  >${new Date(modified! * 1000).toLocaleString()}</time>
+                </td>
+              </tr>`);
+            }
+
+            controller.enqueue("</tbody></table>");
+            controller.close();
+          },
+        }).pipeThrough(new TextEncoderStream());
+      }
+
+      headers.set("Content-Type", "text/html;charset=utf-8");
     } else {
       const file = files.find((file) => {
         return file.type === "1" &&
           file.name ===
             decodeURIComponent(pathname).slice(1).split("/").at(-1);
       })!;
+
+      if (!file) {
+        return new Response("Not Found", {
+          status: 404,
+        });
+      }
 
       headers.append("Content-Type", file.mimetype!);
       headers.append("Content-Length", `${file.size}`);
@@ -162,6 +228,49 @@ async function router(request: Request) {
 }
 
 /**
+ * Fetches a resource, authenticates if necessary.
+ * @param {Request} request
+ * @param {RequestInit} init
+ * @returns {Promise<Response>}
+ */
+async function authFetch(
+  request: string | URL | Request,
+  init?: RequestInit,
+): Promise<Response> {
+  request = new Request(request, init);
+  let response = await fetch(request);
+  if (response.status === 200) { // FIXME: FShare API returns 201 for unauthorized request.
+    return response;
+  }
+
+  response = await auth(request);
+  if (!response.ok) {
+    return response;
+  }
+
+  const cookies = response.headers.getSetCookie().join("; ");
+
+  let headers = new Headers(request.headers);
+  headers.delete("Authorization");
+  headers.set("Cookie", cookies);
+
+  request = new Request(request, {
+    headers,
+  });
+
+  // Retry.
+  response = await fetch(request);
+  // Stores cookies in response.
+  headers = new Headers(response.headers);
+  headers.set("Set-Cookie", cookies);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+/**
  * Authenticates user and returns the token.
  *
  * Usage Example:
@@ -172,49 +281,51 @@ async function router(request: Request) {
  * await response.text();
  * ```
  */
-async function auth(params: Record<string, string>): Promise<Response> {
-  const { user_email, password, app_key = FSHARE_APP_KEY } = params;
+async function auth(request: Request): Promise<Response> {
+  const headers = request.headers;
+  const authorization = headers.get("Authorization");
+  if (!authorization) {
+    return authResponse;
+  }
+
+  const [user_email, password] = atob(authorization.split(" ").pop()!).split(
+    ":",
+    2,
+  );
 
   if (!user_email || !password) {
     return authResponse;
   }
 
-  let response: Response = CACHE.get({ user_email, password });
+  const url = `https://api.fshare.vn/api/user/login`;
+  const init: RequestInit = {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "User-Agent": headers.get("User-Agent") || "denolcr-K58W6U",
+    },
+    body: JSON.stringify({
+      app_key: APP_KEY,
+      user_email,
+      password,
+    }),
+    credentials: "same-origin",
+  };
 
-  if (!response) {
-    const url = `${API_URL}/user/login`;
-    const init: RequestInit = {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json; charset=utf-8",
-      },
-      body: JSON.stringify({
-        app_key,
-        user_email,
-        password,
-      }),
-      credentials: "same-origin",
-    };
+  const response = await fetch(url, init);
 
-    response = await fetch(url, init);
-
-    const { code, msg, token, session_id } = await response.json();
-    if (!token) {
-      return authResponse;
-    }
-
-    response = new Response(token, {
-      status: code,
-      statusText: msg,
-      headers: {
-        "Cookie": `session_id=${session_id};`,
-      },
-    });
-
-    CACHE.set({ user_email, password }, response);
+  const { code, msg, token, session_id } = await response.json();
+  if (!token) {
+    return authResponse;
   }
 
-  return response;
+  return new Response(token, {
+    status: code,
+    statusText: msg,
+    headers: {
+      "Set-Cookie": `session_id=${session_id}; token=${token}`,
+    },
+  });
 }
 
 /**
@@ -293,15 +404,4 @@ const exports = {
   fetch: router,
 };
 
-export {
-  auth,
-  download,
-  // For Cloudflare Workers.
-  exports as default,
-  router as fetch,
-};
-
-// Learn more at https://deno.land/manual/examples/module_metadata#concepts
-if (import.meta.main) {
-  Deno.serve(router);
-}
+export { auth, download, exports as default };

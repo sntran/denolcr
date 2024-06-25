@@ -1,8 +1,5 @@
-import { crypto, toHashString, mkBuffer } from "../../deps.ts";
-import {
-  assert,
-  assertEquals,
-} from "../../dev_deps.ts";
+import { crypto, mkBuffer, encodeHex } from "../../deps.ts";
+import { assert, assertEquals } from "../../dev_deps.ts";
 import { fetch as fetchMemory } from "../memory/main.ts";
 import { fetch } from "./main.ts";
 
@@ -13,7 +10,7 @@ const buffer = mkBuffer(1024 * 1024 * 10); // 10M
 const file = new File([buffer], "10M.bin", {
   type: "application/octet-stream",
 });
-const MD5 = toHashString(await crypto.subtle.digest("MD5", buffer));
+const MD5 = encodeHex(await crypto.subtle.digest("MD5", buffer));
 
 let chunkSize = 1024 * 1024 * 4; // 4M
 

@@ -1,7 +1,9 @@
 import { join } from "../../deps.ts";
 import { assert, assertEquals, assertHeader } from "../../dev_deps.ts";
 
-import { fetch } from "./main.ts";
+import backend from "./main.ts";
+
+const fetch = backend.fetch;
 
 const encoder = new TextEncoder();
 
@@ -42,7 +44,7 @@ function descendants(root = "/"): string[] {
 
 Deno.test("PUT", async (t) => {
   await t.step("a new file or folder", async () => {
-    for await (const fixture of descendants("/")) {
+    for (const fixture of descendants("/")) {
       const url = new URL(fixture, "memory:/");
       // Sends the PUT request with the body.
       const request = new Request(url, {
@@ -61,54 +63,41 @@ Deno.test("PUT", async (t) => {
   });
 });
 
-Deno.test("HEAD", async (t) => {
-  await t.step("/", async () => {
-    const pathname = "/"; // Root has both folders and files.
-    const url = new URL(pathname, "memory:/");
-    const request = new Request(url, {
-      method: "HEAD",
-    });
-    const { headers, body } = await fetch(request);
-
-    assert(!body, "should not have body");
-
-    const links = headers.get("Link")?.split(/,\s*/);
-    assert(Array.isArray(links), "should have Link headers");
-
-    for await (const child of tree[pathname]) {
-      assert(
-        links.includes(`<${encodeURIComponent(child)}>`),
-        `should have ${child} enclosed between < and > and percent encoded`,
-      );
-    }
-  });
-
-  await t.step("/folder/", async () => {
-    const pathname = "/A/"; // Folder with only files
-    const url = new URL(pathname, "memory:/");
-    const request = new Request(url, {
-      method: "HEAD",
-    });
-    const { headers, body } = await fetch(request);
-
-    assert(!body, "should not have body");
-
-    const links = headers.get("Link")?.split(/,\s*/);
-    assert(Array.isArray(links), "should have Link headers");
-
-    for await (const child of tree[pathname]) {
-      assert(
-        links.includes(`<${encodeURIComponent(child)}>`),
-        `should have ${child} enclosed between < and > and percent encoded`,
-      );
-    }
-  });
-});
-
 Deno.test("GET", async (t) => {
+  await t.step("folder", async () => {
+    const pathname = "/"; // Root folder
+    let url = new URL(pathname, "memory:/");
+    let response = await fetch(new Request(url));
+    assert(response.headers.get("Content-Type")?.includes("text/html"));
+    const html = await response.text();
+
+    for (const child of tree[pathname]) {
+      assert(
+        html.includes(` href="${child}`),
+        `should have link to ${child}`,
+      );
+
+      if (child.endsWith("/")) {
+        const childPathname = pathname + child;
+
+        url = new URL(childPathname, "memory:/");
+        response = await fetch(new Request(url));
+        assert(response.headers.get("Content-Type")?.includes("text/html"));
+        const childHtml = await response.text();
+
+        for (const grandchild of tree[childPathname]) {
+          assert(
+            childHtml.includes(` href="${grandchild}`),
+            `should have link to ${grandchild}`,
+          );
+        }
+      }
+    }
+  });
+
   await t.step("file", async () => {
     const pathname = "/A/"; // Folder with only files
-    for await (const fixture of descendants(pathname)) {
+    for (const fixture of descendants(pathname)) {
       const url = new URL(fixture, "memory:/");
       const response = await fetch(new Request(url));
       const responseText = await response.text();

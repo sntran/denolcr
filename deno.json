@@ -1,9 +1,9 @@
 {
   "tasks": {
-    "start": "deno run --unstable -A main.ts",
-    "install": "deno install --unstable -A -n dclone main.ts",
-    "bundle": "deno bundle --unstable -A main.ts",
-    "test": "deno test --unstable -A --fail-fast",
-    "bench": "deno bench --unstable -A"
+    "start": "deno run -A main.ts",
+    "install": "deno install -A -n dclone main.ts",
+    "bundle": "deno bundle -A main.ts",
+    "test": "deno test -A --no-check --fail-fast",
+    "bench": "deno bench -A"
   }
 }

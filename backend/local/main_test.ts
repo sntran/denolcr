@@ -6,65 +6,12 @@ import {
   assertRejects,
 } from "../../dev_deps.ts";
 
-import { fetch } from "./main.ts";
+import backend from "./main.ts";
+
+const fetch = backend.fetch;
 
 const encoder = new TextEncoder();
 const cwd = Deno.cwd();
-
-Deno.test("HEAD", async (t) => {
-  const requestInit = {
-    method: "HEAD",
-  };
-
-  const files: string[] = [];
-
-  await t.step("base ./", async () => {
-    const url = new URL(join(cwd, "./"), import.meta.url);
-    const request = new Request(url, requestInit);
-    const { headers, body } = await fetch(request);
-
-    assert(!body, "should not have body");
-
-    const links = headers.get("Link")?.split(",");
-    assert(Array.isArray(links), "should have Link headers");
-
-    let index = 0;
-    for await (let { name, isDirectory } of Deno.readDir(url)) {
-      if (isDirectory) {
-        name += "/";
-      }
-      const link = links![index++];
-      assert(
-        link.includes(`<${encodeURIComponent(name)}>`),
-        `should have ${name} enclosed between < and > and percent encoded`,
-      );
-
-      const [_, uri] = link.match(/<(.*)>/) || [];
-      files.push(decodeURIComponent(uri));
-    }
-  });
-
-  await t.step("a file ./main.ts", async () => {
-    for await (const name of files) {
-      // Checking links for now
-      if (name.endsWith("/")) continue;
-
-      const path = join(cwd, name);
-      const file = await Deno.stat(path);
-
-      const url = new URL(path, import.meta.url);
-      const request = new Request(url, requestInit);
-      const { headers, body } = await fetch(request);
-
-      assert(!body, "should not have body");
-      assert(!headers.get("Link"), "should not have Link headers");
-
-      assertHeader(headers, "Content-Type", contentType(extname(name)) || "");
-      assertHeader(headers, "Content-Length", `${file.size}`);
-      assertHeader(headers, "Last-Modified", file.mtime?.toUTCString() || "");
-    }
-  });
-});
 
 Deno.test("GET", async (t) => {
   const requestInit = {
@@ -73,30 +20,27 @@ Deno.test("GET", async (t) => {
 
   const files: string[] = [];
 
-  // `GET /folder` is same as `HEAD /folder`.
-  await t.step("./", async () => {
-    const url = new URL(join(cwd, "./"), import.meta.url);
+  await t.step("/", async () => {
+    const url = new URL("/", "local://");
     const request = new Request(url, requestInit);
-    const { headers, body } = await fetch(request);
+    const response = await fetch(request);
+    const { headers, body } = response;
 
-    assert(!body, "should not have body");
+    assert(body, "should have body");
+    assert(headers.get("Content-Type")!.includes("text/html"));
+    const html = await response.text();
 
-    const links = headers.get("Link")?.split(",");
-    assert(Array.isArray(links), "should have Link headers");
-
-    let index = 0;
-    for await (let { name, isDirectory } of Deno.readDir(url)) {
+    for await (let { name, isDirectory } of Deno.readDir(cwd)) {
       if (isDirectory) {
         name += "/";
       }
-      const link = links![index++];
+
       assert(
-        link.includes(`<${encodeURIComponent(name)}>`),
-        `should have ${name} enclosed between < and > and percent encoded`,
+        html.includes(` href="${name}`),
+        "should have the link in the HTML",
       );
 
-      const [_, uri] = link.match(/<(.*)>/) || [];
-      files.push(decodeURIComponent(uri));
+      files.push(name);
     }
   });
 
@@ -108,7 +52,7 @@ Deno.test("GET", async (t) => {
       const path = join(cwd, name);
       const file = await Deno.stat(path);
 
-      const url = new URL(path, import.meta.url);
+      const url = new URL(`/${name}`, "local://");
       const request = new Request(url, requestInit);
       const response = await fetch(request);
       const { headers, body } = response;
@@ -138,7 +82,7 @@ Deno.test("PUT", async (t) => {
     const targetFile = join(cwd, newFile);
     const body = "Hello World";
 
-    const url = new URL(targetFile, import.meta.url);
+    const url = new URL(`/${newFile}`, "local://");
     // Sends the PUT request with the body.
     const request = new Request(url, {
       method: "PUT",
@@ -152,7 +96,7 @@ Deno.test("PUT", async (t) => {
     const { status, headers } = await fetch(request);
 
     assertEquals(status, 201, "should respond with 201 Created");
-    assertHeader(headers, "Content-Location", targetFile);
+    assertHeader(headers, "Content-Location", `/${newFile}`);
 
     assertEquals(
       await Deno.readTextFile(targetFile),
@@ -168,7 +112,7 @@ Deno.test("PUT", async (t) => {
   await t.step("a new folder", async () => {
     const targetFolder = join(cwd, newFolder);
 
-    const url = new URL(targetFolder, import.meta.url);
+    const url = new URL(`/${newFolder}`, "local://");
     // Sends the PUT request with no body.
     const request = new Request(url, {
       method: "PUT",
@@ -180,7 +124,7 @@ Deno.test("PUT", async (t) => {
     const { status, headers } = await fetch(request);
 
     assertEquals(status, 201, "should respond with 201 Created");
-    assertHeader(headers, "Content-Location", targetFolder);
+    assertHeader(headers, "Content-Location", `/${newFolder}`);
 
     const stat = await Deno.stat(targetFolder);
     assert(stat.isDirectory, "should be a directory");
@@ -190,7 +134,7 @@ Deno.test("PUT", async (t) => {
     const targetFile = join(cwd, newFolder, newFile);
     const body = "Hello Nested World";
 
-    const url = new URL(targetFile, import.meta.url);
+    const url = new URL(`/${join(newFolder, newFile)}`, "local://");
     // Sends the PUT request with the body.
     const request = new Request(url, {
       method: "PUT",
@@ -204,7 +148,7 @@ Deno.test("PUT", async (t) => {
     const { status, headers } = await fetch(request);
 
     assertEquals(status, 201, "should respond with 201 Created");
-    assertHeader(headers, "Content-Location", targetFile);
+    assertHeader(headers, "Content-Location", `/${join(newFolder, newFile)}`);
 
     assertEquals(
       await Deno.readTextFile(targetFile),
@@ -221,7 +165,7 @@ Deno.test("PUT", async (t) => {
 Deno.test("DELETE", async (t) => {
   await t.step("a file", async () => {
     const targetFile = join(cwd, newFile);
-    const url = new URL(targetFile, import.meta.url);
+    const url = new URL(`/${newFile}`, "local://");
     // Sends the PUT request with the body.
     const request = new Request(url, {
       method: "DELETE",
@@ -236,7 +180,7 @@ Deno.test("DELETE", async (t) => {
 
   await t.step("a folder", async () => {
     const targetFolder = join(cwd, newFolder);
-    const url = new URL(targetFolder, import.meta.url);
+    const url = new URL(`/${newFolder}`, "local://");
     // Sends the PUT request with the body.
     const request = new Request(url, {
       method: "DELETE",

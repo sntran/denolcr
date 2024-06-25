@@ -12,7 +12,7 @@ fs.
 - `deno init backend/remote`
 - Edit "backend/remote/main.ts" and "backend/remote/main_test.ts" for the new
   backend.
-- Implements a `fetch` export function that handles "HEAD", "GET", "PUT" and
+- Implements a `fetch` default export function that handles "GET", "PUT" and
   "DELETE".
 - Uses `backend/local/main.ts` as reference, or the boilerplate below:
 
@@ -55,20 +55,25 @@ function router(request: Request) {
     status,
     headers,
   });
-}
+}\
 
-const exports = {
+export default {
   fetch: router,
 };
-
-export {
-  // For Cloudflare Workers.
-  exports as default,
-  router as fetch,
-};
-
-// Learn more at https://deno.land/manual/examples/module_metadata#concepts
-if (import.meta.main) {
-  Deno.serve(router);
-}
 ```
+
+## Architecture
+
+- `GET /folder/`: displays HTML page with folder content.
+- `GET /file`: fetches file.
+- `PUT /folder/`: creates folder.
+- `PUT /file`: uploads file.
+- `DELETE /folder/`: deletes folder.
+- `DELETE /file`: deletes file.
+
+For displaying folder content, any HTML can be used, but the listing itself
+should be in a `<table>`, whose each rows are for each file or folder inside.
+Each items should have a `<a>` whose `href` attribute points to the file or
+folder, and optionally a `type` attribute to tell the item's mime-type. A
+`<data>` element should be used for file size, and `<time>` for file
+modification time.

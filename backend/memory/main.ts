@@ -1,3 +1,5 @@
+#!/usr/bin/env -S deno serve --allow-all
+
 /**
  * Memory Backend
  *
@@ -7,38 +9,116 @@
  * Because it has no parameters you can just use it with the `:memory:` remote
  * name.
  */
-import {} from "../../deps.ts";
+import { contentType, extname, formatBytes } from "../../deps.ts";
 
-const cache: Map<string, Uint8Array | null> = new Map();
+const cache: Map<string, File | null> = new Map();
+// Creates the root folder.
+cache.set("/", null);
 
 async function router(request: Request): Promise<Response> {
   const { method, url } = request;
-  const { pathname } = new URL(url);
+  const { pathname, searchParams } = new URL(url);
 
   const headers = new Headers();
   let status = 200, body = null;
-
-  if (method === "HEAD" || method === "GET") {
-    const regex = new RegExp(pathname + "([^/]+/?)");
-    // Retrieves file or folder info.
-    const links: string[] = [];
-    for (const key of cache.keys()) {
-      const [, child] = key.match(regex) || [];
-      if (child) {
-        const link = `<${encodeURIComponent(child)}>`;
-        if (!links.includes(link)) {
-          links.push(link);
-          headers.append("Link", link);
-        }
-      }
-    }
-  }
 
   if (method === "GET") {
     // Retrieves file content.
     for (const [key, value] of cache) {
       if (key === pathname) {
-        body = ReadableStream.from([value!]);
+        // File.
+        if (value !== null) {
+          body = value.stream();
+          break;
+        }
+
+        const regex = new RegExp(pathname + "([^/]+/?)");
+        const children: string[] = [];
+        for (const key of cache.keys()) {
+          const [, child] = key.match(regex) || [];
+          if (child) {
+            if (!children.includes(child)) {
+              children.push(child);
+            }
+          }
+        }
+
+        children.sort((a, b) => a.localeCompare(b));
+
+        // Folder listing
+        body = new ReadableStream({
+          start(controller) {
+            controller.enqueue(`
+              <table cellpadding="4">
+              <thead>
+                <tr>
+                  <th></th>
+                  <th>Name</th>
+                  <th>Size</th>
+                  <th>Modified</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>📁</td>
+                  <td><a href="../?${searchParams}">Go up</a></td>
+                  <td>—</td>
+                  <td>—</td>
+                </tr>
+            `);
+
+            for (const name of children) {
+              const value = cache.get(pathname + name);
+              const isDirectory = value === null;
+
+              let filePath = name;
+              if (isDirectory) {
+                filePath += "/";
+              }
+
+              const type = isDirectory
+                ? ""
+                : contentType(extname(pathname)) || "";
+              const size = Number(isDirectory ? "-1" : value!.size);
+              const lastModified = value?.lastModified
+                ? new Date(value?.lastModified)
+                : "";
+
+              controller.enqueue(`<tr>
+                <td>${isDirectory ? "📁" : "📄"}</td>
+                <td>
+                  <a
+                    href="${filePath}?${searchParams}"
+                    type="${type}"
+                  >${name}</a>
+                </td>
+                <td>
+                  ${
+                size
+                  ? `<data
+                        value="${size}"
+                      >${formatBytes(size, { locale: true })}</data>`
+                  : "—"
+              }
+                </td>
+                <td>${
+                lastModified
+                  ? `<time
+                      datetime="${lastModified.toISOString()}"
+                    >${lastModified.toLocaleString()}</time>`
+                  : "-"
+              }
+                </td>
+              </tr>`);
+            }
+
+            controller.enqueue("</tbody></table>");
+            controller.close();
+          },
+        }).pipeThrough(new TextEncoderStream());
+
+        headers.set("Content-Type", "text/html;charset=utf-8");
+
         break;
       }
     }
@@ -49,13 +129,24 @@ async function router(request: Request): Promise<Response> {
   }
 
   if (method === "PUT") {
+    const folders = pathname.split("/").slice(1, -1);
+    // Creates ancestor folders, recursively.
+    let href = "/";
+    for (const segment of folders) {
+      href += `${segment}/`;
+      cache.set(`${href}`, null);
+    }
+
     // Folder ending with trailing slash.
     if (pathname.endsWith("/")) {
-      // Creates folder.
-      cache.set(pathname, null);
+      // Nothing, as we already created it.
     } else {
       // Creates file.
-      cache.set(pathname, new Uint8Array(await request.arrayBuffer()));
+      const file = new File([await request.arrayBuffer()], pathname, {
+        type: request.headers.get("Content-Type") || "",
+        lastModified: Date.now(),
+      });
+      cache.set(pathname, file);
     }
 
     status = 201;
@@ -86,17 +177,6 @@ async function router(request: Request): Promise<Response> {
   });
 }
 
-const exports = {
+export default {
   fetch: router,
 };
-
-export {
-  // For Cloudflare Workers.
-  exports as default,
-  router as fetch,
-};
-
-// Learn more at https://deno.land/manual/examples/module_metadata#concepts
-if (import.meta.main) {
-  Deno.serve(router);
-}

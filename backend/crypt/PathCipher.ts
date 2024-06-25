@@ -27,6 +27,7 @@ export default function PathCipher(
   const nameCipher = new AES(nameKey);
 
   function encryptName(name: string) {
+    if (name === "") return "";
     const ciphertext = encoder.encode(name);
     const paddedCipherText = pad(ciphertext, Padding.PKCS7, 16);
     const rawCipherText = Encrypt(nameCipher, nameTweak!, paddedCipherText);

@@ -1,3 +1,5 @@
+#!/usr/bin/env -S deno serve --allow-all
+
 /**
  * Crypt remote
  *
@@ -94,11 +96,13 @@
  */
 
 import { scrypt } from "https://deno.land/x/scrypto@v1.0.0/scrypt.ts";
-import { contentType, extname, join } from "../../deps.ts";
+import { contentType, extname } from "../../deps.ts";
 import { fetch } from "../../main.ts";
 import { reveal } from "../../cmd/obscure/main.ts";
 import PathCipher from "./PathCipher.ts";
 import { DecryptionStream, EncryptionStream } from "./secretbox.js";
+
+const encoder = new TextEncoder();
 
 const DEFAULT_SALT = new Uint8Array([
   0xa8,
@@ -127,37 +131,38 @@ const keySize = 32 + 32 + 16;
 
 const SECRETBOX_OPTIONS = {
   blockSize: 64 * 1024, // 64 KiB
-  magic: new TextEncoder().encode("RCLONE\x00\x00"),
+  magic: encoder.encode("RCLONE\x00\x00"),
 };
 
 async function router(request: Request) {
   let { pathname, searchParams } = new URL(request.url);
 
-  const remote = searchParams.get("remote");
+  let remote = searchParams.get("remote");
   if (!remote) {
-    throw new Error("Missing remote");
+    return new Response("Missing remote", { status: 400 });
   }
+
+  remote = remote.replace(/\/$/, "");
 
   const password = searchParams.get("password");
   const salt = searchParams.get("password2");
 
-  let response = await deriveKey(password!, salt!)!;
-  const key = new Uint8Array(await response.arrayBuffer());
+  const key = await deriveKey(password!, salt!)!;
 
   const pathCipher = PathCipher({
     nameKey: key.subarray(32, 64),
     nameTweak: key.subarray(64),
   });
 
-  pathname = decodeURIComponent(pathname).slice(1);
-  let encryptedPathname = pathname;
-  if (pathname !== "") {
-    encryptedPathname = pathCipher.encrypt(pathname);
-  }
+  const isDirectory = pathname.endsWith("/");
+  pathname = decodeURIComponent(pathname);
+  const encryptedPathname = pathCipher.encrypt(pathname);
 
+  const url = remote.replace(/\/$/, "") + encryptedPathname;
+
+  // Encrypts upload body if any.
   if (request.body) {
     request = new Request(request, {
-      // Encrypts upload body.
       body: request.body.pipeThrough(
         new EncryptionStream(key.subarray(0, 32), SECRETBOX_OPTIONS),
       ),
@@ -165,22 +170,20 @@ async function router(request: Request) {
   }
 
   // Delegates to the underlying remote.
-  response = await fetch(join(remote, encryptedPathname), request);
+  const requestHeaders = new Headers(request.headers);
+  // Encrypted data on underlying remote won't respond to range.
+  requestHeaders.delete("Range");
+  request = new Request(request, {
+    headers: requestHeaders,
+  });
+
+  let response = await fetch(url, request);
   let { status, statusText, headers, body } = response;
   headers = new Headers(headers);
 
-  // The Link header will be of encrypted names, so we need to decrypt them.
-  const links = headers.get("Link")?.split(",").map((link) => {
-    const [_, uri] = link.match(/<([^>]*)>/) || [];
-    try {
-      return `<${pathCipher.decrypt(uri)}>`;
-    } catch (_error) {
-      return undefined;
-    }
-  }).filter((l) => l) || [];
-
-  if (links.length) {
-    headers.set("Link", links.join(","));
+  const mimetype = contentType(extname(pathname)) || "";
+  if (mimetype) {
+    headers.set("Content-Type", mimetype);
   }
 
   if (body) {
@@ -190,14 +193,48 @@ async function router(request: Request) {
       headers.set("Content-Length", `${contentLength}`);
     }
 
-    headers.set(
-      "Content-Type",
-      contentType(extname(pathname)) || "application/octet-stream",
-    );
+    if (isDirectory) {
+      const rewriter = new HTMLRewriter();
+      rewriter.on("tr a[href]", {
+        element(element) {
+          let href = element.getAttribute("href");
+          let type = element.getAttribute("type");
 
-    body = body.pipeThrough(
-      new DecryptionStream(key.subarray(0, 32), SECRETBOX_OPTIONS),
-    );
+          const { pathname } = new URL(href, "file:");
+          let basename = pathname.slice(1);
+          if (pathname != "/") {
+            basename = pathCipher.decrypt(basename);
+            href = `${basename}?${searchParams}`;
+            element.setAttribute("href", href);
+
+            // Replaces inner text with original name.
+            element.setInnerContent(basename);
+          }
+
+          if (type) {
+            type = contentType(extname(basename)) || type;
+            element.setAttribute("type", type);
+          }
+        },
+      });
+      rewriter.on(`tr data[value]`, {
+        element(element) {
+          const encryptedSize = Number(element.getAttribute("value"));
+          const originalSize = DecryptionStream.size(
+            encryptedSize,
+            SECRETBOX_OPTIONS,
+          );
+          element.setAttribute("value", `${originalSize}`);
+        },
+      });
+
+      response = rewriter.transform(response);
+      body = response.body;
+    } else {
+      body = body.pipeThrough(
+        new DecryptionStream(key.subarray(0, 32), SECRETBOX_OPTIONS),
+      );
+    }
   }
 
   return new Response(body, {
@@ -226,9 +263,11 @@ async function router(request: Request) {
  * await response.text();
  * ```
  */
-async function encode(options: Record<string, string>, ...args: string[]) {
-  const response = await deriveKey(options.password!, options.password2)!;
-  const key = new Uint8Array(await response.arrayBuffer());
+export async function encode(
+  options: Record<string, string>,
+  ...args: string[]
+) {
+  const key = await deriveKey(options.password!, options.password2)!;
   const pathCipher = PathCipher({
     nameKey: key.slice(32, 64),
     nameTweak: key.slice(64),
@@ -260,9 +299,11 @@ async function encode(options: Record<string, string>, ...args: string[]) {
  * await response.text();
  * ```
  */
-async function decode(options: Record<string, string>, ...args: string[]) {
-  const response = await deriveKey(options.password!, options.password2)!;
-  const key = new Uint8Array(await response.arrayBuffer());
+export async function decode(
+  options: Record<string, string>,
+  ...args: string[]
+) {
+  const key = await deriveKey(options.password!, options.password2)!;
   const pathCipher = PathCipher({
     nameKey: key.slice(32, 64),
     nameTweak: key.slice(64),
@@ -274,6 +315,11 @@ async function decode(options: Record<string, string>, ...args: string[]) {
   return new Response(decoded.join(""));
 }
 
+/**
+ * @param {string} encPass
+ * @param {string} encSalt
+ * @returns {Promise<Uint8Array>}
+ */
 async function deriveKey(encPass: string, encSalt: string) {
   const password = await reveal(encPass).then((r) => r.arrayBuffer()).then(
     (buf) => new Uint8Array(buf),
@@ -284,23 +330,9 @@ async function deriveKey(encPass: string, encSalt: string) {
   const salt = decryptedSalt.length ? decryptedSalt : DEFAULT_SALT;
 
   const derivedKey = await scrypt(password, salt, N, r, p, keySize);
-
-  return new Response(derivedKey);
+  return new Uint8Array(derivedKey!);
 }
 
-const exports = {
+export default {
   fetch: router,
 };
-
-export {
-  decode,
-  encode,
-  // For Cloudflare Workers.
-  exports as default,
-  router as fetch,
-};
-
-// Learn more at https://deno.land/manual/examples/module_metadata#concepts
-if (import.meta.main) {
-  Deno.serve(router);
-}

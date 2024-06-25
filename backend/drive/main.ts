@@ -1,10 +1,22 @@
+#!/usr/bin/env -S deno serve --allow-all
+
+import { formatBytes } from "../../deps.ts";
+
 import { auth } from "./auth.js";
 import { list } from "./list.js";
 import { create } from "./create.ts";
+import { fetch as fetchFile } from "./file.js";
 
 import { File } from "./File.ts";
 
 const FOLDER_TYPE = "application/vnd.google-apps.folder";
+// Set of headers that a file should have.
+const FILE_HEADERS = new Headers({
+  "Accept-Ranges": "bytes",
+  "Content-Length": "0",
+  "Content-Range": "bytes */0",
+  "Content-Type": "application/octet-stream",
+});
 
 async function router(request: Request): Promise<Response> {
   //#region Auth
@@ -21,7 +33,11 @@ async function router(request: Request): Promise<Response> {
   const Authorization = `${token_type} ${access_token}`;
 
   // "Upgrade" request to authorized request.
-  request.headers.set("Authorization", Authorization);
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("Authorization", Authorization);
+  request = new Request(request, {
+    headers: requestHeaders,
+  });
   //#endregion Auth
 
   const headers = new Headers();
@@ -33,61 +49,8 @@ async function router(request: Request): Promise<Response> {
   pathname = decodeURIComponent(pathname);
   const isDirectory = pathname.endsWith("/");
 
-  const driveId = searchParams.get("team_drive") || "";
-  const rootFolderId = searchParams.get("root_folder_id");
-  let parentId = rootFolderId || driveId;
-
-  // Retrives the parent folder's ID , relative to `team_drive` search params.
-  // We will need this folder's ID for most operations.
-  // TODO: Cache this result.
-  searchParams.delete("root_folder_id"); // We want all files.
-  const folders: File[] = await list(`/?${searchParams}`, {
-    headers: {
-      Authorization,
-      "Content-Type": FOLDER_TYPE,
-    },
-  }).then((response) => response.json());
-
-  parentId = getId(pathname, folders, parentId);
-
-  if (method === "HEAD" || method === "GET") {
-    // Retrieves file or folder info.
-    searchParams.set("root_folder_id", parentId);
-    const files: File[] = await list(`/?${searchParams}`, {
-      headers: {
-        Authorization,
-        "Content-Type": request.headers.get("Content-Type") || "",
-      },
-    }).then((response) => response.json());
-
-    // For request to folder, the file name list is returned in the Link header.
-    if (isDirectory) {
-      for await (let { name, mimeType } of files) {
-        if (mimeType === FOLDER_TYPE) { // Folder
-          name += "/";
-        }
-        headers.append("Link", `<${encodeURIComponent(name)}>`);
-      }
-    } else {
-      const file = files.find((file) => {
-        return file.mimeType !== FOLDER_TYPE &&
-          file.name ===
-            decodeURIComponent(pathname).slice(1).split("/").at(-1);
-      })!;
-
-      headers.append("Content-Type", file.mimeType);
-      headers.append("Content-Length", file.size);
-      headers.append("Last-Modified", file.modifiedTime);
-      headers.append("ETag", file.md5Checksum);
-    }
-  }
-
-  if (method === "GET") {
-    // Retrieves file content.
-    body = new ReadableStream();
-  }
-
   if (method === "PUT") {
+    // TODO: Nested folder creation.
     if (isDirectory) {
       request.headers.set("Content-Type", FOLDER_TYPE);
     }
@@ -95,8 +58,126 @@ async function router(request: Request): Promise<Response> {
     return create(request);
   }
 
+  const files: File[] = await list(request).then((r) => r.json());
+
+  if (method === "HEAD" || method === "GET") {
+    // For request to folder, displays the folder content in HTML
+    if (isDirectory) {
+      for (const { name, mimeType } of files) {
+        let filePath = name;
+        const isDirectory = mimeType.includes("folder");
+        if (isDirectory) {
+          filePath += "/";
+        }
+      }
+
+      if (method === "GET") {
+        body = new ReadableStream({
+          start(controller) {
+            controller.enqueue(`
+            <table cellpadding="4">
+            <thead>
+              <tr>
+                <th></th>
+                <th>Name</th>
+                <th>Size</th>
+                <th>Modified</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>📁</td>
+                <td><a href="../?${searchParams}">Go up</a></td>
+                <td>—</td>
+                <td>—</td>
+              </tr>
+            `);
+
+            for (const { name, mimeType, size, modifiedTime } of files) {
+              let filePath = name;
+              const isDirectory = mimeType.includes("folder");
+              if (isDirectory) {
+                filePath += "/";
+              }
+              const modifiedDate = new Date(modifiedTime!);
+              controller.enqueue(`<tr>
+                <td>${isDirectory ? "📁" : "📄"}</td>
+                <td>
+                  <a
+                    href="${filePath}?${searchParams}"
+                    type="${mimeType}"
+                  >${name}</a>
+                </td>
+                <td>
+                  <data
+                    value="${size}"
+                  >${
+                size ? formatBytes(Number(size), { locale: true }) : "—"
+              }</data>
+                </td>
+                <td>
+                  <time
+                    datetime="${modifiedDate.toISOString()}"
+                  >${modifiedDate.toLocaleString()}</time>
+                </td>
+              </tr>`);
+            }
+
+            controller.enqueue("</tbody></table>");
+            controller.close();
+          },
+        }).pipeThrough(new TextEncoderStream());
+      }
+
+      headers.set("Content-Type", "text/html;charset=utf-8");
+    } else {
+      const {
+        id,
+        name,
+        mimeType,
+        size,
+        modifiedTime,
+      } = files[0];
+
+      // Sets initial headers based on file metadata.
+      headers.set("Content-Length", String(size));
+      headers.set("Content-Type", mimeType);
+      headers.set("Last-Modified", String(modifiedTime));
+
+      if (method === "GET") {
+        // Retrieves file content.
+        const file = await fetchFile(`/${id}`, {
+          headers: requestHeaders,
+        });
+        status = file.status;
+        body = file.body;
+
+        // Copies file headers.
+        for (const [key, value] of file.headers) {
+          if (FILE_HEADERS.has(key)) {
+            headers.set(key, value);
+          }
+        }
+
+        // Patches for MKV file to be playable in browser.
+        if (name.endsWith(".mkv")) {
+          headers.set("Content-Type", "video/webm");
+        }
+      }
+    }
+  }
+
   if (method === "DELETE") {
-    status = 204;
+    const id = files[0]?.id;
+    if (id) {
+      const response = await fetchFile(`/${id}`, {
+        method,
+        headers: requestHeaders,
+      });
+      status = response.status;
+    } else {
+      status = 404;
+    }
   }
 
   return new Response(body, {
@@ -105,40 +186,6 @@ async function router(request: Request): Promise<Response> {
   });
 }
 
-/**
- * Retrieves the ID of the file or folder for the given `pathname`.
- * @param pathname Relative path to find ID for.
- * @param files List of all files.
- * @param parentId The starting parent ID.
- * @returns The ID of the file or folder for that `pathname`.
- */
-function getId(pathname: string, files: File[], parentId = "1") {
-  const segments = pathname.split("/").filter((d) => d);
-
-  for (const segment of segments) {
-    const file = files.find((f) =>
-      f.name === segment && f.parents[0] === parentId
-    );
-    if (!file) {
-      return "";
-    }
-    parentId = file.id;
-  }
-
-  return parentId;
-}
-
-const exports = {
+export default {
   fetch: router,
 };
-
-export {
-  // For Cloudflare Workers.
-  exports as default,
-  router as fetch,
-};
-
-// Learn more at https://deno.land/manual/examples/module_metadata#concepts
-if (import.meta.main) {
-  Deno.serve(router);
-}

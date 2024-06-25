@@ -34,7 +34,8 @@ export async function list(input, init) {
   input = new Request(input, init);
 
   const headers = input.headers;
-  const { pathname, searchParams } = new URL(input.url);
+  let { pathname, searchParams } = new URL(input.url);
+  pathname = decodeURIComponent(pathname);
 
   // Shared Drive or My Drive
   const driveId = searchParams.get("team_drive") || "";

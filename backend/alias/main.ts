@@ -34,12 +34,6 @@ function router(request: Request): Promise<Response> {
   return fetch(join(remote, pathname), request);
 }
 
-const exports = {
+export default {
   fetch: router,
-};
-
-export {
-  // For Cloudflare Workers.
-  exports as default,
-  router as fetch,
 };

@@ -128,13 +128,10 @@ export async function lsf(
     .pipeThrough(
       new TransformStream({
         transform(chunk, controller) {
-          // `lsjson returns each item on a new line, and except the first line,
-          // all lines start with a comma. We strip that leading comma and then
-          // trim for any new lines.
-          if (chunk.startsWith(",")) {
-            chunk = chunk.substring(1);
-          }
-          chunk = chunk.trim();
+          // `lsjson returns each item on a new line, and except the
+          // last line, all lines ends with a comma. We strip that
+          // trailing comma and any new lines.
+          chunk = chunk.trim().replace(/,$/, "");
 
           if (chunk.startsWith("{") && chunk.at(-1) === "}") {
             const item = JSON.parse(chunk) as File;
@@ -142,7 +139,7 @@ export async function lsf(
             if (filesOnly && item.IsDir) return;
 
             if (item.IsDir && dirSlash) {
-              item.Name += "/";
+              item.Path += "/";
             }
 
             chunk = [...format].map((f) => {
@@ -152,6 +149,7 @@ export async function lsf(
               }
               return value;
             }).join(separator);
+
             controller.enqueue(`${chunk}\n`);
           }
         },
