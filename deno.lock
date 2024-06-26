@@ -191,6 +191,7 @@
     "https://esm.sh/v135/aes-js@3.1.2/denonext/aes-js.mjs": "5c667dd96d94b8ec6790ad3256bd7c5dd92d6567289efb30197b9b5d8e3d6ed1",
     "https://esm.sh/v135/base32-decode@1.0.0/denonext/base32-decode.mjs": "fc60335f713d9840046ad9cf6add6dc858b0ff16da838213763693e2ed324fc5",
     "https://esm.sh/v135/base32-encode@2.0.0/denonext/base32-encode.mjs": "02bfcbb76fd80c79df47f54a953bc8bd779d347a48386aa36722f7a8efbf2403",
-    "https://esm.sh/v135/to-data-view@2.0.0/denonext/to-data-view.mjs": "35093e5fc0fe65237adf05d4e20f7244c10c84d94f2c2607d19fbef721c4bcc0"
+    "https://esm.sh/v135/to-data-view@2.0.0/denonext/to-data-view.mjs": "35093e5fc0fe65237adf05d4e20f7244c10c84d94f2c2607d19fbef721c4bcc0",
+    "https://raw.githubusercontent.com/rclone/rclone/master/fs/rc/js/wasm_exec.js": "e6f7c7d25fceebf63cf20a139941877117f30262a0035c4727d1f70acbb1cfe7"
   }
 }

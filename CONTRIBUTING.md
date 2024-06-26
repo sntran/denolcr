@@ -10,14 +10,14 @@ Note that in rclone terminology a file system backend is called a remote or an
 fs.
 
 - `deno init backend/remote`
-- Edit "backend/remote/main.ts" and "backend/remote/main_test.ts" for the new
+- Edit "backend/remote/main.js" and "backend/remote/main_test.js" for the new
   backend.
 - Implements a `fetch` default export function that handles "GET", "PUT" and
   "DELETE".
-- Uses `backend/local/main.ts` as reference, or the boilerplate below:
+- Uses `backend/local/main.js` as reference, or the boilerplate below:
 
 ```ts
-import {} from "../../deps.ts";
+import {} from "../../deps.js";
 
 function router(request: Request) {
   const { method, url } = request;

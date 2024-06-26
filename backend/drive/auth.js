@@ -1,6 +1,6 @@
-import { base64url } from "../../deps.ts";
+import { base64url } from "../../deps.js";
 
-import { reveal } from "../../cmd/obscure/main.ts";
+import { reveal } from "../../cmd/obscure/main.js";
 
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 

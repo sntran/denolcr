@@ -7,7 +7,7 @@
  * accurate comparison.
  */
 
-import { lsjson } from "./main.ts";
+import { lsjson } from "./main.js";
 
 const remotes = ["./", "./backend/", "./cmd/"];
 

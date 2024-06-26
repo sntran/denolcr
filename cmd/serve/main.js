@@ -1,5 +1,5 @@
-import { fetch } from "../../main.ts";
-import * as backends from "../../backend/main.ts";
+import { fetch } from "../../main.js";
+import * as backends from "../../backend/main.js";
 
 /**
  * Serves a remote backend
