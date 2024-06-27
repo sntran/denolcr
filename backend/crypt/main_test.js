@@ -1,7 +1,7 @@
 import { contentType, extname, join } from "../../deps.js";
 import { assert, assertEquals, equalBytes, fc } from "../../dev_deps.js";
 
-import { decode, encode, default as crypt } from "./main.js";
+import { decode, default as crypt, encode } from "./main.js";
 
 const PASSWORD = "UmyLSdRHfew6aual28-ggx78qHqSfQ";
 const SALT = "Cj3gLa5PVwc2aot0QpKiOZ3YEzs3Sw";

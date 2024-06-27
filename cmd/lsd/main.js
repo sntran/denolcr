@@ -1,4 +1,4 @@
-import { lsf } from "../../main.js";
+import { lsf } from "../../mod.js";
 /**
  * List all directories/containers/buckets in the path.
  *

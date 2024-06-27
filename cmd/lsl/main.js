@@ -1,4 +1,4 @@
-import { lsf } from "../../main.js";
+import { lsf } from "../../mod.js";
 
 /**
  * List the objects in path with modification time, size and path.
@@ -9,7 +9,7 @@ import { lsf } from "../../main.js";
  * Example:
  *
  * ```js
- * import { lsl } from "./mod.js";
+ * import { lsl } from "./main.js";
  * const response = await lsl("remote:path");
  * console.log(await response.text());
  * // 60295 2016-06-25 18:55:41.062626927 bevajer5jef

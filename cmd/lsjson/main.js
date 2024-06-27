@@ -1,6 +1,6 @@
 import { basename, HTMLRewriter, toLocaleISOString } from "../../deps.js";
 
-import { fetch } from "../../main.js";
+import { fetch } from "../../mod.js";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -105,7 +105,7 @@ export async function lsjson(location, flags = {}) {
   let body = new ReadableStream({
     start(controller) {
       /**
-       * @type {import("../../main.js").File}
+       * @type {import("../../mod.js").File}
        */
       let item;
       let transformed = Promise.resolve();

@@ -3,7 +3,7 @@ import {
   assertEquals,
   assertNotEquals,
   assertRejects,
-} from "https://deno.land/std@0.203.0/assert/mod.ts";
+} from "@std/assert";
 export { assert, assertEquals, assertNotEquals, assertRejects };
 
 /**
@@ -38,4 +38,4 @@ export function equalBytes(a, b) {
   return isSame;
 }
 
-export * as fc from "npm:fast-check@3.13.1";
+export * as fc from "fast-check";

@@ -1,8 +1,8 @@
 #!/usr/bin/env -S deno serve --allow-all
 
+import { cwd } from "node:process";
+import { mkdir, open, readdir, rm, stat } from "node:fs/promises";
 import { contentType, extname, formatBytes, join } from "../../deps.js";
-
-const cwd = Deno.cwd();
 
 /**
  * Serves a local remote
@@ -12,7 +12,7 @@ const cwd = Deno.cwd();
 async function router(request) {
   const { method, url } = request;
   const { pathname, searchParams } = new URL(url);
-  const absolutePath = join(cwd, pathname);
+  const absolutePath = join(cwd(), pathname);
 
   let stats;
 
@@ -20,25 +20,14 @@ async function router(request) {
   let status = 200, body = null;
 
   if (method === "HEAD" || method === "GET") {
-    const file = await Deno.open(absolutePath);
-    stats = await file.stat();
-    file.close();
+    stats = await stat(absolutePath);
 
-    if (stats.isDirectory) {
+    if (stats.isDirectory()) {
       // TODO: refactor to use `node:fs`
       /**
-       * @type {Deno.DirEntry[]}
+       * @type {import("node:fs").Dirent[]}
        */
-      const files = [];
-      for await (const file of Deno.readDir(absolutePath)) {
-        const { name, isDirectory } = file;
-        let filePath = name;
-        if (isDirectory) {
-          filePath += "/";
-        }
-        files.push(file);
-      }
-
+      const files = await readdir(absolutePath, { withFileTypes: true });
       files.sort((a, b) => a.name.localeCompare(b.name));
 
       if (method === "GET") {
@@ -73,14 +62,16 @@ async function router(request) {
                 </tr>
               `);
 
-            for await (const { name, isDirectory } of files) {
-              let filePath = name;
+            for await (const file of files) {
+              const name = file.name;
+              let filePath = file.name;
+              const isDirectory = file.isDirectory();
               if (isDirectory) {
                 filePath += "/";
               }
 
               // TODO: refactor to use `node:fs`
-              const { size, mtime } = await Deno.stat(
+              const { size, mtime } = await stat(
                 join(absolutePath, filePath),
               );
 
@@ -124,8 +115,22 @@ async function router(request) {
       headers.append("Content-Length", stats.size.toString());
 
       if (method === "GET") {
-        const file = await Deno.open(absolutePath);
-        body = file.readable;
+        const file = await open(absolutePath);
+
+        body = new ReadableStream({
+          async pull(controller) {
+            const chunk = new Uint8Array(64 * 1024);
+            const { bytesRead } = await file.read(chunk, 0);
+            controller.enqueue(chunk.slice(0, bytesRead));
+            if (bytesRead === 0) {
+              controller.close();
+              file.close();
+            }
+          },
+          cancel() {
+            file.close();
+          },
+        });
       }
     }
 
@@ -137,10 +142,17 @@ async function router(request) {
   if (method === "PUT") {
     // Folder ending with trailing slash.
     if (pathname.endsWith("/")) {
-      await Deno.mkdir(absolutePath, { recursive: true });
+      await mkdir(absolutePath, { recursive: true });
     } else {
-      const file = await Deno.open(absolutePath, { write: true, create: true });
-      await request.body.pipeTo(file.writable);
+      const file = await open(absolutePath, "w");
+      await request.body.pipeTo(new WritableStream({
+        async write(chunk) {
+          await file.write(chunk);
+        },
+        async close() {
+          await file.close();
+        },
+      }));
     }
 
     status = 201;
@@ -148,7 +160,7 @@ async function router(request) {
   }
 
   if (method === "DELETE") {
-    await Deno.remove(absolutePath, { recursive: true });
+    await rm(absolutePath, { recursive: true });
     status = 204;
   }
 

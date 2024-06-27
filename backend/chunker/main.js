@@ -103,7 +103,7 @@
  */
 import { crypto, encodeHex } from "../../deps.js";
 import { Chunker } from "../../lib/streams/chunker.js";
-import { fetch } from "../../main.js";
+import { fetch } from "../../mod.js";
 
 const METADATA_VERSION = 1;
 

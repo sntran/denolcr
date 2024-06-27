@@ -1,4 +1,4 @@
-import { fetch } from "../../main.js";
+import { fetch } from "../../mod.js";
 /**
  * Copy files from source to dest, skipping identical files.
  *

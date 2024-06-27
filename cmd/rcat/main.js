@@ -1,4 +1,4 @@
-import { fetch } from "../../main.js";
+import { fetch } from "../../mod.js";
 
 /**
  * Copies standard input to file on remote.

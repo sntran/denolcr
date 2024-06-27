@@ -95,9 +95,8 @@
  * - 1049120 bytes total (a 0.05% overhead). This is the overhead for big files.
  */
 
-import { scrypt } from "https://deno.land/x/scrypto@v1.0.0/scrypt.ts";
-import { contentType, extname } from "../../deps.js";
-import { fetch } from "../../main.js";
+import { contentType, extname, scrypt } from "../../deps.js";
+import { fetch } from "../../mod.js";
 import { reveal } from "../../cmd/obscure/main.js";
 import PathCipher from "./PathCipher.js";
 import { DecryptionStream, EncryptionStream } from "./secretbox.js";
@@ -124,10 +123,10 @@ const DEFAULT_SALT = new Uint8Array([
 ]);
 
 // Params for scrypt
-const N = 16384;
+const N = 2 ** 14; // 16384
 const r = 8;
 const p = 1;
-const keySize = 32 + 32 + 16;
+const dkLen = 32 + 32 + 16;
 
 const SECRETBOX_OPTIONS = {
   blockSize: 64 * 1024, // 64 KiB
@@ -330,16 +329,15 @@ export async function decode(options, ...args) {
  * @returns {Promise<Uint8Array>}
  */
 async function deriveKey(encPass, encSalt) {
-  const password = await reveal(encPass).then((r) => r.arrayBuffer()).then(
-    (buf) => new Uint8Array(buf),
-  );
-  const decryptedSalt = await reveal(encSalt).then((r) => r.arrayBuffer()).then(
-    (buf) => new Uint8Array(buf),
-  );
+  const password = await reveal(encPass)
+    .then((response) => response.arrayBuffer())
+    .then((buf) => new Uint8Array(buf));
+  const decryptedSalt = await reveal(encSalt)
+    .then((response) => response.arrayBuffer())
+    .then((buf) => new Uint8Array(buf));
   const salt = decryptedSalt.length ? decryptedSalt : DEFAULT_SALT;
 
-  const derivedKey = await scrypt(password, salt, N, r, p, keySize);
-  return new Uint8Array(derivedKey);
+  return scrypt(password, salt, { N, r, p, dkLen });
 }
 
 export default {

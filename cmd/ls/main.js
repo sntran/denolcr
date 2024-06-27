@@ -1,4 +1,4 @@
-import { lsf } from "../../main.js";
+import { lsf } from "../../mod.js";
 /**
  * List the objects in the path with size and path.
  *
@@ -8,7 +8,7 @@ import { lsf } from "../../main.js";
  * Example:
  *
  * ```js
- * import { ls } from "./mod.js";
+ * import { ls } from "./main.js";
  * const response = await ls("remote:path");
  * console.log(await response.text());
  * // 60295 bevajer5jef

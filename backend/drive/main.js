@@ -64,7 +64,14 @@ async function router(request) {
   /**
    * @type {import("./file.js").File[]}
    */
-  const files = await list(request).then((r) => r.json());
+  let files = [];
+  try {
+    files = await list(request).then((r) => r.json());
+  } catch (_error) {
+    return new Response(null, {
+      status: 404,
+    });
+  }
 
   if (method === "HEAD" || method === "GET") {
     // For request to folder, displays the folder content in HTML
@@ -137,13 +144,20 @@ async function router(request) {
 
       headers.set("Content-Type", "text/html;charset=utf-8");
     } else {
+      const file = files[0];
+      if (!file) {
+        return new Response(null, {
+          status: 404,
+        });
+      }
+
       const {
         id,
         name,
         mimeType,
         size,
         modifiedTime,
-      } = files[0];
+      } = file;
 
       // Sets initial headers based on file metadata.
       headers.set("Content-Length", String(size));

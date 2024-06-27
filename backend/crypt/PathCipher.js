@@ -1,12 +1,6 @@
-import { AES } from "https://esm.sh/aes-js@3.1.2";
-import {
-  pad,
-  Padding,
-  unpad,
-} from "https://deno.land/x/crypto/src/utils/padding.ts";
-import { default as decodeBase32 } from "https://esm.sh/base32-decode@1.0.0";
-import { default as encodeBase32 } from "https://esm.sh/base32-encode@2.0.0";
+import { AES, decodeBase32, encodeBase32 } from "../../deps.js";
 import { Decrypt, Encrypt } from "./eme.js";
+import { pad, Padding, unpad } from "./padding.js";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();

@@ -105,7 +105,7 @@ async function router(request) {
       `);
 
       /**
-       * @type {import("../../main.js").File}
+       * @type {import("../../mod.js").File}
        */
       let item;
 

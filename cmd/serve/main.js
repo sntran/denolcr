@@ -1,4 +1,4 @@
-import { fetch } from "../../main.js";
+import { fetch } from "../../mod.js";
 import * as backends from "../../backend/main.js";
 
 /**

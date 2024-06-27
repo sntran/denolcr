@@ -1,9 +1,0 @@
-{
-  "tasks": {
-    "start": "deno run -A main.js",
-    "install": "deno install -A -n dclone main.js",
-    "bundle": "deno bundle -A main.js",
-    "test": "deno test -A --no-check --fail-fast",
-    "bench": "deno bench -A"
-  }
-}

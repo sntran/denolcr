@@ -1,3 +1,26 @@
+import { createServer } from "node:http";
+
+/**
+ * Converts Node's `IncomingMessage` to web `Request`.
+ * @param {import("node:http").IncomingMessage} incoming
+ * @returns {Request}
+ */
+function toWeb(incoming) {
+  let { url, headers, method, body } = incoming;
+  const abortController = new AbortController();
+  headers = new Headers(headers);
+  url = new URL(url, `http://${headers.get("Host")}`);
+
+  incoming.once("aborted", () => abortController.abort());
+
+  return new Request(url, {
+    method,
+    headers,
+    body,
+    signal: abortController.signal,
+  });
+}
+
 /**
  * Serve the remote over HTTP.
  * @param {(Request) => Response | Promise<Response>} fetch
@@ -9,18 +32,16 @@ export function serve(fetch, flags = {}) {
     ...backendFlags
   } = flags;
 
-  const [hostname, port] = addr.split(":");
+  let [hostname, port] = addr.split(":");
+  if (!hostname) {
+    hostname = "0.0.0.0";
+  }
 
   let server;
   const body = new ReadableStream({
     start(controller) {
-      server = Deno.serve({
-        port: Number(port),
-        hostname,
-        onListen({ port, hostname }) {
-          controller.enqueue(`Listening on http://${hostname}:${port}`);
-        },
-      }, (request) => {
+      server = createServer(async (incoming, outgoing) => {
+        let request = toWeb(incoming);
         const url = new URL(request.url);
         Object.entries(backendFlags).forEach(([key, value]) => {
           if (!url.searchParams.has(key)) {
@@ -29,12 +50,27 @@ export function serve(fetch, flags = {}) {
         });
 
         request = new Request(url, request);
+        const response = await fetch(request);
 
-        return fetch(request);
+        const { status, statusText, headers, body } = response;
+        headers.forEach((value, key) => outgoing.setHeader(key, value));
+        outgoing.writeHead(status, statusText);
+
+        if (body) {
+          for await (const chunk of body) {
+            outgoing.write(chunk);
+          }
+        }
+
+        outgoing.end();
+      });
+
+      server.listen(Number(port), hostname, () => {
+        controller.enqueue(`Listening on http://${hostname}:${port}`);
       });
     },
     async cancel() {
-      await server.shutdown();
+      await server.close();
     },
   }).pipeThrough(new TextEncoderStream());
 

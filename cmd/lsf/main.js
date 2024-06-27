@@ -1,4 +1,4 @@
-import { lsjson } from "../../main.js";
+import { lsjson } from "../../mod.js";
 
 const FORMATS = {
   "p": "Path",
@@ -24,7 +24,7 @@ const FORMATS = {
  * Example
  *
  * ```js
- * import { lsf } from "./mod.js";
+ * import { lsf } from "./main.js";
  * const response = await lsf("remote:path");
  * console.log(await response.text());
  * // bevajer5jef
@@ -56,7 +56,7 @@ const FORMATS = {
  * Example:
  *
  * ```js
- * import { Rclone } from "./mod.js";
+ * import { lsf } from "./main.js";
  * const response = await lsf("remote:path", { format: "tsp" });
  * console.log(await response.text());
  * // 2016-06-25 18:55:41;60295;bevajer5jef
@@ -73,7 +73,7 @@ const FORMATS = {
  * Example:
  *
  * ```js
- * import { Rclone } from "./mod.js";
+ * import { lsf } from "./main.js";
  * const response = await lsf("remote:path", {
  *   separator: ",",
  *   format: "tshp",
@@ -91,7 +91,7 @@ const FORMATS = {
  * Example:
  *
  * ```js
- * import { Rclone } from "./mod.js";
+ * import { lsf } from "./main.js";
  * const response = await lsf("remote:path", {
  *   csv: true,
  *   files_only: true,
@@ -143,7 +143,7 @@ export async function lsf(location, flags = {}) {
 
           if (chunk.startsWith("{") && chunk.at(-1) === "}") {
             /**
-             * @type {import("../../main.js").File}
+             * @type {import("../../mod.js").File}
              */
             const item = JSON.parse(chunk);
             if (dirsOnly && !item.IsDir) return;

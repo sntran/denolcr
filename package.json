@@ -1,0 +1,48 @@
+{
+  "name": "denolcr",
+  "version": "0.1.0",
+  "description": "Deno port of Rclone, rewriting functionality using Web API.",
+  "engines": {
+    "node": ">=22.2.0",
+    "deno": ">=1.44.4"
+  },
+  "bin": {
+    "denolcr": "main.js"
+  },
+  "main": "mod.js",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sntran/denolcr.git"
+  },
+  "scripts": {
+    "start": "node main.js",
+    "test": "deno test -A --no-check --fail-fast"
+  },
+  "author": "Trần Nguyễn Sơn",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/sntran/denolcr/issues"
+  },
+  "homepage": "https://github.com/sntran/denolcr#readme",
+  "dependencies": {
+    "@noble/ciphers": "^0.5.3",
+    "@noble/hashes": "^1.4.0",
+    "@sntran/html-rewriter": "npm:@jsr/sntran__html-rewriter@^0.1.1",
+    "@std/cli": "npm:@jsr/std__cli@^1.0.0-rc.1",
+    "@std/crypto": "npm:@jsr/std__crypto@^1.0.0-rc.1",
+    "@std/encoding": "npm:@jsr/std__encoding@^1.0.0-rc.2",
+    "@std/fmt": "npm:@jsr/std__fmt@^0.225.4",
+    "@std/http": "npm:@jsr/std__http@^0.224.5",
+    "@std/ini": "npm:@jsr/std__ini@^0.225.1",
+    "@std/media-types": "npm:@jsr/std__media-types@^1.0.0-rc.1",
+    "@std/path": "npm:@jsr/std__path@^1.0.0-rc.2",
+    "aes-js": "^3.1.2",
+    "base32-decode": "^1.0.0",
+    "base32-encode": "^2.0.0"
+  },
+  "devDependencies": {
+    "@std/assert": "npm:@jsr/std__assert@^1.0.0-rc.2",
+    "fast-check": "^3.19.0"
+  }
+}

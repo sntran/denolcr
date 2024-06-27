@@ -1,26 +1,32 @@
-export { parseArgs } from "https://deno.land/std@0.209.0/cli/parse_args.ts";
-export * as INI from "https://deno.land/std@0.209.0/ini/mod.ts";
-export {
-  basename,
-  extname,
-  join,
-  resolve,
-} from "https://deno.land/std@0.209.0/path/mod.ts";
-export { getCookies } from "https://deno.land/std@0.209.0/http/cookie.ts";
-export { contentType } from "https://deno.land/std@0.209.0/media_types/mod.ts";
-export { format as formatBytes } from "https://deno.land/std@0.209.0/fmt/bytes.ts";
-export { format as formatDuration } from "https://deno.land/std@0.209.0/fmt/duration.ts";
+import { platform } from "node:os";
+import { env } from "node:process";
 
-export * as base64url from "https://deno.land/std@0.209.0/encoding/base64url.ts";
-export { encodeHex } from "https://deno.land/std@0.209.0/encoding/hex.ts";
-import { crypto } from "https://deno.land/std@0.209.0/crypto/mod.ts";
+export { parseArgs } from "@std/cli/parse-args";
+export * as INI from "@std/ini";
+export { basename, extname, join, resolve } from "@std/path";
+export { getCookies } from "@std/http/cookie";
+export { contentType } from "@std/media-types";
+export { format as formatBytes } from "@std/fmt/bytes";
+export { format as formatDuration } from "@std/fmt/duration";
+
+export { encodeBase64Url, encodeHex } from "@std/encoding";
+import { crypto } from "@std/crypto";
+
+export { default as decodeBase32 } from "base32-decode";
+export { default as encodeBase32 } from "base32-encode";
+
+import aesjs from "aes-js";
+// `aes-js` is a CommonJS module, so we need to use `default` to import it.
+const { AES } = aesjs;
+export { AES };
+
+export { xsalsa20poly1305 } from "@noble/ciphers/salsa";
+export { scryptAsync as scrypt } from "@noble/hashes/scrypt";
 
 // Polyfills `HTMLRewriter`, which is available on Cloudflare Workers.
 // @ts-ignore: `HTMLRewriter` is not part of globalThis.
 if (!globalThis.HTMLRewriter) {
-  const { HTMLRewriter } = await import(
-    "https://esm.sh/@worker-tools/html-rewriter@0.1.0-pre.19/base64"
-  );
+  const { HTMLRewriter } = await import("@sntran/html-rewriter");
   // @ts-ignore: `HTMLRewriter` is not part of globalThis.
   globalThis.HTMLRewriter = HTMLRewriter;
 }
@@ -32,7 +38,7 @@ export { HTMLRewriter };
 /**
  * Calculates the hash of a file.
  * @param {string} path
- * @param {import("https://deno.land/std@0.209.0/crypto/_wasm/mod.ts").DigestAlgorithm} [algorithm="MD5"]
+ * @param {import("@std/crypto").DigestAlgorithm} [algorithm=""]
  * @returns {string}
  */
 async function digest(path, algorithm = "MD5") {
@@ -49,19 +55,19 @@ export { crypto, digest };
  * @returns {string | null}
  */
 export function config_dir() {
-  switch (Deno.build.os) {
+  switch (platform()) {
     case "linux":
     case "darwin": {
-      const xdg = Deno.env.get("XDG_CONFIG_HOME");
+      const xdg = env["XDG_CONFIG_HOME"];
       if (xdg) return xdg;
 
-      const home = Deno.env.get("HOME");
+      const home = env["HOME"];
       if (home) return `${home}/.config`;
       break;
     }
 
     case "windows":
-      return Deno.env.get("APPDATA") ?? null;
+      return env["APPDATA"] ?? null;
   }
 
   return null;

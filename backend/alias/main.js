@@ -20,7 +20,7 @@
  */
 
 import { join } from "../../deps.js";
-import { fetch } from "../../main.js";
+import { fetch } from "../../mod.js";
 
 /**
  * @param {Request} request

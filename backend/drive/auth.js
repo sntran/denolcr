@@ -1,4 +1,4 @@
-import { base64url } from "../../deps.js";
+import { encodeBase64Url } from "../../deps.js";
 
 import { reveal } from "../../cmd/obscure/main.js";
 
@@ -168,7 +168,7 @@ async function createJWT(serviceAccount, scopes) {
     key,
     encoder.encode(jwt),
   );
-  const signatureEncoded = base64url.encode(new Uint8Array(signature));
+  const signatureEncoded = encodeBase64Url(new Uint8Array(signature));
 
   return `${jwt}.${signatureEncoded}`;
 }

@@ -1,3 +1,6 @@
+import { env } from "node:process";
+import { readFile } from "node:fs/promises";
+
 import { config_dir, INI, join } from "../../deps.js";
 
 const NAME_REGEX = /^[\w.][\w.\s-]*$/;
@@ -41,11 +44,11 @@ export async function config(subcommand, name, options, init) {
   const PATHS = [
     "rclone.conf",
     join(config_dir(), "rclone", "rclone.conf"),
-    join(Deno.env.get("HOME"), ".rclone.conf"),
+    join(env["HOME"], ".rclone.conf"),
   ];
   for await (const path of PATHS) {
     try {
-      ini = await Deno.readTextFile(path);
+      ini = await readFile(path, { encoding: "utf8" });
       file = path;
       break;
     } catch (_error) {
