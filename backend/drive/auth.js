@@ -5,9 +5,8 @@ import { reveal } from "../../cmd/obscure/main.js";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 
 const CLIENT_ID = "202264815644.apps.googleusercontent.com";
-const CLIENT_SECRET = await reveal(
-  "eX8GpZTVx3vxMWVkuuBdDWmAUE6rGhTwVrvG9GhllYccSdj2-mvHVg",
-).then((r) => r.text());
+// This is actually an obscured value. Must use `reveal`.
+const CLIENT_SECRET = "eX8GpZTVx3vxMWVkuuBdDWmAUE6rGhTwVrvG9GhllYccSdj2-mvHVg";
 const SCOPE = "drive";
 
 const encoder = new TextEncoder();
@@ -71,7 +70,10 @@ export async function auth(request) {
     body.set("assertion", jwt);
   } else {
     const client_id = searchParams.get("client_id") || CLIENT_ID;
-    const client_secret = searchParams.get("client_secret") || CLIENT_SECRET;
+    let client_secret = searchParams.get("client_secret");
+    if (!client_secret) {
+      client_secret = await reveal(CLIENT_SECRET).then((r) => r.text());
+    }
     let token = searchParams.get("token") || "";
     try {
       // Refresh token can be passed inside a JSON (rclone style) or the token itself.

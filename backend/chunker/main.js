@@ -145,7 +145,7 @@ export const options = {
  * @param {Request} request
  * @returns {Promise<Response>}
  */
-async function router(request) {
+async function chunker(request) {
   const { method, url } = request;
   const { pathname, searchParams } = new URL(url);
 
@@ -385,5 +385,5 @@ async function upload(url, init) {
 }
 
 export default {
-  fetch: router,
+  fetch: chunker,
 };

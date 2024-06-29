@@ -26,7 +26,7 @@ import { fetch } from "../../mod.js";
  * @param {Request} request
  * @returns {Promise<Response>}
  */
-function router(request) {
+function alias(request) {
   const { pathname, searchParams } = new URL(request.url);
   const remote = searchParams.get("remote");
 
@@ -39,5 +39,5 @@ function router(request) {
 }
 
 export default {
-  fetch: router,
+  fetch: alias,
 };

@@ -1,7 +1,6 @@
 #!/usr/bin/env -S deno serve --allow-all
 
-import { cwd } from "node:process";
-import { mkdir, open, readdir, rm, stat } from "node:fs/promises";
+import process from "node:process";
 import { contentType, extname, formatBytes, join } from "../../deps.js";
 
 /**
@@ -9,10 +8,14 @@ import { contentType, extname, formatBytes, join } from "../../deps.js";
  * @param {Request} request
  * @returns {Promise<Response>}
  */
-async function router(request) {
+async function local(request) {
   const { method, url } = request;
   const { pathname, searchParams } = new URL(url);
-  const absolutePath = join(cwd(), pathname);
+  const absolutePath = join(process.cwd?.() || ".", pathname);
+
+  // Have to use dynamic import here because `fs/promises` is not available in
+  // Worker environments.
+  const { mkdir, open, readdir, rm, stat } = await import("node:fs/promises");
 
   let stats;
 
@@ -23,7 +26,6 @@ async function router(request) {
     stats = await stat(absolutePath);
 
     if (stats.isDirectory()) {
-      // TODO: refactor to use `node:fs`
       /**
        * @type {import("node:fs").Dirent[]}
        */
@@ -70,7 +72,6 @@ async function router(request) {
                 filePath += "/";
               }
 
-              // TODO: refactor to use `node:fs`
               const { size, mtime } = await stat(
                 join(absolutePath, filePath),
               );
@@ -145,14 +146,16 @@ async function router(request) {
       await mkdir(absolutePath, { recursive: true });
     } else {
       const file = await open(absolutePath, "w");
-      await request.body.pipeTo(new WritableStream({
-        async write(chunk) {
-          await file.write(chunk);
-        },
-        async close() {
-          await file.close();
-        },
-      }));
+      await request.body.pipeTo(
+        new WritableStream({
+          async write(chunk) {
+            await file.write(chunk);
+          },
+          async close() {
+            await file.close();
+          },
+        }),
+      );
     }
 
     status = 201;
@@ -171,5 +174,5 @@ async function router(request) {
 }
 
 export default {
-  fetch: router,
+  fetch: local,
 };

@@ -21,7 +21,7 @@ const FILE_HEADERS = new Headers({
  * @param {Request} request
  * @returns {Promise<Response>}
  */
-async function router(request) {
+async function drive(request) {
   //#region Auth
   const response = await auth(request);
   if (!response.ok) {
@@ -207,5 +207,5 @@ async function router(request) {
 }
 
 export default {
-  fetch: router,
+  fetch: drive,
 };

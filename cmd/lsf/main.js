@@ -125,13 +125,16 @@ export async function lsf(location, flags = {}) {
   } = flags;
 
   const response = await lsjson(location, flags);
-  const { headers, ok } = response;
+  let { ok, headers, body } = response;
 
   if (!ok) {
     return response;
   }
 
-  const body = response.body
+  headers = new Headers(response.headers);
+  headers.set("Content-Type", "text/plain");
+
+  body = body
     .pipeThrough(new TextDecoderStream())
     .pipeThrough(
       new TransformStream({
@@ -169,9 +172,6 @@ export async function lsf(location, flags = {}) {
     .pipeThrough(new TextEncoderStream());
 
   return new Response(body, {
-    headers: {
-      ...headers,
-      "Content-Type": "text/plain",
-    },
+    headers,
   });
 }

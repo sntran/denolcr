@@ -138,7 +138,7 @@ const SECRETBOX_OPTIONS = {
  * @param {Request} request
  * @returns {Promise<Response>}
  */
-async function router(request) {
+async function crypt(request) {
   let { pathname, searchParams } = new URL(request.url);
 
   let remote = searchParams.get("remote");
@@ -341,5 +341,5 @@ async function deriveKey(encPass, encSalt) {
 }
 
 export default {
-  fetch: router,
+  fetch: crypt,
 };

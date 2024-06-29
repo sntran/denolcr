@@ -17,7 +17,8 @@
   },
   "scripts": {
     "start": "node main.js",
-    "test": "deno test -A --no-check --fail-fast"
+    "test": "deno test -A --no-check --fail-fast",
+    "worker": "wrangler pages dev ."
   },
   "author": "Trần Nguyễn Sơn",
   "license": "ISC",
@@ -28,7 +29,8 @@
   "dependencies": {
     "@noble/ciphers": "^0.5.3",
     "@noble/hashes": "^1.4.0",
-    "@sntran/html-rewriter": "npm:@jsr/sntran__html-rewriter@^0.1.1",
+    "@sntran/html-rewriter": "^0.2.0",
+    "@sntran/serve": "^0.0.1",
     "@std/cli": "npm:@jsr/std__cli@^1.0.0-rc.1",
     "@std/crypto": "npm:@jsr/std__crypto@^1.0.0-rc.1",
     "@std/encoding": "npm:@jsr/std__encoding@^1.0.0-rc.2",
@@ -43,6 +45,7 @@
   },
   "devDependencies": {
     "@std/assert": "npm:@jsr/std__assert@^1.0.0-rc.2",
-    "fast-check": "^3.19.0"
+    "fast-check": "^3.19.0",
+    "wrangler": "^3.62.0"
   }
 }

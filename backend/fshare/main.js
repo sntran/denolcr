@@ -46,20 +46,12 @@ const APP_KEY = "dMnqMMZMUnN5YpvKENaEhdQQ5jxDqddt";
  * @property {number} [modified]
  */
 
-const authResponse = new Response("401 Unauthorized", {
-  status: 401,
-  statusText: "Unauthorized",
-  headers: {
-    "WWW-Authenticate": `Basic realm="Login", charset="UTF-8"`,
-  },
-});
-
 /**
  * Serves an FShare remote
  * @param {Request} request
  * @returns {Promise<Response>}
  */
-async function router(request) {
+async function fshare(request) {
   const { method, url } = request;
   let { pathname, searchParams } = new URL(url);
 
@@ -298,6 +290,14 @@ async function authFetch(request, init) {
  * @returns {Promise<Response>}
  */
 export async function auth(request) {
+  const authResponse = new Response("401 Unauthorized", {
+    status: 401,
+    statusText: "Unauthorized",
+    headers: {
+      "WWW-Authenticate": `Basic realm="Login", charset="UTF-8"`,
+    },
+  });
+
   const headers = request.headers;
   const authorization = headers.get("Authorization");
   if (!authorization) {
@@ -410,7 +410,13 @@ export async function download(config, url, init = {}) {
   const { location } = await response.json();
 
   if (!location) {
-    return authResponse;
+    return new Response("401 Unauthorized", {
+      status: 401,
+      statusText: "Unauthorized",
+      headers: {
+        "WWW-Authenticate": `Basic realm="Login", charset="UTF-8"`,
+      },
+    });
   }
 
   if (redirect === "manual") {
@@ -424,5 +430,5 @@ export async function download(config, url, init = {}) {
 }
 
 export default {
-  fetch: router,
+  fetch: fshare,
 };

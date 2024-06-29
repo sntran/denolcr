@@ -1,5 +1,4 @@
 import { env } from "node:process";
-import { readFile } from "node:fs/promises";
 
 import { config_dir, INI, join } from "../../deps.js";
 
@@ -39,6 +38,8 @@ const NAME_REGEX = /^[\w.][\w.\s-]*$/;
  * @returns {Promise<Response>} The response.
  */
 export async function config(subcommand, name, options, init) {
+  const { readFile } = await import("node:fs/promises");
+
   let file = "", ini = "";
   // Order as specified at https://rclone.org/docs/#config-config-file.
   const PATHS = [

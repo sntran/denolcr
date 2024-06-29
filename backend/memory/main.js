@@ -23,7 +23,7 @@ cache.set("/", null);
  * @param {Request} request
  * @returns {Promise<Response>}
  */
-async function router(request) {
+async function memory(request) {
   const { method, url } = request;
   const { pathname, searchParams } = new URL(url);
 
@@ -189,5 +189,5 @@ async function router(request) {
 }
 
 export default {
-  fetch: router,
+  fetch: memory,
 };

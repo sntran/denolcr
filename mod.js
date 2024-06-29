@@ -229,7 +229,7 @@ export async function fetch(input, init = {}) {
    */
   const backend = backends[type];
 
-  const url = new URL(`${pathname}?${params}`, import.meta.url);
+  const url = new URL(`${pathname}?${params}`, import.meta.url || `file:`);
   // Creates a new request with the initial init.
   const request = new Request(url, init);
   // Clones that request and updates the headers.

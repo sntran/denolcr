@@ -48,7 +48,7 @@ export const options = {
  * @param {Request} request
  * @returns {Promise<Response>}
  */
-async function router(request) {
+async function http(request) {
   const { url, body } = request;
   const { pathname, searchParams } = new URL(url);
 
@@ -218,5 +218,5 @@ async function router(request) {
 }
 
 export default {
-  fetch: router,
+  fetch: http,
 };

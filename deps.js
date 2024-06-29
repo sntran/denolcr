@@ -1,4 +1,3 @@
-import { platform } from "node:os";
 import { env } from "node:process";
 
 export { parseArgs } from "@std/cli/parse-args";
@@ -23,16 +22,8 @@ export { AES };
 export { xsalsa20poly1305 } from "@noble/ciphers/salsa";
 export { scryptAsync as scrypt } from "@noble/hashes/scrypt";
 
-// Polyfills `HTMLRewriter`, which is available on Cloudflare Workers.
-// @ts-ignore: `HTMLRewriter` is not part of globalThis.
-if (!globalThis.HTMLRewriter) {
-  const { HTMLRewriter } = await import("@sntran/html-rewriter");
-  // @ts-ignore: `HTMLRewriter` is not part of globalThis.
-  globalThis.HTMLRewriter = HTMLRewriter;
-}
-
-// @ts-ignore: `HTMLRewriter` is not part of globalThis.
-const HTMLRewriter = globalThis.HTMLRewriter;
+import { HTMLRewriter } from "@sntran/html-rewriter";
+globalThis.HTMLRewriter = HTMLRewriter;
 export { HTMLRewriter };
 
 /**
@@ -55,22 +46,18 @@ export { crypto, digest };
  * @returns {string | null}
  */
 export function config_dir() {
-  switch (platform()) {
-    case "linux":
-    case "darwin": {
-      const xdg = env["XDG_CONFIG_HOME"];
-      if (xdg) return xdg;
-
-      const home = env["HOME"];
-      if (home) return `${home}/.config`;
-      break;
+  let dir = env["XDG_CONFIG_HOME"];
+  if (!dir) {
+    dir = env["APPDATA"]; // Windows
+  }
+  if (!dir) {
+    dir = env["HOME"];
+    if (dir) {
+      dir += "/.config";
     }
-
-    case "windows":
-      return env["APPDATA"] ?? null;
   }
 
-  return null;
+  return dir;
 }
 
 /**
