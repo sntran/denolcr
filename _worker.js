@@ -44,6 +44,10 @@ function remote(request, _env, params) {
 const routes = {
   "/\\::remote\\:/": remote,
   "/\\::remote\\:/:path*": remote,
+  "/\\::remote\\:/:path*/": (request, env, params) => {
+    params.path += "/";
+    return remote(request, env, params);
+  },
 };
 
 /**
