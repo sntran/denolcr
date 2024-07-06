@@ -12,7 +12,6 @@ export { default as alias } from "./alias/main.js";
 export { default as chunker } from "./chunker/main.js";
 export { default as crypt } from "./crypt/main.js";
 export { default as drive } from "./drive/main.js";
-export { default as fshare } from "./fshare/main.js";
 export { default as http } from "./http/main.js";
 export { default as local } from "./local/main.js";
 export { default as memory } from "./memory/main.js";
