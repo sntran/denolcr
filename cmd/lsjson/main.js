@@ -54,8 +54,15 @@ const decoder = new TextDecoder();
  */
 export async function lsjson(location, flags = {}) {
   const isDirectory = location.endsWith("/");
-  const init = { method: isDirectory ? "GET" : "HEAD" };
-  const url = `${location}?${new URLSearchParams(flags)}`;
+  const init = { method: "GET" };
+  const segments = location.split("/");
+  let filename;
+  // If file, remove the last segment to query the parent directory.
+  if (!isDirectory) {
+    filename = segments.pop();
+  }
+  const params = new URLSearchParams(flags);
+  const url = `${segments.join("/")}?${params}`;
   let response = await fetch(url, init);
 
   if (!response.ok) {
@@ -63,37 +70,8 @@ export async function lsjson(location, flags = {}) {
   }
 
   let maxDepth = Number(flags.max_depth || (flags.recursive ? Infinity : 1));
-  if (!flags.recursive) {
+  if (!isDirectory || !flags.recursive) {
     maxDepth = 1;
-  }
-
-  if (!isDirectory) {
-    const headers = response.headers;
-    const { pathname } = new URL(location);
-    const Path = pathname.slice(1);
-    const Name = pathname.split("/").pop();
-    const item = {
-      Path,
-      Name,
-      Size: Number(headers.get("Content-Length")),
-      MimeType: headers.get("Content-Type"),
-      ModTime: headers.get("Last-Modified"),
-      IsDir: false,
-    };
-
-    const body = new ReadableStream({
-      start(controller) {
-        controller.enqueue(encoder.encode("[\n"));
-        controller.enqueue(encoder.encode(JSON.stringify(item) + "\n"));
-        controller.enqueue(encoder.encode("]\n"));
-      },
-    });
-
-    return new Response(body, {
-      headers: {
-        "Content-Type": "application/json",
-      },
-    });
   }
 
   /**
@@ -158,6 +136,13 @@ export async function lsjson(location, flags = {}) {
           }
 
           const name = basename(pathname);
+
+          // If listing a file, skip other files.
+          if (filename && name !== filename) {
+            item = null;
+            return;
+          }
+
           item.Name = name;
 
           /**
@@ -220,12 +205,14 @@ export async function lsjson(location, flags = {}) {
       });
       rewriter.on(`tr data[value]`, {
         element(element) {
+          if (!item) return;
           const value = element.getAttribute("value");
           item.Size = Number(value);
         },
       });
       rewriter.on(`tr time[datetime]`, {
         element(element) {
+          if (!item) return;
           const value = element.getAttribute("datetime");
           if (value) {
             item.ModTime = toLocaleISOString(value);
