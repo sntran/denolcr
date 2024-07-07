@@ -1,11 +1,12 @@
+import { test } from "node:test";
 import { assert, assertEquals } from "./dev_deps.js";
 
-import { config } from "./main.js";
+import { config } from "./mod.js";
 
-Deno.test("fetch", async (t) => {
-  await t.step("global", async () => {
+test("fetch", async (t) => {
+  await t.test("global", async () => {
     const controller = new AbortController();
-    await Deno.serve({
+    Deno.serve({
       port: 0,
       signal: controller.signal,
       async onListen({ port, hostname }) {
@@ -28,8 +29,8 @@ Deno.test("fetch", async (t) => {
     });
   });
 
-  await t.step("TRACE", async (t) => {
-    await t.step("/path/to/dir/", async () => {
+  await t.test("TRACE", async (t) => {
+    await t.test("/path/to/dir/", async () => {
       const cwd = Deno.cwd();
       const response = await fetch(cwd, {
         method: "TRACE",
@@ -58,7 +59,7 @@ Deno.test("fetch", async (t) => {
       remote: "source:",
     });
 
-    await t.step(":type:", async () => {
+    await t.test(":type:", async () => {
       const { status, headers } = await fetch(":local:", {
         method: "TRACE",
       });
@@ -68,7 +69,7 @@ Deno.test("fetch", async (t) => {
       assertEquals(headers.get("Via"), "local/1.1");
     });
 
-    await t.step("name:", async () => {
+    await t.test("name:", async () => {
       const { status, headers } = await fetch("source:", {
         method: "TRACE",
       });
@@ -79,10 +80,10 @@ Deno.test("fetch", async (t) => {
     });
 
     /** Connection string */
-    await t.step("name,param1=value1,param2=value2:", async (t) => {
+    await t.test("name,param1=value1,param2=value2:", async (t) => {
       const cwd = Deno.cwd();
 
-      await t.step("params from config", async () => {
+      await t.test("params from config", async () => {
         const response = await fetch("target:", {
           method: "TRACE",
         });
@@ -101,7 +102,7 @@ Deno.test("fetch", async (t) => {
         assertEquals(searchParams.get("remote"), `source:`);
       });
 
-      await t.step(
+      await t.test(
         "overriden by backend generic environment vars",
         async () => {
           Deno.env.set("RCLONE_SKIP_LINKS", "true");
@@ -118,7 +119,7 @@ Deno.test("fetch", async (t) => {
         },
       );
 
-      await t.step(
+      await t.test(
         "overriden by backend-specific environment vars",
         async () => {
           Deno.env.set("RCLONE_ALIAS_REMOTE", "/tmp/1");
@@ -138,7 +139,7 @@ Deno.test("fetch", async (t) => {
         },
       );
 
-      await t.step(
+      await t.test(
         "overriden by remote specific environment vars",
         async () => {
           Deno.env.set("RCLONE_CONFIG_TARGET_REMOTE", "/tmp/2");
@@ -158,7 +159,7 @@ Deno.test("fetch", async (t) => {
         },
       );
 
-      await t.step(
+      await t.test(
         "overriden by flags prefixed with backend type",
         async () => {
           const response = await fetch("target:?alias_remote='/tmp/3'", {
@@ -181,7 +182,7 @@ Deno.test("fetch", async (t) => {
         },
       );
 
-      await t.step("overriden by params in connection string", async () => {
+      await t.test("overriden by params in connection string", async () => {
         const response = await fetch(
           `target,remote='${cwd}':?alias_remote='/tmp/3'`,
           {
@@ -196,7 +197,7 @@ Deno.test("fetch", async (t) => {
         assertEquals(searchParams.get("remote"), `'${cwd}'`);
       });
 
-      await t.step(
+      await t.test(
         "overriden by params in connection string that is also a connection string",
         async () => {
           const response = await fetch(

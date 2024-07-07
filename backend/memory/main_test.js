@@ -1,3 +1,4 @@
+import { test } from "node:test";
 import { join } from "../../deps.js";
 import { assert, assertEquals, assertHeader } from "../../dev_deps.js";
 
@@ -48,8 +49,8 @@ function descendants(root = "/") {
   return results;
 }
 
-Deno.test("PUT", async (t) => {
-  await t.step("a new file or folder", async () => {
+test("PUT", async (t) => {
+  await t.test("a new file or folder", async () => {
     for (const fixture of descendants("/")) {
       const url = new URL(fixture, "memory:/");
       // Sends the PUT request with the body.
@@ -69,8 +70,8 @@ Deno.test("PUT", async (t) => {
   });
 });
 
-Deno.test("GET", async (t) => {
-  await t.step("folder", async () => {
+test("GET", async (t) => {
+  await t.test("folder", async () => {
     const pathname = "/"; // Root folder
     let url = new URL(pathname, "memory:/");
     let response = await fetch(new Request(url));
@@ -101,7 +102,7 @@ Deno.test("GET", async (t) => {
     }
   });
 
-  await t.step("file", async () => {
+  await t.test("file", async () => {
     const pathname = "/A/"; // Folder with only files
     for (const fixture of descendants(pathname)) {
       const url = new URL(fixture, "memory:/");
@@ -112,8 +113,8 @@ Deno.test("GET", async (t) => {
   });
 });
 
-Deno.test("DELETE", async (t) => {
-  await t.step("file", async () => {
+test("DELETE", async (t) => {
+  await t.test("file", async () => {
     const pathname = "/B/"; // Folder with only files
     for await (const fixture of descendants(pathname)) {
       const url = new URL(`${pathname}${fixture}`, "memory:/");
@@ -129,7 +130,7 @@ Deno.test("DELETE", async (t) => {
     }
   });
 
-  await t.step("folder", async () => {
+  await t.test("folder", async () => {
     const pathname = "/A/"; // Folder with many files
     const url = new URL(pathname, "memory:/");
     const response = await fetch(

@@ -1,9 +1,10 @@
+import { test } from "node:test";
 import { join } from "../../deps.js";
 import { assert } from "../../dev_deps.js";
 
 import backend from "./main.js";
 
-Deno.test("local path", async () => {
+test("local path", async () => {
   const requestInit = {
     method: "GET",
   };

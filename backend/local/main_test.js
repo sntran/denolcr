@@ -1,3 +1,4 @@
+import { test } from "node:test";
 import { contentType, extname, join } from "../../deps.js";
 import {
   assert,
@@ -13,7 +14,7 @@ const fetch = backend.fetch;
 const encoder = new TextEncoder();
 const cwd = Deno.cwd();
 
-Deno.test("GET", async (t) => {
+test("GET", async (t) => {
   const requestInit = {
     method: "GET",
   };
@@ -23,7 +24,7 @@ Deno.test("GET", async (t) => {
    */
   const files = [];
 
-  await t.step("/", async () => {
+  await t.test("/", async () => {
     const url = new URL("/", "local://");
     const request = new Request(url, requestInit);
     const response = await fetch(request);
@@ -47,7 +48,7 @@ Deno.test("GET", async (t) => {
     }
   });
 
-  await t.step("a file", async () => {
+  await t.test("a file", async () => {
     for await (const name of files) {
       // Checking links for now
       if (name.endsWith("/")) continue;
@@ -80,8 +81,8 @@ Deno.test("GET", async (t) => {
 const newFile = "dummy.file";
 const newFolder = "dummy.folder/"; // Must have trailing slash.
 
-Deno.test("PUT", async (t) => {
-  await t.step("a new file", async () => {
+test("PUT", async (t) => {
+  await t.test("a new file", async () => {
     const targetFile = join(cwd, newFile);
     const body = "Hello World";
 
@@ -112,7 +113,7 @@ Deno.test("PUT", async (t) => {
     assertEquals(await response.text(), body, "should have the same content");
   });
 
-  await t.step("a new folder", async () => {
+  await t.test("a new folder", async () => {
     const targetFolder = join(cwd, newFolder);
 
     const url = new URL(`/${newFolder}`, "local://");
@@ -133,7 +134,7 @@ Deno.test("PUT", async (t) => {
     assert(stat.isDirectory, "should be a directory");
   });
 
-  await t.step("a new nested file", async () => {
+  await t.test("a new nested file", async () => {
     const targetFile = join(cwd, newFolder, newFile);
     const body = "Hello Nested World";
 
@@ -165,8 +166,8 @@ Deno.test("PUT", async (t) => {
   });
 });
 
-Deno.test("DELETE", async (t) => {
-  await t.step("a file", async () => {
+test("DELETE", async (t) => {
+  await t.test("a file", async () => {
     const targetFile = join(cwd, newFile);
     const url = new URL(`/${newFile}`, "local://");
     // Sends the PUT request with the body.
@@ -181,7 +182,7 @@ Deno.test("DELETE", async (t) => {
     });
   });
 
-  await t.step("a folder", async () => {
+  await t.test("a folder", async () => {
     const targetFolder = join(cwd, newFolder);
     const url = new URL(`/${newFolder}`, "local://");
     // Sends the PUT request with the body.

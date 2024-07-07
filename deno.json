@@ -1,0 +1,6 @@
+{
+  "tasks": {
+    "start": "deno run -A main.js",
+    "test": "deno test -A --fail-fast"
+  }
+}

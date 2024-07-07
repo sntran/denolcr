@@ -1,3 +1,4 @@
+import { test } from "node:test";
 import { crypto, encodeHex, mkBuffer } from "../../deps.js";
 import { assert, assertEquals, equalBytes } from "../../dev_deps.js";
 import memory from "../memory/main.js";
@@ -23,8 +24,8 @@ function cleanup(pathname = "/") {
   );
 }
 
-Deno.test("PUT", async (t) => {
-  await t.step("new file", async () => {
+test("PUT", async (t) => {
+  await t.test("new file", async () => {
     let request = new Request(url, {
       method: "PUT",
       body: file,
@@ -63,7 +64,7 @@ Deno.test("PUT", async (t) => {
 
   await cleanup();
 
-  await t.step("chunk_size, name_format, start_from", async () => {
+  await t.test("chunk_size, name_format, start_from", async () => {
     chunkSize = 100 * 1024; // 100K, so we can have hundreds of chunks
     let startFrom = 0;
 
@@ -118,7 +119,7 @@ Deno.test("PUT", async (t) => {
 
   await cleanup();
 
-  await t.step("meta_format", async () => {
+  await t.test("meta_format", async () => {
     let request = new Request(url, {
       method: "PUT",
       body: file,
@@ -149,7 +150,7 @@ Deno.test("PUT", async (t) => {
 
   await cleanup();
 
-  await t.step("meta_format=none", async () => {
+  await t.test("meta_format=none", async () => {
     url.searchParams.set("meta_format", "none");
     let request = new Request(url, {
       method: "PUT",
@@ -176,7 +177,7 @@ Deno.test("PUT", async (t) => {
 
   await cleanup();
 
-  await t.step("chunk_size>file_size", async () => {
+  await t.test("chunk_size>file_size", async () => {
     url.searchParams.set("meta_format", "simplejson");
     url.searchParams.delete("chunk_size"); // Default is 2G, > file size of 10M
 
@@ -214,11 +215,11 @@ Deno.test("PUT", async (t) => {
 
 await cleanup();
 
-Deno.test("GET", async (t) => {
+test("GET", async (t) => {
   url.searchParams.set("chunk_size", `${chunkSize}`);
   url.searchParams.set("start_from", `0`);
 
-  await t.step("file > chunk_size, start_from = 0", async () => {
+  await t.test("file > chunk_size, start_from = 0", async () => {
     let request = new Request(url, {
       method: "PUT",
       body: file,
@@ -236,7 +237,7 @@ Deno.test("GET", async (t) => {
 
   url.searchParams.delete("start_from");
 
-  await t.step("file > chunk_size, start_from = 1", async () => {
+  await t.test("file > chunk_size, start_from = 1", async () => {
     let request = new Request(url, {
       method: "PUT",
       body: file,
@@ -255,7 +256,7 @@ Deno.test("GET", async (t) => {
 
   await cleanup();
 
-  await t.step("file < chunk_size", async () => {
+  await t.test("file < chunk_size", async () => {
     url.searchParams.delete("chunk_size");
 
     let request = new Request(url, {
@@ -276,7 +277,7 @@ Deno.test("GET", async (t) => {
 
   await cleanup();
 
-  await t.step("file = chunk_size", async () => {
+  await t.test("file = chunk_size", async () => {
     url.searchParams.set("chunk_size", `${file.size}`);
 
     let request = new Request(url, {
@@ -297,7 +298,7 @@ Deno.test("GET", async (t) => {
 
   await cleanup();
 
-  await t.step("Non-metadata JSON file within chunk_size", async () => {
+  await t.test("Non-metadata JSON file within chunk_size", async () => {
     const json = { hello: "world" };
     const file = new Blob([JSON.stringify(json)]);
     url.searchParams.set("chunk_size", `${file.size}`);
@@ -331,5 +332,5 @@ Deno.test("GET", async (t) => {
   });
 });
 
-Deno.test("DELETE", async (_t) => {
+test("DELETE", async (_t) => {
 });

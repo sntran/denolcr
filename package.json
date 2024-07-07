@@ -17,8 +17,8 @@
   },
   "scripts": {
     "start": "node main.js",
-    "test": "deno test -A --no-check --fail-fast",
-    "worker": "wrangler pages dev ."
+    "test": "node --test",
+    "worker": "npx wrangler pages dev ."
   },
   "author": "Trần Nguyễn Sơn",
   "license": "ISC",
@@ -44,8 +44,6 @@
     "base32-encode": "^2.0.0"
   },
   "devDependencies": {
-    "@std/assert": "npm:@jsr/std__assert@^1.0.0-rc.2",
-    "fast-check": "^3.19.0",
-    "wrangler": "^3.63.1"
+    "fast-check": "^3.19.0"
   }
 }

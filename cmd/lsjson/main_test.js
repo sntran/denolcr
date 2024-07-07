@@ -1,3 +1,4 @@
+import { test } from "node:test";
 import { assert, assertEquals } from "../../dev_deps.js";
 import { lsjson } from "./main.js";
 
@@ -34,23 +35,23 @@ for (const fileName of files) {
 
 let pathname = "/";
 
-Deno.test(`lsjson("${pathname}")`, async (t) => {
+test(`lsjson("${pathname}")`, async (t) => {
   const response = await lsjson(`:memory:${pathname}`);
 
-  await t.step("returns Promise<Response>", () => {
+  await t.test("returns Promise<Response>", () => {
     assert(response instanceof Response);
   });
 
-  await t.step("with ReadableStream body", () => {
+  await t.test("with ReadableStream body", () => {
     assert(response.body instanceof ReadableStream);
   });
 
-  await t.step("containing JSON array of objects", async () => {
+  await t.test("containing JSON array of objects", async () => {
     const result = await response.clone().json();
     assert(Array.isArray(result));
   });
 
-  await t.step("whose each object is on a separate line", async () => {
+  await t.test("whose each object is on a separate line", async () => {
     const text = await response.clone().text();
     const lines = text.trim().split("\n");
 
@@ -65,14 +66,14 @@ Deno.test(`lsjson("${pathname}")`, async (t) => {
     assertEquals(lines[0], "]");
   });
 
-  await t.step("Path field is same as Name", async () => {
+  await t.test("Path field is same as Name", async () => {
     const result = await response.clone().json();
     for (const file of result) {
       assertEquals(file.Path, file.Name);
     }
   });
 
-  await t.step("each object is a chunk in body stream", async () => {
+  await t.test("each object is a chunk in body stream", async () => {
     const reader = response.body.getReader();
     let result = await reader.read();
     assertEquals(result.done, false);
@@ -96,25 +97,25 @@ Deno.test(`lsjson("${pathname}")`, async (t) => {
 });
 
 pathname = "/";
-Deno.test(`lsjson("${pathname}", { recursive: true })`, async (t) => {
+test(`lsjson("${pathname}", { recursive: true })`, async (t) => {
   const response = await lsjson(`:memory:${pathname}`, {
     recursive: "true",
   });
 
-  await t.step("returns Promise<Response>", () => {
+  await t.test("returns Promise<Response>", () => {
     assert(response instanceof Response);
   });
 
-  await t.step("with ReadableStream body", () => {
+  await t.test("with ReadableStream body", () => {
     assert(response.body instanceof ReadableStream);
   });
 
-  await t.step("containing JSON array of objects", async () => {
+  await t.test("containing JSON array of objects", async () => {
     const result = await response.clone().json();
     assert(Array.isArray(result));
   });
 
-  await t.step(
+  await t.test(
     "Path field only show folders below the remote path being listed",
     async () => {
       const result = await response.clone().json();

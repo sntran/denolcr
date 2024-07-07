@@ -1,3 +1,4 @@
+import { test } from "node:test";
 import { contentType, extname, join } from "../../deps.js";
 import { assert, assertEquals, equalBytes, fc } from "../../dev_deps.js";
 
@@ -26,7 +27,7 @@ async function getText(response) {
   return text.replace(/\n$/, "");
 }
 
-Deno.test("decode", async () => {
+test("decode", async () => {
   const options = {
     password: PASSWORD,
     password2: SALT,
@@ -38,7 +39,7 @@ Deno.test("decode", async () => {
   }
 });
 
-Deno.test("encode", async () => {
+test("encode", async () => {
   const options = {
     password: PASSWORD,
     password2: SALT,
@@ -66,11 +67,11 @@ Deno.test("encode", async () => {
   assertEquals(decoded, plaintexts.join("\n"));
 });
 
-Deno.test("GET", async (t) => {
+test("GET", async (t) => {
   const remote = join(fixtures, "crypt");
   let request, response;
 
-  await t.step("should return original file", async () => {
+  await t.test("should return original file", async () => {
     for await (const originalFilename of Object.keys(CRYPT)) {
       const originalFile = await Deno.readFile(
         join(fixtures, "local", originalFilename),
@@ -88,7 +89,7 @@ Deno.test("GET", async (t) => {
     }
   });
 
-  await t.step("should return original file info in headers", async () => {
+  await t.test("should return original file info in headers", async () => {
     for await (const originalFilename of Object.keys(CRYPT)) {
       const originalFile = await Deno.readFile(
         join(fixtures, "local", originalFilename),
@@ -112,7 +113,7 @@ Deno.test("GET", async (t) => {
   });
 });
 
-Deno.test("PUT", async () => {
+test("PUT", async () => {
   const remote = ":memory:";
 
   for await (const originalFilename of Object.keys(CRYPT)) {

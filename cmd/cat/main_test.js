@@ -1,6 +1,7 @@
+import { test } from "node:test";
 import { assert } from "../../dev_deps.js";
 import { cat } from "./main.js";
 
-Deno.test("cat", () => {
+test("cat", () => {
   assert(cat);
 });

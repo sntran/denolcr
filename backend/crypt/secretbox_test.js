@@ -1,8 +1,9 @@
+import { test } from "node:test";
 import { assertEquals, fc } from "../../dev_deps.js";
 
 import { DecryptionStream, EncryptionStream } from "./secretbox.js";
 
-Deno.test("decrypt/crypt", () => {
+test("decrypt/crypt", () => {
   fc.assert(
     fc.asyncProperty(
       fc.uint8Array({ minLength: 32, maxLength: 32 }),

@@ -1,9 +1,9 @@
 import {
-  assert,
-  assertEquals,
-  assertNotEquals,
-  assertRejects,
-} from "@std/assert";
+  ok as assert,
+  deepEqual as assertEquals,
+  notDeepEqual as assertNotEquals,
+  rejects as assertRejects,
+} from "node:assert/strict";
 export { assert, assertEquals, assertNotEquals, assertRejects };
 
 /**

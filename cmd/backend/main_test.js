@@ -1,6 +1,7 @@
+import { test } from "node:test";
 import { assert } from "../../dev_deps.js";
 import { backend } from "./main.js";
 
-Deno.test("backend", () => {
+test("backend", () => {
   assert(backend);
 });

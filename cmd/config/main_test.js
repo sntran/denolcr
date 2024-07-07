@@ -1,11 +1,12 @@
+import { test } from "node:test";
 import { config_dir, join } from "../../deps.js";
 import { assert, assertEquals, fc } from "../../dev_deps.js";
 
 import { config as configure } from "./main.js";
 
-Deno.test("config", async (t) => {
+test("config", async (t) => {
   let command = "file";
-  await t.step(command, async () => {
+  await t.test(command, async () => {
     const configDir = config_dir();
     let path = await configure(command).then((res) => res.text());
 
@@ -25,7 +26,7 @@ Deno.test("config", async (t) => {
   });
 
   command = "create";
-  await t.step(command, async () => {
+  await t.test(command, async () => {
     let config = await Deno.readTextFile("rclone.conf");
     assertEquals(config, "", "initial empty config");
 
@@ -79,7 +80,7 @@ Deno.test("config", async (t) => {
   });
 
   command = "show";
-  await t.step(command, async () => {
+  await t.test(command, async () => {
     const config = await Deno.readTextFile("rclone.conf");
     let response = await configure(command);
     assertEquals(
@@ -118,7 +119,7 @@ Deno.test("config", async (t) => {
   });
 
   command = "update";
-  await t.step(command, async () => {
+  await t.test(command, async () => {
     let response = await configure(command, "target", {
       type: "alias",
       remote: "source:",
@@ -147,7 +148,7 @@ Deno.test("config", async (t) => {
   });
 
   command = "dump";
-  await t.step(command, async () => {
+  await t.test(command, async () => {
     const response = await configure(command);
     assertEquals(await response.json(), {
       source: {
@@ -161,7 +162,7 @@ Deno.test("config", async (t) => {
   });
 
   command = "delete";
-  await t.step(command, async () => {
+  await t.test(command, async () => {
     let response = await configure(command, "target");
     const config = await Deno.readTextFile("rclone.conf");
     assertEquals(

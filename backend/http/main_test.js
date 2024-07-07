@@ -1,14 +1,15 @@
+import { test } from "node:test";
 import { assertEquals } from "../../dev_deps.js";
 import backend from "./main.js";
 
-Deno.test("GET", async (t) => {
-  await t.step("error without url searchParam", async () => {
+test("GET", async (t) => {
+  await t.test("error without url searchParam", async () => {
     const url = new URL("/", "file:");
     const response = await backend.fetch(new Request(url));
     assertEquals(response.status, 400);
   });
 
-  await t.step("a file", async () => {
+  await t.test("a file", async () => {
     const remote = new URL("./", import.meta.url);
 
     const url = new URL("/main.js", "file:");
@@ -28,7 +29,7 @@ Deno.test("GET", async (t) => {
     );
   });
 
-  await t.step("a directory", async () => {
+  await t.test("a directory", async () => {
     // TODO: implement
   });
 });

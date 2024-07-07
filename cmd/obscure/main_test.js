@@ -1,3 +1,4 @@
+import { test } from "node:test";
 import { assertEquals, fc } from "../../dev_deps.js";
 import { obscure, reveal } from "./main.js";
 
@@ -11,12 +12,12 @@ async function assertResponse(response, expected) {
   assertEquals(await response.text(), expected);
 }
 
-Deno.test("reveal", () => {
+test("reveal", () => {
   assertResponse(reveal("UmyLSdRHfew6aual28-ggx78qHqSfQ"), "123456");
   assertResponse(reveal("Cj3gLa5PVwc2aot0QpKiOZ3YEzs3Sw"), "654321");
 });
 
-Deno.test("obscure", async () => {
+test("obscure", async () => {
   // Tests property that revealing an obscured string should return the original string
   await fc.assert(
     fc.asyncProperty(fc.string(), async (plaintext) => {
