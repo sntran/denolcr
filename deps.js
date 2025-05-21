@@ -1,6 +1,5 @@
 import { env } from "node:process";
 
-export { parseArgs } from "@std/cli/parse-args";
 export * as INI from "@std/ini";
 export { basename, extname, join, resolve } from "@std/path";
 export { getCookies } from "@std/http/cookie";
