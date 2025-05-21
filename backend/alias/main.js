@@ -10,12 +10,12 @@
  *
  * Subfolders can be used in target remote. Assume an alias remote named
  * `backup` with the target `mydrive:private/backup`. Invoking
- * `rclone mkdir backup:desktop` is exactly the same as invoking
- * `rclone mkdir mydrive:private/backup/desktop`.
+ * `rfetch mkdir backup:desktop` is exactly the same as invoking
+ * `rfetch mkdir mydrive:private/backup/desktop`.
  *
  * There will be no special handling of paths containing `..` segments.
- * Invoking `rclone mkdir backup:../desktop` is exactly the same as invoking
- * `rclone mkdir mydrive:private/backup/../desktop`. The empty path is not
+ * Invoking `rfetch mkdir backup:../desktop` is exactly the same as invoking
+ * `rfetch mkdir mydrive:private/backup/../desktop`. The empty path is not
  * allowed as a remote. To alias the current directory use `.` instead.
  */
 

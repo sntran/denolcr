@@ -1,12 +1,12 @@
-# Contributing to rclone
+# Contributing to rfetch
 
-This is a short guide on how to contribute things to rclone.
+This is a short guide on how to contribute things to rfetch.
 
 ## Writing a new backend
 
 Choose a name. The docs here will use `remote` as an example.
 
-Note that in rclone terminology a file system backend is called a remote or an
+Note that in rfetch terminology a file system backend is called a remote or an
 fs.
 
 - `deno init backend/remote`

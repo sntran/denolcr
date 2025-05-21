@@ -1,6 +1,8 @@
-# denolcr
+# rfetch
 
-Deno port of Rclone, rewriting functionality using Web API.
+Fetching between remotes, using Web APIs.
+
+This is a rewrite of Rclone, using modern Web APIs for cross runtimes.
 
 A [Rclone wrapper for WebAssembly build](./rclone.js) is also available.
 
@@ -40,7 +42,7 @@ These backends adapt or modify other storage providers
 
 - Clone the repository and navigate to the folder.
 - `deno task start` to execute commands.
-- Alternatively, `deno task install` to install a `dclone` executable in PATH
-  that is symbolic linked to the `main.js` file and use `dclone` in place of
+- Alternatively, `deno task install` to install a `rfetch` executable in PATH
+  that is symbolic linked to the `main.js` file and use `rfetch` in place of
   `deno task start`.
 - `deno task test` to run the test suites.

@@ -1,7 +1,7 @@
 #!/usr/bin/env -S deno run --allow-all
 
 /**
- * DenoLCR - Deno Lite Clone of Rclone.
+ * rfetch - fetching between remotes
  *
  * ```shell
  * ./main.js ls remote:path/to/folder/or/file

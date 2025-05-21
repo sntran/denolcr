@@ -26,7 +26,7 @@ Deno.bench(
   },
 );
 
-Deno.bench("rcloned", {
+Deno.bench("rfetch", {
   group: "backend/chunker: default chunk_size",
   baseline: true,
 }, async () => {
@@ -61,7 +61,7 @@ Deno.bench(
   },
 );
 
-Deno.bench("rcloned", {
+Deno.bench("rfetch", {
   group: "backend/chunker: small chunk_size",
   baseline: true,
 }, async () => {

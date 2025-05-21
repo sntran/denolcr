@@ -13,7 +13,7 @@ const remotes = ["./", "./backend/", "./cmd/"];
 
 for (const remote of remotes) {
   Deno.bench(
-    `denolcr lsjson ${remote} --recursive`,
+    `rfetch lsjson ${remote} --recursive`,
     {
       baseline: true,
       group: `timing ${remote} --recursive`,

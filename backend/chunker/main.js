@@ -10,7 +10,7 @@
  *
  * ## Chunking
  *
- * When rclone starts a file upload, chunker checks the file size. If it
+ * When rfetch starts a file upload, chunker checks the file size. If it
  * doesn't exceed the configured chunk size, chunker will just pass the file to
  * the wrapped remote. If a file is large, chunker will transparently cut data
  * in pieces with temporary names and stream them one by one, on the fly. Each
@@ -30,7 +30,7 @@
  * even manually concatenate data chunks together to obtain the original
  * content.
  *
- * When the `list` rclone command scans a directory on wrapped remote, the
+ * When the `list` rfetch command scans a directory on wrapped remote, the
  * potential chunk files are accounted for, grouped and assembled into
  * composite directory entries. Any temporary chunks are hidden.
  *
@@ -74,7 +74,7 @@
  * composite file. The object is named after the original file. Chunker allows
  * user to disable metadata completely (the `none` format). Note that metadata
  * is normally not created for files smaller than the configured chunk size.
- * This may change in future rclone releases.
+ * This may change in future rfetch releases.
  *
  * ### Simple JSON metadata format
  *

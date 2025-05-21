@@ -2,23 +2,23 @@
 
 /**
  * The HTTP remote is a read only remote for reading files of a webserver. The
- * webserver should provide file listings which rclone will read and turn into
+ * webserver should provide file listings which rfetch will read and turn into
  * a remote.
  *
  * Paths are specified as `remote:` or `remote:path`.
  *
  * The `remote:` represents the configured url, and any path following it will
  * be resolved relative to this url, according to the URL standard. This means
- * with remote url `https://beta.rclone.org/branch` and path `fix`, the
- * resolved URL will be `https://beta.rclone.org/branch/fix`, while with path
- * `/fix` the resolved URL will be `https://beta.rclone.org/fix` as the
+ * with remote url `https://beta.rfetch.com/branch` and path `fix`, the
+ * resolved URL will be `https://beta.rfetch.com/branch/fix`, while with path
+ * `/fix` the resolved URL will be `https://beta.rfetch.com/fix` as the
  * absolute path is resolved from the root of the domain.
  *
  * If the path following the `remote:` ends with `/` it will be assumed to
  * point to a directory. If the path does not end with `/`, then a HEAD request
  * is sent and the response used to decide if it it is treated as a file or a
  * directory (run with `-vv` to see details). When --http-no-head is specified,
- * a path without ending `/` is always assumed to be a file. If rclone
+ * a path without ending `/` is always assumed to be a file. If rfetch
  * incorrectly assumes the path is a file, the solution is to specify the path
  * with ending `/`. When you know the path is a directory, ending it with `/`
  * is always better as it avoids the initial HEAD request.

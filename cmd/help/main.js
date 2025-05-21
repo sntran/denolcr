@@ -8,20 +8,20 @@ const usage = {};
 
 usage["commands"] = () =>
   `Usage:
-  rclone [flags]
-  rclone [command]
+  rfetch [flags]
+  rfetch [command]
 
 Available Commands:
   ${Object.keys(commands).join("\n  ")}
 
-Use "rclone [command] --help" for more information about a command.
-Use "rclone help flags" for to see the global flags.
-Use "rclone help backends" for a list of supported services.
+Use "rfetch [command] --help" for more information about a command.
+Use "rfetch help flags" for to see the global flags.
+Use "rfetch help backends" for a list of supported services.
 `;
 
 usage["flags"] = () =>
   `Usage:
-  rclone help flags [<regexp to match>] [flags]
+  rfetch help flags [<regexp to match>] [flags]
 
 Flags:
   -h, --help   help for flags
@@ -37,11 +37,11 @@ usage["backends"] = () =>
   ${Object.keys(backends).join("\n  ")}
 
 To see more info about a particular backend use:
-  rclone help backend <name>
+  rfetch help backend <name>
 `;
 
 /**
- * Show help for rclone commands, flags and backends
+ * Show help for rfetch commands, flags and backends
  * @param {string} [type] - The type of help to show
  * @returns {Response}
  */

@@ -76,7 +76,7 @@ export async function auth(request) {
     }
     let token = searchParams.get("token") || "";
     try {
-      // Refresh token can be passed inside a JSON (rclone style) or the token itself.
+      // Refresh token can be passed inside a JSON (rfetch style) or the token itself.
       const { refresh_token } = JSON.parse(token);
       token = refresh_token;
     } catch {

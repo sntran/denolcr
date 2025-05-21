@@ -27,7 +27,7 @@ const NAME_REGEX = /^[\w.][\w.\s-]*$/;
  */
 
 /**
- * Handles configuration of rclone.
+ * Handles configuration of rfetch.
  *
  * Takes a subcommand and optional arguments.
  *
@@ -43,6 +43,9 @@ export async function config(subcommand, name, options, init) {
   let file = "", ini = "";
   // Order as specified at https://rclone.org/docs/#config-config-file.
   const PATHS = [
+    "rfetch.conf",
+    join(config_dir(), "rfetch", "rfetch.conf"),
+    join(env["HOME"], ".rfetch.conf"),
     "rclone.conf",
     join(config_dir(), "rclone", "rclone.conf"),
     join(env["HOME"], ".rclone.conf"),

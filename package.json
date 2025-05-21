@@ -1,19 +1,19 @@
 {
-  "name": "denolcr",
+  "name": "rfetch",
   "version": "0.1.0",
-  "description": "Deno port of Rclone, rewriting functionality using Web API.",
+  "description": "Fetching between remotes, using Web APIs.",
   "engines": {
     "node": ">=22.2.0",
     "deno": ">=1.44.4"
   },
   "bin": {
-    "denolcr": "main.js"
+    "rfetch": "main.js"
   },
   "main": "mod.js",
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sntran/denolcr.git"
+    "url": "git+https://github.com/sntran/rfetch.git"
   },
   "scripts": {
     "start": "node main.js",
@@ -23,9 +23,9 @@
   "author": "Trần Nguyễn Sơn",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/sntran/denolcr/issues"
+    "url": "https://github.com/sntran/rfetch/issues"
   },
-  "homepage": "https://github.com/sntran/denolcr#readme",
+  "homepage": "https://github.com/sntran/rfetch#readme",
   "dependencies": {
     "@noble/ciphers": "^0.5.3",
     "@noble/hashes": "^1.4.0",

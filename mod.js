@@ -43,7 +43,7 @@ const globalFetch = globalThis.fetch;
 /**
  * Extended global `fetch` with support for remote URL.
  *
- * The syntax of the paths passed to the rclone command are as follows.
+ * The syntax of the paths passed to the rfetch command are as follows.
  *
  * `/path/to/dir``
  *

@@ -1,6 +1,6 @@
 // Copyright 2018-2021 Trần Nguyễn Sơn. All rights reserved. MIT license.
 /**
- * Deno wrapper for rclone using WebAssembly build.
+ * Wrapper for rclone using WebAssembly build.
  *
  * @example
  * ```ts
