@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import { readFile } from "node:fs/promises";
 import { contentType, extname, join } from "../../deps.js";
 import { assert, assertEquals, equalBytes, fc } from "../../dev_deps.js";
 
@@ -73,7 +74,7 @@ test("GET", async (t) => {
 
   await t.test("should return original file", async () => {
     for await (const originalFilename of Object.keys(CRYPT)) {
-      const originalFile = await Deno.readFile(
+      const originalFile = await readFile(
         join(fixtures, "local", originalFilename),
       );
       const url = new URL(`/${originalFilename}`, "file:");
@@ -91,7 +92,7 @@ test("GET", async (t) => {
 
   await t.test("should return original file info in headers", async () => {
     for await (const originalFilename of Object.keys(CRYPT)) {
-      const originalFile = await Deno.readFile(
+      const originalFile = await readFile(
         join(fixtures, "local", originalFilename),
       );
       const url = new URL(`/${originalFilename}`, "file:");
@@ -117,7 +118,7 @@ test("PUT", async () => {
   const remote = ":memory:";
 
   for await (const originalFilename of Object.keys(CRYPT)) {
-    const originalFile = await Deno.readFile(
+    const originalFile = await readFile(
       join(fixtures, "local", originalFilename),
     );
 

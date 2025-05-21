@@ -1,4 +1,6 @@
 import { test } from "node:test";
+import process from "node:process";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { contentType, extname, join } from "../../deps.js";
 import {
   assert,
@@ -12,7 +14,7 @@ import backend from "./main.js";
 const fetch = backend.fetch;
 
 const encoder = new TextEncoder();
-const cwd = Deno.cwd();
+const cwd = process.cwd();
 
 test("GET", async (t) => {
   const requestInit = {
@@ -34,8 +36,10 @@ test("GET", async (t) => {
     assert(headers.get("Content-Type").includes("text/html"));
     const html = await response.text();
 
-    for await (let { name, isDirectory } of Deno.readDir(cwd)) {
-      if (isDirectory) {
+    const entries = await readdir(cwd, { withFileTypes: true });
+    for await (const entry of entries) {
+      let name = entry.name;
+      if (entry.isDirectory()) {
         name += "/";
       }
 
@@ -54,7 +58,7 @@ test("GET", async (t) => {
       if (name.endsWith("/")) continue;
 
       const path = join(cwd, name);
-      const file = await Deno.stat(path);
+      const file = await stat(path);
 
       const url = new URL(`/${name}`, "local://");
       const request = new Request(url, requestInit);
@@ -71,7 +75,7 @@ test("GET", async (t) => {
       );
       assertEquals(
         await response.text(),
-        await Deno.readTextFile(path),
+        await readFile(path, "utf8"),
         "should have the same content",
       );
     }
@@ -103,7 +107,7 @@ test("PUT", async (t) => {
     assertHeader(headers, "Content-Location", `/${newFile}`);
 
     assertEquals(
-      await Deno.readTextFile(targetFile),
+      await readFile(targetFile, "utf8"),
       body,
       "should have the same content",
     );
@@ -130,8 +134,8 @@ test("PUT", async (t) => {
     assertEquals(status, 201, "should respond with 201 Created");
     assertHeader(headers, "Content-Location", `/${newFolder}`);
 
-    const stat = await Deno.stat(targetFolder);
-    assert(stat.isDirectory, "should be a directory");
+    const stats = await stat(targetFolder);
+    assert(stats.isDirectory, "should be a directory");
   });
 
   await t.test("a new nested file", async () => {
@@ -155,7 +159,7 @@ test("PUT", async (t) => {
     assertHeader(headers, "Content-Location", `/${join(newFolder, newFile)}`);
 
     assertEquals(
-      await Deno.readTextFile(targetFile),
+      await readFile(targetFile, "utf8"),
       body,
       "should have the same content",
     );
@@ -178,7 +182,7 @@ test("DELETE", async (t) => {
     assertEquals(status, 204, "should respond with 204 No Content");
 
     assertRejects(() => {
-      return Deno.stat(targetFile);
+      return stat(targetFile);
     });
   });
 
@@ -193,7 +197,7 @@ test("DELETE", async (t) => {
     assertEquals(status, 204, "should respond with 204 No Content");
 
     assertRejects(() => {
-      return Deno.stat(targetFolder);
+      return stat(targetFolder);
     });
   });
 });

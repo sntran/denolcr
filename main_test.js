@@ -1,12 +1,16 @@
 import { test } from "node:test";
+import process from "node:process";
+import { unlink, writeFile } from "node:fs/promises";
+import { serve } from "@sntran/serve";
 import { assert, assertEquals } from "./dev_deps.js";
 
 import { config } from "./mod.js";
 
 test("fetch", async (t) => {
-  await t.test("global", async () => {
+  await t.test("global", () => {
     const controller = new AbortController();
-    Deno.serve({
+    serve({
+      fetch: (_request) => new Response(),
       port: 0,
       signal: controller.signal,
       async onListen({ port, hostname }) {
@@ -24,14 +28,12 @@ test("fetch", async (t) => {
 
         controller.abort();
       },
-    }, (_request) => {
-      return new Response();
     });
   });
 
   await t.test("TRACE", async (t) => {
     await t.test("/path/to/dir/", async () => {
-      const cwd = Deno.cwd();
+      const cwd = process.cwd();
       const response = await fetch(cwd, {
         method: "TRACE",
       });
@@ -50,7 +52,7 @@ test("fetch", async (t) => {
     });
 
     // Sets up
-    await Deno.writeFile("rclone.conf", new Uint8Array());
+    await writeFile("rclone.conf", new Uint8Array());
     await config("create", "source", {
       type: "local",
     });
@@ -81,7 +83,7 @@ test("fetch", async (t) => {
 
     /** Connection string */
     await t.test("name,param1=value1,param2=value2:", async (t) => {
-      const cwd = Deno.cwd();
+      const cwd = process.cwd();
 
       await t.test("params from config", async () => {
         const response = await fetch("target:", {
@@ -105,7 +107,7 @@ test("fetch", async (t) => {
       await t.test(
         "overriden by backend generic environment vars",
         async () => {
-          Deno.env.set("RCLONE_SKIP_LINKS", "true");
+          process.env.RCLONE_SKIP_LINKS = "true";
           const response = await fetch("target:", {
             method: "TRACE",
           });
@@ -122,7 +124,7 @@ test("fetch", async (t) => {
       await t.test(
         "overriden by backend-specific environment vars",
         async () => {
-          Deno.env.set("RCLONE_ALIAS_REMOTE", "/tmp/1");
+          process.env.RCLONE_ALIAS_REMOTE = "/tmp/1";
           const response = await fetch("target:", {
             method: "TRACE",
           });
@@ -142,7 +144,7 @@ test("fetch", async (t) => {
       await t.test(
         "overriden by remote specific environment vars",
         async () => {
-          Deno.env.set("RCLONE_CONFIG_TARGET_REMOTE", "/tmp/2");
+          process.env.RCLONE_CONFIG_TARGET_REMOTE = "/tmp/2";
           const response = await fetch("target:", {
             method: "TRACE",
           });
@@ -218,9 +220,9 @@ test("fetch", async (t) => {
     });
 
     // Tears down
-    await Deno.remove("rclone.conf");
-    Deno.env.delete("RCLONE_SKIP_LINKS");
-    Deno.env.delete("RCLONE_ALIAS_REMOTE");
-    Deno.env.delete("RCLONE_CONFIG_TARGET_REMOTE");
+    await unlink("rclone.conf");
+    delete process.env.RCLONE_SKIP_LINKS;
+    delete process.env.RCLONE_ALIAS_REMOTE;
+    delete process.env.RCLONE_CONFIG_TARGET_REMOTE;
   });
 });

@@ -33,7 +33,8 @@ export { HTMLRewriter };
  * @returns {string}
  */
 async function digest(path, algorithm = "MD5") {
-  const payload = await Deno.readFile(path);
+  const { readFile } = await import("node:fs/promises");
+  const payload = await readFile(path);
   const buffer = await crypto.subtle.digest(algorithm, payload);
   const hashArray = Array.from(new Uint8Array(buffer));
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");

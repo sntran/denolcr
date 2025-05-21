@@ -4,19 +4,19 @@
  *
  * @example
  * ```ts
- * import { Rclone } from "https://deno.land/x/rclone/rclone.js";
+ * import { Rclone } from "./rclone.js";
  *
  * const rclone = new Rclone();
  * rclone.rc("core/version");
  * ```
  *
- * By default, provided [rclone.wasm](https://deno.land/x/rclone/rclone.wasm)
+ * By default, provided [rclone.wasm](./rclone.wasm)
  * module is used. This can be changed by providing another compiled module in
  * the constructor.
  *
  * @example
  * ```ts
- * import { Rclone } from "https://deno.land/x/rclone/";
+ * import { Rclone } from "./rclone.js";
  *
  * const module = await WebAssembly.compileStreaming(fetch("https://deno.land/x/rclone/rclone.wasm"));
  * const rclone = new Rclone(module);
@@ -34,6 +34,7 @@
  * - memory
  * - union
  */
+import process from "node:process";
 import "https://raw.githubusercontent.com/rclone/rclone/master/fs/rc/js/wasm_exec.js";
 
 /** Provides a default WASM module. */
@@ -80,10 +81,9 @@ export class Rclone extends WebAssembly.Instance {
   }
 }
 
-// Learn more at https://deno.land/manual/examples/module_metadata#concepts
 if (import.meta.main) {
   const { rc } = new Rclone();
-  const [command, ...args] = Deno.args;
+  const [, , command, ...args] = process.argv;
   const params = {};
 
   let argCount = args.length;

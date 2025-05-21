@@ -38,7 +38,7 @@ const NAME_REGEX = /^[\w.][\w.\s-]*$/;
  * @returns {Promise<Response>} The response.
  */
 export async function config(subcommand, name, options, init) {
-  const { readFile } = await import("node:fs/promises");
+  const { readFile, writeFile } = await import("node:fs/promises");
 
   let file = "", ini = "";
   // Order as specified at https://rclone.org/docs/#config-config-file.
@@ -75,7 +75,7 @@ export async function config(subcommand, name, options, init) {
         });
       }
       config[name] = options;
-      await Deno.writeTextFile(
+      await writeFile(
         file,
         INI.stringify(config, encodeOptions).trim(),
       );
@@ -85,10 +85,7 @@ export async function config(subcommand, name, options, init) {
 
     case "delete": // Delete an existing remote.
       delete config[name];
-      await Deno.writeTextFile(
-        file,
-        INI.stringify(config, encodeOptions).trim(),
-      );
+      await writeFile(file, INI.stringify(config, encodeOptions).trim());
       return new Response();
 
     case "disconnect": // Disconnects user from remote
@@ -134,10 +131,7 @@ export async function config(subcommand, name, options, init) {
       }
 
       Object.assign(remote, options);
-      await Deno.writeTextFile(
-        file,
-        INI.stringify(config, encodeOptions).trim(),
-      );
+      await writeFile(file, INI.stringify(config, encodeOptions).trim());
       encodeOptions.section = name;
       return new Response(INI.stringify(config[name], encodeOptions).trim());
     }

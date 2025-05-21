@@ -1,7 +1,7 @@
 import {
-  ok as assert,
   deepEqual as assertEquals,
   notDeepEqual as assertNotEquals,
+  ok as assert,
   rejects as assertRejects,
 } from "node:assert/strict";
 export { assert, assertEquals, assertNotEquals, assertRejects };

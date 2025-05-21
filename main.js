@@ -23,7 +23,6 @@ const options = {};
 
 const {
   _: [subcommand = "help", ...args],
-  // @ts-ignore - Deno.args is not typed.
 } = parseArgs(argv.slice(2), {
   alias: {
     "progress": "P", // Show progress during transfer

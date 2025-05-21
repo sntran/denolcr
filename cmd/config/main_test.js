@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import { readFile, unlink, writeFile } from "node:fs/promises";
 import { config_dir, join } from "../../deps.js";
 import { assert, assertEquals, fc } from "../../dev_deps.js";
 
@@ -16,7 +17,7 @@ test("config", async (t) => {
       "should default to config directory",
     );
 
-    await Deno.writeFile("rclone.conf", new Uint8Array());
+    await writeFile("rclone.conf", new Uint8Array());
     path = await configure(command).then((res) => res.text());
     assertEquals(
       path,
@@ -27,7 +28,7 @@ test("config", async (t) => {
 
   command = "create";
   await t.test(command, async () => {
-    let config = await Deno.readTextFile("rclone.conf");
+    let config = await readFile("rclone.conf", { encoding: "utf8" });
     assertEquals(config, "", "initial empty config");
 
     await fc.assert(
@@ -49,7 +50,7 @@ test("config", async (t) => {
       type: "local",
     });
 
-    config = await Deno.readTextFile("rclone.conf");
+    config = await readFile("rclone.conf", { encoding: "utf8" });
     assertEquals(
       config,
       "[source]\ntype = local",
@@ -66,7 +67,7 @@ test("config", async (t) => {
       type: "local",
     });
 
-    config = await Deno.readTextFile("rclone.conf");
+    config = await readFile("rclone.conf", { encoding: "utf8" });
     assertEquals(
       config,
       "[source]\ntype = local\n\n[target]\ntype = local",
@@ -81,7 +82,7 @@ test("config", async (t) => {
 
   command = "show";
   await t.test(command, async () => {
-    const config = await Deno.readTextFile("rclone.conf");
+    const config = await readFile("rclone.conf", { encoding: "utf8" });
     let response = await configure(command);
     assertEquals(
       await response.text(),
@@ -127,7 +128,7 @@ test("config", async (t) => {
 
     const remote = `[target]\ntype = alias\nremote = source:`;
 
-    const config = await Deno.readTextFile("rclone.conf");
+    const config = await readFile("rclone.conf", { encoding: "utf8" });
     assertEquals(
       config,
       `[source]\ntype = local\n\n${remote}`,
@@ -164,7 +165,7 @@ test("config", async (t) => {
   command = "delete";
   await t.test(command, async () => {
     let response = await configure(command, "target");
-    const config = await Deno.readTextFile("rclone.conf");
+    const config = await readFile("rclone.conf", { encoding: "utf8" });
     assertEquals(
       config,
       "[source]\ntype = local",
@@ -185,5 +186,5 @@ test("config", async (t) => {
   });
 
   // Cleans up
-  await Deno.remove("rclone.conf");
+  await unlink("rclone.conf");
 });
