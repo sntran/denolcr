@@ -11,6 +11,7 @@
     "./listing": "./listing.js",
     "./mime": "./mime.js",
     "./obscure": "./obscure.js",
+    "./options": "./options.js",
     "./path": "./path.js",
     "./progress": "./progress.js",
     "./range": "./range.js",
