@@ -13,11 +13,6 @@ import { crypto } from "@std/crypto";
 export { default as decodeBase32 } from "base32-decode";
 export { default as encodeBase32 } from "base32-encode";
 
-import aesjs from "aes-js";
-// `aes-js` is a CommonJS module, so we need to use `default` to import it.
-const { AES } = aesjs;
-export { AES };
-
 export { xsalsa20poly1305 } from "@noble/ciphers/salsa";
 export { scryptAsync as scrypt } from "@noble/hashes/scrypt";
 

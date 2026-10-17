@@ -1,6 +1,5 @@
 import { test } from "node:test";
-import { createCipheriv, createDecipheriv } from "node:crypto";
-import { AES } from "../../deps.js";
+import { aes256 } from "./aes.js";
 import {
   assertEquals,
   assertNotEquals,
@@ -25,20 +24,6 @@ function hex(text) {
 }
 
 /**
- * AES with the key, as a block cipher of `node:crypto` (AES-ECB with no
- * padding), to compare with the AES of `aes-js`.
- * @param {Uint8Array} key 32 bytes.
- * @returns {import("./eme.js").BlockCipher}
- */
-function nodeAES(key) {
-  const ecb = (make) => (block) => {
-    const cipher = make("aes-256-ecb", key, null).setAutoPadding(false);
-    return new Uint8Array(cipher.update(block));
-  };
-  return { encrypt: ecb(createCipheriv), decrypt: ecb(createDecipheriv) };
-}
-
-/**
  * Gives the blocks of 16 bytes of the data, as views.
  * @param {Uint8Array} data
  * @returns {Uint8Array[]}
@@ -49,11 +34,6 @@ function blocks(data) {
     (_, j) => data.subarray(j * 16, (j + 1) * 16),
   );
 }
-
-const CIPHERS = {
-  "aes-js": (key) => new AES(key),
-  "node:crypto": nodeAES,
-};
 
 // The vectors of https://github.com/rfjakob/eme (eme_test.go), the library of
 // rclone: the key, the tweak and the input are zeros.
@@ -120,17 +100,15 @@ const VECTORS = {
   `),
 };
 
-for (const [name, AESCipher] of Object.entries(CIPHERS)) {
-  test(`the vectors of rfjakob/eme, with AES of ${name}`, () => {
-    const cipher = AESCipher(new Uint8Array(32));
-    const tweak = new Uint8Array(16);
-    for (const [size, expected] of Object.entries(VECTORS)) {
-      const zeros = new Uint8Array(Number(size));
-      assertEquals(encrypt(cipher, tweak, zeros), expected);
-      assertEquals(decrypt(cipher, tweak, expected), zeros);
-    }
-  });
-}
+test("the vectors of rfjakob/eme", () => {
+  const cipher = aes256(new Uint8Array(32));
+  const tweak = new Uint8Array(16);
+  for (const [size, expected] of Object.entries(VECTORS)) {
+    const zeros = new Uint8Array(Number(size));
+    assertEquals(encrypt(cipher, tweak, zeros), expected);
+    assertEquals(decrypt(cipher, tweak, expected), zeros);
+  }
+});
 
 const KEY = fc.uint8Array({ minLength: 32, maxLength: 32 });
 const TWEAK = fc.uint8Array({ minLength: 16, maxLength: 16 });
@@ -141,7 +119,7 @@ const DATA = fc.integer({ min: 1, max: 128 }).chain((blocks) =>
 test("decrypt gives the data that encrypt took", () => {
   fc.assert(
     fc.property(KEY, TWEAK, DATA, (key, tweak, data) => {
-      const cipher = new AES(key);
+      const cipher = aes256(key);
       const encrypted = encrypt(cipher, tweak, data);
       assertEquals(encrypted.length, data.length);
       assertEquals(decrypt(cipher, tweak, encrypted), data);
@@ -152,7 +130,7 @@ test("decrypt gives the data that encrypt took", () => {
 test("a change of one bit of the input or of the tweak changes each block", () => {
   fc.assert(
     fc.property(KEY, TWEAK, DATA, fc.nat(), (key, tweak, data, bit) => {
-      const cipher = new AES(key);
+      const cipher = aes256(key);
       const before = blocks(encrypt(cipher, tweak, data));
 
       const changed = data.slice();
@@ -170,17 +148,21 @@ test("a change of one bit of the input or of the tweak changes each block", () =
   );
 });
 
-test("encrypt and decrypt do not change their input", () => {
-  const cipher = new AES(new Uint8Array(32));
-  const tweak = new Uint8Array(16);
-  const data = new Uint8Array(64).fill(7);
-  decrypt(cipher, tweak, encrypt(cipher, tweak, data));
-  assertEquals(tweak, new Uint8Array(16));
-  assertEquals(data, new Uint8Array(64).fill(7));
+test("encrypt and decrypt do not change their input, also a Buffer", () => {
+  const cipher = aes256(new Uint8Array(32));
+  // The slice of a Buffer is a view, not a copy.
+  for (const make of [(n) => new Uint8Array(n), (n) => Buffer.alloc(n)]) {
+    const tweak = make(16);
+    const data = make(64).fill(7);
+    const encrypted = encrypt(cipher, tweak, data);
+    assertEquals(decrypt(cipher, tweak, encrypted), new Uint8Array(64).fill(7));
+    assertEquals(new Uint8Array(tweak), new Uint8Array(16));
+    assertEquals(new Uint8Array(data), new Uint8Array(64).fill(7));
+  }
 });
 
 test("the tweak is 16 bytes, and the data are 1 to 128 blocks", () => {
-  const cipher = new AES(new Uint8Array(32));
+  const cipher = aes256(new Uint8Array(32));
   const tweak = new Uint8Array(16);
   for (const f of [encrypt, decrypt]) {
     assertThrows(() => f(cipher, new Uint8Array(15), new Uint8Array(16)), {

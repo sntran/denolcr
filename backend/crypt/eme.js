@@ -18,12 +18,13 @@ const BLOCK_SIZE = 16;
 const MAX_BLOCKS = 128;
 
 /**
- * A block cipher of 16 bytes with its key, for example `new AES(key)` of
- * `aes-js`. Each function takes one block and gives a new block. It does not
- * change its input.
+ * A block cipher of 16 bytes in ECB mode, with its key, for example
+ * AES-256-ECB of `node:crypto`. Each function takes one or more blocks,
+ * encrypts or decrypts each block alone, and gives the blocks in a new array.
+ * It does not change its input.
  * @typedef {Object} BlockCipher
- * @property {(block: Uint8Array) => Uint8Array} encrypt
- * @property {(block: Uint8Array) => Uint8Array} decrypt
+ * @property {(blocks: Uint8Array) => Uint8Array} encrypt
+ * @property {(blocks: Uint8Array) => Uint8Array} decrypt
  */
 
 /**
@@ -34,7 +35,7 @@ const MAX_BLOCKS = 128;
  * @returns {Uint8Array} The encrypted data, a new array of the same size.
  */
 export function encrypt(cipher, tweak, data) {
-  return transform(cipher, tweak, data, (block) => cipher.encrypt(block));
+  return transform(cipher, tweak, data, (blocks) => cipher.encrypt(blocks));
 }
 
 /**
@@ -45,16 +46,17 @@ export function encrypt(cipher, tweak, data) {
  * @returns {Uint8Array} The decrypted data, a new array of the same size.
  */
 export function decrypt(cipher, tweak, data) {
-  return transform(cipher, tweak, data, (block) => cipher.decrypt(block));
+  return transform(cipher, tweak, data, (blocks) => cipher.decrypt(blocks));
 }
 
 /**
- * The steps of EME.
+ * The steps of EME: an ECB layer, a mix, and a second ECB layer. Each ECB
+ * layer is one call of the block cipher for all the blocks.
  * @param {BlockCipher} cipher The block cipher. The table L uses its
  *   encryption in the two directions.
  * @param {Uint8Array} T The tweak.
  * @param {Uint8Array} P The input.
- * @param {(block: Uint8Array) => Uint8Array} E The block cipher, in the
+ * @param {(blocks: Uint8Array) => Uint8Array} E The block cipher, in the
  *   direction of the transform.
  * @returns {Uint8Array} C, the output.
  */
@@ -62,48 +64,47 @@ function transform(cipher, T, P, E) {
   check(T, P);
   const m = P.length / BLOCK_SIZE;
   const L = table(cipher, m);
-  const C = new Uint8Array(P.length);
 
-  // PPP_j = E(P_j xor L_j), and MP = T xor PPP_1 xor ... xor PPP_m.
-  const MP = T.slice();
+  // The first ECB layer: PPP_j = E(P_j xor L_j).
+  const PPP = E(xor(copy(P), L));
+
+  // The mix: MP = T xor PPP_1 xor ... xor PPP_m, MC = E(MP), and the mask
+  // M = MP xor MC.
+  const MP = copy(T);
   for (let j = 0; j < m; j++) {
-    const PPP = E(xor(block(P, j).slice(), L[j]));
-    C.set(PPP, j * BLOCK_SIZE);
-    xor(MP, PPP);
+    xor(MP, block(PPP, j));
   }
-
-  // MC = E(MP), and the mask M = MP xor MC.
   const MC = E(MP);
-  const M = xor(MP.slice(), MC);
+  const M = xor(copy(MP), MC);
 
-  // CCC_j = PPP_j xor 2^(j-1) M for j = 2 to m, in place in C.
+  // CCC_j = PPP_j xor 2^(j-1) M for j = 2 to m, and
   // CCC_1 = MC xor T xor CCC_2 xor ... xor CCC_m.
-  const CCC1 = xor(MC.slice(), T);
+  const CCC = copy(PPP);
+  const CCC1 = xor(copy(MC), T);
   for (let j = 1; j < m; j++) {
-    xor(CCC1, xor(block(C, j), double(M)));
+    xor(CCC1, xor(block(CCC, j), double(M)));
   }
-  C.set(CCC1, 0);
+  CCC.set(CCC1, 0);
 
-  // C_j = E(CCC_j) xor L_j.
-  for (let j = 0; j < m; j++) {
-    const Cj = block(C, j);
-    Cj.set(E(Cj));
-    xor(Cj, L[j]);
-  }
-
-  return C;
+  // The second ECB layer: C_j = E(CCC_j) xor L_j.
+  return xor(copy(E(CCC)), L);
 }
 
 /**
- * The table of L for m blocks. The paper sets L = 2 E(0), and the block j
- * (from 1) uses 2^(j-1) L. Thus L[0] is L, L[1] is 2 L, and so on.
+ * The table of L for m blocks, as m blocks in one array. The paper sets
+ * L = 2 E(0), and the block j (from 1) uses 2^(j-1) L. Thus the first block
+ * of the table is L, the second is 2 L, and so on.
  * @param {BlockCipher} cipher
  * @param {number} m
- * @returns {Uint8Array[]}
+ * @returns {Uint8Array}
  */
 function table(cipher, m) {
-  const L = cipher.encrypt(new Uint8Array(BLOCK_SIZE)).slice();
-  return Array.from({ length: m }, () => double(L).slice());
+  const L = new Uint8Array(m * BLOCK_SIZE);
+  const Lj = copy(cipher.encrypt(new Uint8Array(BLOCK_SIZE)));
+  for (let j = 0; j < m; j++) {
+    L.set(double(Lj), j * BLOCK_SIZE);
+  }
+  return L;
 }
 
 /**
@@ -124,16 +125,26 @@ function double(block) {
 }
 
 /**
- * Puts `a` xor `b` in `a`.
- * @param {Uint8Array} a A block, which changes.
- * @param {Uint8Array} b A block.
- * @returns {Uint8Array} The block `a`.
+ * Puts `a` xor `b` in `a`. The two have the same size.
+ * @param {Uint8Array} a Blocks, which change.
+ * @param {Uint8Array} b Blocks.
+ * @returns {Uint8Array} The array `a`.
  */
 function xor(a, b) {
-  for (let i = 0; i < BLOCK_SIZE; i++) {
+  for (let i = 0; i < a.length; i++) {
     a[i] ^= b[i];
   }
   return a;
+}
+
+/**
+ * Gives a copy of the block. `slice` does not do this for each array: the
+ * `slice` of a `Buffer` of Node.js is a view.
+ * @param {Uint8Array} block
+ * @returns {Uint8Array}
+ */
+function copy(block) {
+  return new Uint8Array(block);
 }
 
 /**

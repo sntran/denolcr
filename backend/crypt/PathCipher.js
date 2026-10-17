@@ -1,4 +1,5 @@
-import { AES, decodeBase32, encodeBase32 } from "../../deps.js";
+import { decodeBase32, encodeBase32 } from "../../deps.js";
+import { aes256 } from "./aes.js";
 import * as EME from "./eme.js";
 import { pad, Padding, unpad } from "./padding.js";
 
@@ -28,9 +29,7 @@ export default function PathCipher({ nameKey, nameTweak } = {}) {
   if (nameKey === undefined || nameTweak === undefined) {
     throw new Error("nameKey and nameTweak must be specified");
   }
-  // Name Cipher Fuctions
-  // TODO: Switch to https://github.com/invisal/god_crypto/blob/master/src/aes/aes_wc.ts
-  const nameCipher = new AES(nameKey);
+  const nameCipher = aes256(nameKey);
 
   /**
    * Encrypts a name
