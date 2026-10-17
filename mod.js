@@ -1,7 +1,8 @@
 import { env } from "node:process";
-import { load } from "./backend/main.js";
+import { backends, load } from "./backend/main.js";
 import * as commands from "./cmd/main.js";
 import { parse } from "@rfetch/lib/fspath";
+import { isOption } from "@rfetch/lib/options";
 
 export * from "./cmd/main.js";
 
@@ -92,6 +93,21 @@ const globalFetch = globalThis.fetch;
  * variable `RCLONE_LOCAL_SKIP_LINKS` is set, the command line flag will take
  * preference.
  *
+ * A header of the request with the name of a variable, for example
+ * `RCLONE_CONFIG_MYREMOTE_SKIP_LINKS`, takes the place of the variable of the
+ * environment. A remote can come only from variables, as in rclone:
+ * `RCLONE_CONFIG_MYREMOTE_TYPE` and its options. Thus a request can give
+ * all its configuration, with no config file.
+ *
+ * The backend gets the options of the path, the connection string and the
+ * flags, in the query of its request. It gets the other options in `env`,
+ * the second argument of its `fetch`, with the names of the variables of
+ * rclone, for example `RCLONE_LOCAL_SKIP_LINKS`. A backend makes the links of
+ * a list from the query only, thus an option of `env` is never in a link.
+ *
+ * The headers `RCLONE_*` are only for the backends of rfetch: they never go
+ * out to a URL.
+ *
  * For non backend configuration the order is as follows:
  *
  * - Flag values as supplied on the command line, e.g. `--stats 5s`.
@@ -109,24 +125,20 @@ export async function fetch(input, init = {}) {
     typeof input !== "string" || input.startsWith("https://") ||
     input.startsWith("http://") || input.startsWith("file://")
   ) {
-    return globalFetch(input, init);
+    return globalFetch(...withoutOptions(input, init));
   }
 
   // The parts of the path, as rclone reads them. It throws a SyntaxError
   // for a path that is not correct.
   const parsed = parse(input);
 
-  // The final params.
-  const params = new URLSearchParams();
-
-  /**
-   * Sets backend generic environment vars first.
-   */
-  for (const [key, value] of Object.entries(env)) {
-    if (key.startsWith("RCLONE_")) {
-      const shortKey = key.slice(7).toLowerCase();
-      params.set(shortKey, value);
-    }
+  const headers = new Headers(init.headers);
+  // The variables of rclone: the environment of the process, then the
+  // headers of the request, which take their place.
+  /** @type {Record<string, string>} */
+  const variables = { ...env };
+  for (const [key, value] of headers) {
+    if (isOption(key)) variables[key.toUpperCase()] = value;
   }
 
   let { name } = parsed;
@@ -142,70 +154,92 @@ export async function fetch(input, init = {}) {
     config = { type: name.slice(1) };
     name = "";
   } else {
+    // A remote of the config file, or of the variables, as rclone.
+    const type = variables[`RCLONE_CONFIG_${name.toUpperCase()}_TYPE`];
     const response = await commands.config("show", name, undefined, {
       headers: { "Accept": "application/json" },
-    });
-    if (!response.ok) {
+    }).catch(() => null);
+    if (response?.ok) {
+      config = await response.json();
+    } else if (type) {
+      config = {};
+    } else {
       throw new Error(`Remote ${name} not found in config.`);
     }
-    config = await response.json();
+    if (type) config.type = type;
   }
 
   const type = config.type;
   delete config.type;
 
-  // Stores config into params if not already set, with lowest precedence.
-  Object.entries(config).forEach(([key, value]) => {
-    if (!params.has(key)) {
-      params.set(key, value);
-    }
-  });
+  // The options that are not in the path, from the lowest precedence: the
+  // config file, then the variables.
+  const options = new Map(Object.entries(config));
 
-  // Overrides with backend-specific environment vars.
-  let envPrefix = `RCLONE_${type.toUpperCase()}_`;
-  for (const [key, value] of Object.entries(env)) {
-    if (key.startsWith(envPrefix)) {
-      const shortKey = key.slice(envPrefix.length).toLowerCase();
-      params.set(shortKey, value);
+  // Backend generic variables, for example `RCLONE_SKIP_LINKS`. A variable
+  // of a remote or of a backend is not generic: it is not an option of each
+  // backend.
+  const specific = ["CONFIG", ...Object.keys(backends)]
+    .map((prefix) => `RCLONE_${prefix.toUpperCase()}_`);
+  for (const [key, value] of Object.entries(variables)) {
+    if (!key.startsWith("RCLONE_")) continue;
+    if (specific.some((prefix) => key.startsWith(prefix))) continue;
+    options.set(key.slice("RCLONE_".length).toLowerCase(), value);
+  }
 
-      // Deletes any params that are already set by environment vars.
-      params.delete(`${type}_${shortKey}`);
+  // Backend-specific variables, for example `RCLONE_LOCAL_SKIP_LINKS`.
+  let prefix = `RCLONE_${type.toUpperCase()}_`;
+  for (const [key, value] of Object.entries(variables)) {
+    if (key.startsWith(prefix)) {
+      options.set(key.slice(prefix.length).toLowerCase(), value);
     }
   }
 
-  // Overrides with remote specific environment vars
-  envPrefix = `RCLONE_CONFIG_${name.toUpperCase()}_`;
-  for (const [key, value] of Object.entries(env)) {
-    if (key.startsWith(envPrefix)) {
-      const shortKey = key.slice(envPrefix.length).toLowerCase();
-      params.set(shortKey, value);
-
-      // Deletes any params that are already set by environment vars.
-      params.delete(`config_${name}_${shortKey}`);
+  // Remote specific variables, for example `RCLONE_CONFIG_MYREMOTE_SKIP_LINKS`.
+  if (name) {
+    prefix = `RCLONE_CONFIG_${name.toUpperCase()}_`;
+    for (const [key, value] of Object.entries(variables)) {
+      if (key.startsWith(prefix) && key !== `${prefix}TYPE`) {
+        options.set(key.slice(prefix.length).toLowerCase(), value);
+      }
     }
   }
 
   // `searchParams` may contain other flags not for the current backend.
   const { pathname, searchParams } = new URL(parsed.path, "file:");
 
-  // Overrides with flags in request's search params.
+  // The query of the backend: the flags prefixed with the backend type, then
+  // the parameters in the connection string, which take their place.
+  const params = new URLSearchParams();
   searchParams.forEach((value, key) => {
     if (key.startsWith(`${type}_`)) {
       params.set(key.replace(`${type}_`, ""), value);
     }
   });
-
-  // Overrides with parameters in connection string.
   for (const [key, value] of Object.entries(parsed.config)) {
     params.set(key, value);
   }
 
-  const headers = new Headers(init.headers);
+  // The other options go in `env`. The backend reads its query first, as a
+  // flag takes the place of a variable.
+  /** @type {Record<string, string>} */
+  const optionsEnv = {};
+  for (const [key, value] of options) {
+    optionsEnv[`RCLONE_${type.toUpperCase()}_${key.toUpperCase()}`] = value;
+  }
+  // The headers of this backend are in its options now.
+  const own = `rclone_${type.toLowerCase()}_`;
+  for (const key of [...headers.keys()]) {
+    if (key.startsWith(own)) headers.delete(key);
+  }
 
   if (init.method === "TRACE") {
     let body = `TRACE ${pathname}?${params} HTTP/1.1\r`;
-    // Reflects the request as response body.
+    // Reflects the request as response body, then the options in `env`.
     for (const [name, value] of headers) {
+      body += `${name}: ${value}\r`;
+    }
+    for (const [name, value] of Object.entries(optionsEnv)) {
       body += `${name}: ${value}\r`;
     }
     return new Response(body, {
@@ -235,7 +269,33 @@ export async function fetch(input, init = {}) {
     new Request(request, {
       headers,
     }),
+    optionsEnv,
   );
+}
+
+/**
+ * Removes the options of rclone from a request to a URL: they are only for
+ * the backends of rfetch.
+ * @param {string | Request | URL} input
+ * @param {RequestInit} init
+ * @returns {[string | Request | URL, RequestInit]}
+ */
+function withoutOptions(input, init) {
+  /** @param {HeadersInit} [from] */
+  const clean = (from) => {
+    const headers = new Headers(from);
+    for (const key of [...headers.keys()]) {
+      if (isOption(key)) headers.delete(key);
+    }
+    return headers;
+  };
+  if (input instanceof Request) {
+    input = new Request(input, { headers: clean(input.headers) });
+  }
+  if (init.headers !== undefined) {
+    init = { ...init, headers: clean(init.headers) };
+  }
+  return [input, init];
 }
 
 // The other URLs go to the original `fetch`.

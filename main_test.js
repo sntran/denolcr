@@ -4,7 +4,20 @@ import { unlink, writeFile } from "node:fs/promises";
 import { serve } from "@sntran/serve";
 import assert from "node:assert/strict";
 
+import { listen } from "@rfetch/lib/testing/server";
 import { config, fetch } from "./mod.js";
+
+/**
+ * Gives an option in the `env` of the backend, from the body of an answer to
+ * `TRACE`: the options of the config file and of the variables are not in
+ * the query, thus they are never in a link.
+ * @param {string} body
+ * @param {string} name For example `RCLONE_ALIAS_REMOTE`.
+ */
+function variableOf(body, name) {
+  const line = body.split("\r").find((line) => line.startsWith(`${name}: `));
+  return line?.slice(name.length + 2);
+}
 
 test("fetch", async (t) => {
   await t.test("global", () => {
@@ -101,7 +114,8 @@ test("fetch", async (t) => {
         const { pathname, searchParams } = new URL(url, "file:");
 
         assert.deepEqual(pathname, "/");
-        assert.deepEqual(searchParams.get("remote"), `source:`);
+        assert(!searchParams.has("remote"), "the config is not in the query");
+        assert.deepEqual(variableOf(body, "RCLONE_ALIAS_REMOTE"), `source:`);
       });
 
       await t.test(
@@ -116,8 +130,9 @@ test("fetch", async (t) => {
             [];
           const { searchParams } = new URL(url, "file:");
 
-          assert.deepEqual(searchParams.get("remote"), `source:`);
-          assert.deepEqual(searchParams.get("skip_links"), `true`);
+          assert(!searchParams.has("skip_links"), "not in the query");
+          assert.deepEqual(variableOf(body, "RCLONE_ALIAS_REMOTE"), `source:`);
+          assert.deepEqual(variableOf(body, "RCLONE_ALIAS_SKIP_LINKS"), `true`);
         },
       );
 
@@ -133,7 +148,8 @@ test("fetch", async (t) => {
             [];
           const { searchParams } = new URL(url, "file:");
 
-          assert.deepEqual(searchParams.get("remote"), `/tmp/1`);
+          assert(!searchParams.has("remote"), "not in the query");
+          assert.deepEqual(variableOf(body, "RCLONE_ALIAS_REMOTE"), `/tmp/1`);
           assert(
             !searchParams.has("alias_remote"),
             "should not have param prefixed with backend type",
@@ -153,7 +169,8 @@ test("fetch", async (t) => {
             [];
           const { searchParams } = new URL(url, "file:");
 
-          assert.deepEqual(searchParams.get("remote"), `/tmp/2`);
+          assert(!searchParams.has("remote"), "not in the query");
+          assert.deepEqual(variableOf(body, "RCLONE_ALIAS_REMOTE"), `/tmp/2`);
           assert(
             !searchParams.has("config_target_remote"),
             "should not have param prefixed with remote name",
@@ -229,5 +246,110 @@ test("fetch", async (t) => {
     delete process.env.RCLONE_SKIP_LINKS;
     delete process.env.RCLONE_ALIAS_REMOTE;
     delete process.env.RCLONE_CONFIG_TARGET_REMOTE;
+  });
+});
+
+test("options in the headers of a request", async (t) => {
+  await t.test("a remote only from the headers, with no config file", async () => {
+    const headers = { RCLONE_CONFIG_MEM_TYPE: "memory" };
+    const put = await fetch("mem:headers/a.txt", {
+      method: "PUT",
+      body: "from the headers",
+      headers,
+    });
+    assert.equal(put.status, 201);
+    const response = await fetch("mem:headers/a.txt", { headers });
+    assert.equal(await response.text(), "from the headers");
+    // The same remote, as a remote on the fly.
+    const plain = await fetch(":memory:headers/a.txt");
+    assert.equal(await plain.text(), "from the headers");
+    await assert.rejects(fetch("mem:headers/a.txt"), /Remote mem not found/);
+  });
+
+  await t.test("a header takes the place of a variable", async () => {
+    process.env.RCLONE_CONFIG_PLACE_TYPE = "alias";
+    process.env.RCLONE_CONFIG_PLACE_REMOTE = "/tmp/env";
+    try {
+      const response = await fetch("place:", {
+        method: "TRACE",
+        headers: { RCLONE_CONFIG_PLACE_REMOTE: "/tmp/header" },
+      });
+      const body = await response.text();
+      assert.equal(variableOf(body, "RCLONE_ALIAS_REMOTE"), "/tmp/header");
+    } finally {
+      delete process.env.RCLONE_CONFIG_PLACE_TYPE;
+      delete process.env.RCLONE_CONFIG_PLACE_REMOTE;
+    }
+  });
+
+  await t.test("the variables of other remotes are not options", async () => {
+    process.env.RCLONE_CONFIG_OTHER_SECRET_ACCESS_KEY = "other-secret";
+    try {
+      const response = await fetch(":memory:leak/", {
+        method: "TRACE",
+        headers: { RCLONE_CONFIG_THIRD_PASSWORD: "third-secret" },
+      });
+      const body = await response.text();
+      assert(!body.includes("RCLONE_MEMORY_CONFIG_"), body);
+      const [, url] = body.match(/^TRACE (.*) HTTP\/1.1$/m);
+      assert.equal(
+        new URL(url, "file:").search,
+        "",
+        "an option is in the query",
+      );
+
+      await fetch(":memory:leak/a.txt", { method: "PUT", body: "a" });
+      const html = await (await fetch(":memory:leak/", {
+        headers: { RCLONE_CONFIG_THIRD_PASSWORD: "third-secret" },
+      })).text();
+      assert(!html.includes("other-secret"), "a variable is in a link");
+      assert(!html.includes("third-secret"), "a header is in a link");
+    } finally {
+      delete process.env.RCLONE_CONFIG_OTHER_SECRET_ACCESS_KEY;
+    }
+  });
+
+  await t.test("no option goes out to a URL", async () => {
+    /** @type {Headers[]} */
+    const seen = [];
+    const server = await listen((request) => {
+      seen.push(request.headers);
+      return new Response("ok");
+    });
+    try {
+      const headers = {
+        RCLONE_S3_SECRET_ACCESS_KEY: "secret",
+        RCLONE_CONFIG_R2_TYPE: "s3",
+        "X-Other": "other",
+      };
+      await (await fetch(`${server.url}`, { headers })).text();
+      await (await fetch(new Request(server.url, { headers }))).text();
+      await (await fetch(server.url, { headers })).text();
+      assert.equal(seen.length, 3);
+      for (const headers of seen) {
+        assert.equal(headers.get("x-other"), "other");
+        assert.deepEqual(
+          [...headers.keys()].filter((name) => name.startsWith("rclone_")),
+          [],
+        );
+      }
+    } finally {
+      await server.close();
+    }
+  });
+
+  await t.test("two requests at the same time, each with its own remote", async () => {
+    await fetch(":memory:one/a.txt", { method: "PUT", body: "one" });
+    await fetch(":memory:two/a.txt", { method: "PUT", body: "two" });
+    /** @param {string} folder */
+    const get = (folder) =>
+      fetch("tenant:a.txt", {
+        headers: {
+          RCLONE_CONFIG_TENANT_TYPE: "alias",
+          RCLONE_CONFIG_TENANT_REMOTE: `:memory:${folder}`,
+        },
+      }).then((response) => response.text());
+    const folders = Array.from({ length: 20 }, (_, i) => i % 2 ? "one" : "two");
+    assert.deepEqual(await Promise.all(folders.map(get)), folders);
   });
 });

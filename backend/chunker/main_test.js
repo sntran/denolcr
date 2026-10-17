@@ -226,3 +226,21 @@ describe("chunker", () => {
     await counted.delete("range.bin");
   });
 });
+
+test("chunker on a named remote of the headers", async () => {
+  // A request to chunker with the headers, as a Worker gets it. Each chunk
+  // goes to the remote `vault`, which only the headers tell.
+  const client = remote(backend, {
+    headers: {
+      RCLONE_CHUNKER_REMOTE: "vault:chunker-headers",
+      RCLONE_CHUNKER_CHUNK_SIZE: "1k",
+      RCLONE_CONFIG_VAULT_TYPE: "memory",
+    },
+  });
+  const data = content(2500);
+  assert.equal((await client.put("big.bin", data)).status, 201);
+  const response = await client.get("big.bin");
+  assert.deepEqual(new Uint8Array(await response.arrayBuffer()), data);
+  const list = await (await fetch(":memory:chunker-headers/")).text();
+  assert.match(list, /big\.bin\.rclone_chunk\.003/);
+});

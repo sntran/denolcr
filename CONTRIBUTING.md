@@ -86,6 +86,34 @@ To count or change the requests to the remote in a test, replace the global
 `fetch` with `t.mock.method(globalThis, "fetch", …)`. The test runner puts the
 original `fetch` back at the end of the test.
 
+## Options of a backend
+
+A backend reads its options with `optionsOf(request, "remote", env)` of
+`@rfetch/lib/options`, in this order:
+
+1. a field of the query, for example `?password=…`;
+2. the header `RCLONE_REMOTE_NAME` of the request, for example
+   `RCLONE_CRYPT_PASSWORD`;
+3. the variable `RCLONE_REMOTE_NAME` of `env`.
+
+These are the names of the variables of rclone. Thus a client can give a secret
+in a header, and a Worker can give it in `env`: then the secret is not in a URL.
+A backend makes the links of a list from the query of the request only, with no
+secret option. Thus an option of a header or of `env` is never in a link.
+
+A backend on top of another remote sends the headers
+`remoteHeaders(request.headers, "remote", remote)` to that remote. The other
+options of the request go on, for example a remote `RCLONE_CONFIG_NAME_TYPE`
+that only the headers tell. The options of the backend itself do not go. When
+the remote is a URL, no option goes: a secret must not go out to a server.
+
+The `fetch` of `mod.js` reads the headers `RCLONE_*` of a request as the
+variables of rclone, in the place of the variables of the process. A remote can
+come only from variables: `RCLONE_CONFIG_NAME_TYPE` and its options, as in
+rclone. The backend gets the options of the path, the connection string and the
+flags, in its query, and all the other options in `env`. The headers `RCLONE_*`
+never go out to a URL.
+
 ## Workspaces
 
 Each backend is an npm workspace with the name `@rfetch/NAME`, and can be a
@@ -213,6 +241,9 @@ Other options are for some backends only:
 - `emptyFolders`: `false` for a backend that cannot have an empty folder, as
   `CanHaveEmptyDirectories` of rclone. For example, `s3` with no folder markers.
   Then the suite accepts 404 for a folder with no file.
+- `type`: the type of the backend in rclone, for example `crypt`. With it, the
+  suite also gives the `params` in the headers `RCLONE_TYPE_NAME` and in `env`,
+  and makes sure that no link of a list has a query.
 
 Put the tests for what only one backend does in the same file, after the suite.
 For example, the tests of the local backend make sure that a path cannot go out

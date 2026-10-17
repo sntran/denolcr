@@ -7,9 +7,11 @@ import fc from "fast-check";
 
 import { backendSuite } from "@rfetch/lib/testing/suite";
 import { remote } from "@rfetch/lib/testing/remote";
+import { listen } from "@rfetch/lib/testing/server";
 import { fetch } from "../../mod.js";
 import { mimeType } from "@rfetch/lib/mime";
 import { decode, default as crypt, deriveKey, encode } from "./main.js";
+import memory from "@rfetch/memory";
 
 // The password "123456" and the salt, obscured.
 const PASSWORD = "UmyLSdRHfew6aual28-ggx78qHqSfQ";
@@ -254,6 +256,82 @@ describe("crypt", () => {
         new Uint8Array(await response.arrayBuffer()),
         content.subarray(start, end + 1),
       );
+    }
+  });
+});
+
+describe("crypt with its options in headers", () => {
+  /** The configuration of a client, with no config file. */
+  const headers = {
+    RCLONE_CRYPT_REMOTE: "vault:crypt-headers",
+    RCLONE_CRYPT_PASSWORD: PASSWORD,
+    RCLONE_CONFIG_VAULT_TYPE: "memory",
+  };
+
+  test("reads a named remote of the headers, and keeps its password", async (t) => {
+    /** The headers of each request of crypt to its remote. */
+    const sent = [];
+    t.mock.method(globalThis, "fetch", (input, init = {}) => {
+      sent.push(new Headers(init.headers));
+      return fetch(input, init);
+    });
+    // A request to crypt with the headers, as a Worker gets it.
+    const client = remote(crypt, { headers });
+    const put = await client.put(
+      "a.txt",
+      new TextEncoder().encode("secret text"),
+    );
+    assert.equal(put.status, 201);
+    assert.equal(await (await client.get("a.txt")).text(), "secret text");
+
+    assert.ok(sent.length > 0);
+    for (const headers of sent) {
+      assert.equal(headers.get("RCLONE_CONFIG_VAULT_TYPE"), "memory");
+      assert.equal(headers.get("RCLONE_CRYPT_PASSWORD"), null);
+      assert.equal(headers.get("RCLONE_CRYPT_REMOTE"), null);
+    }
+    // The file is encrypted in the remote.
+    const list = await (await fetch(":memory:crypt-headers/")).text();
+    assert.doesNotMatch(list, /a\.txt/);
+    assert.match(list, /href="[a-z0-9]+"/);
+  });
+
+  test("gives no option to a remote that is a URL", async (t) => {
+    // What crypt gives to the global fetch: a platform with no rfetch sends
+    // it as it is.
+    /** @type {Headers[]} */
+    const sent = [];
+    t.mock.method(globalThis, "fetch", (input, init = {}) => {
+      sent.push(new Headers(init.headers));
+      return fetch(input, init);
+    });
+    /** @type {Headers[]} */
+    const seen = [];
+    const server = await listen((request) => {
+      seen.push(request.headers);
+      return memory.fetch(request);
+    });
+    try {
+      const client = remote(crypt, {
+        headers: {
+          ...headers,
+          RCLONE_CRYPT_REMOTE: new URL("/crypt-url/", server.url).href,
+        },
+      });
+      assert.equal(
+        (await client.put("b.txt", new TextEncoder().encode("b"))).status,
+        201,
+      );
+      assert.equal(await (await client.get("b.txt")).text(), "b");
+      assert.ok(seen.length > 0);
+      for (const headers of [...sent, ...seen]) {
+        assert.deepEqual(
+          [...headers.keys()].filter((name) => name.startsWith("rclone_")),
+          [],
+        );
+      }
+    } finally {
+      await server.close();
     }
   });
 });
