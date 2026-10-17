@@ -1,11 +1,11 @@
 import { env } from "node:process";
 import { load } from "./backend/main.js";
 import * as commands from "./cmd/main.js";
-import { parse } from "./lib/fspath.js";
+import { parse } from "@rfetch/lib/fspath";
 
 export * from "./cmd/main.js";
 
-export { Progress } from "./lib/streams/progress.js";
+export { Progress } from "@rfetch/lib/progress";
 
 /**
  * @typedef {Object<string, string>} Options

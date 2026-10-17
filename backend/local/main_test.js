@@ -12,7 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { backendSuite } from "@rfetch/testing/suite";
+import { backendSuite } from "@rfetch/lib/testing/suite";
 import backend from "./main.js";
 
 // The backend serves the current folder. The tests use a new folder as the

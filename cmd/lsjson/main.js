@@ -1,7 +1,7 @@
 import { basename } from "node:path";
 import { HTMLRewriter } from "@sntran/html-rewriter";
-import { parse } from "../../lib/fspath.js";
-import { toLocaleISOString } from "../../lib/time.js";
+import { parse } from "@rfetch/lib/fspath";
+import { toLocaleISOString } from "@rfetch/lib/time";
 
 import { fetch } from "../../mod.js";
 

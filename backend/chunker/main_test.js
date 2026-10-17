@@ -2,8 +2,8 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 
-import { backendSuite } from "@rfetch/testing/suite";
-import { remote } from "@rfetch/testing/remote";
+import { backendSuite } from "@rfetch/lib/testing/suite";
+import { remote } from "@rfetch/lib/testing/remote";
 import { fetch } from "../../mod.js";
 import backend from "./main.js";
 

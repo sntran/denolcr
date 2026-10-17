@@ -18,7 +18,7 @@ import { dirname, join } from "node:path";
 import process from "node:process";
 import fc from "fast-check";
 
-import { remote } from "@rfetch/testing/remote";
+import { remote } from "@rfetch/lib/testing/remote";
 // Sets the global `fetch` that reads the paths of remotes.
 import "../../mod.js";
 import crypt from "./main.js";

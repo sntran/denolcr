@@ -7,7 +7,7 @@ import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { once } from "node:events";
 import { Writable } from "node:stream";
-import { bench } from "@rfetch/testing/bench";
+import { bench } from "@rfetch/lib/testing/bench";
 import backend from "./main.js";
 
 const buffer = randomBytes(1024 * 1024 * 10); // 10M

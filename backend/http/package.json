@@ -27,7 +27,6 @@
     "@rfetch/chunker": "^0.1.0",
     "@rfetch/crypt": "^0.1.0",
     "@rfetch/memory": "^0.1.0",
-    "@rfetch/testing": "^0.1.0",
     "fast-check": "^3.19.0"
   }
 }

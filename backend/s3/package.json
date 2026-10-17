@@ -23,7 +23,6 @@
     "@rfetch/lib": "^0.1.0"
   },
   "devDependencies": {
-    "@rfetch/testing": "^0.1.0",
     "fast-check": "^3.19.0"
   }
 }

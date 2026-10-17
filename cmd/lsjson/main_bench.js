@@ -8,7 +8,7 @@
  */
 import { spawn } from "node:child_process";
 import { Readable } from "node:stream";
-import { bench } from "@rfetch/testing/bench";
+import { bench } from "@rfetch/lib/testing/bench";
 import { lsjson } from "./main.js";
 
 const remotes = ["./", "./backend/", "./cmd/"];

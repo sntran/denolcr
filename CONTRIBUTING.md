@@ -99,8 +99,7 @@ new backend is:
   "type": "module",
   "exports": { ".": "./main.js" },
   "scripts": { "test": "node --test" },
-  "dependencies": { "@rfetch/lib": "^0.1.0" },
-  "devDependencies": { "@rfetch/testing": "^0.1.0" }
+  "dependencies": { "@rfetch/lib": "^0.1.0" }
 }
 ```
 
@@ -116,11 +115,11 @@ The tests and the benches of a backend can also import its `devDependencies`,
 and `../../mod.js` for the global `fetch`. The test `backend/main_test.js` makes
 sure of this rule.
 
-The code that two or more backends use is in the package `@rfetch/lib`, in
-`packages/lib`: `format`, `html`, `listing`, `mime`, `obscure`, `path`, `range`,
-`size` and `sized`. The code that only one backend uses is in the folder of that
-backend, for example `backend/s3/xml.js`. The shared tests are in the package
-`@rfetch/testing`, in `packages/testing`.
+The code that two or more backends use is in the workspace `lib`, the package
+`@rfetch/lib`: for example `listing`, `path`, `range`, `mime` and `obscure`. The
+shared tests of the backends are in it too, in `@rfetch/lib/testing/suite`. The
+code that only one backend uses is in the folder of that backend, for example
+`backend/s3/xml.js`.
 
 ## Architecture
 
@@ -169,12 +168,12 @@ a folder, and `readListing` reads it.
 
 ## Tests of a backend
 
-Each backend must pass the shared tests of `@rfetch/testing/suite`. These tests
-are as the tests `fstests` of rclone, for the contract above. The file
+Each backend must pass the shared tests of `@rfetch/lib/testing/suite`. These
+tests are as the tests `fstests` of rclone, for the contract above. The file
 "main_test.js" of the backend calls the suite one time:
 
 ```js
-import { backendSuite } from "@rfetch/testing/suite";
+import { backendSuite } from "@rfetch/lib/testing/suite";
 import backend from "./main.js";
 
 backendSuite("remote", backend);

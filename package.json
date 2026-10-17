@@ -11,7 +11,7 @@
   "main": "mod.js",
   "type": "module",
   "workspaces": [
-    "packages/*",
+    "lib",
     "backend/*"
   ],
   "repository": {

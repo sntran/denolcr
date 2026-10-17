@@ -14,10 +14,11 @@ import { backends, load } from "./main.js";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-/** The folders of the workspaces, for example `backend/crypt`. */
+/** The folders of the workspaces, for example `lib` and `backend/crypt`. */
 const WORKSPACES = JSON.parse(readFileSync(join(ROOT, "package.json")))
   .workspaces.flatMap((pattern) => {
-    const parent = pattern.replace(/\/\*$/, "");
+    if (!pattern.endsWith("/*")) return [pattern];
+    const parent = pattern.slice(0, -2);
     return readdirSync(join(ROOT, parent), { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
       .map((entry) => `${parent}/${entry.name}`)

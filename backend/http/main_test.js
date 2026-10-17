@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import { gzipSync } from "node:zlib";
 
 import { mimeType } from "@rfetch/lib/mime";
-import { backendSuite } from "@rfetch/testing/suite";
-import { remote } from "@rfetch/testing/remote";
-import { listen } from "@rfetch/testing/server";
+import { backendSuite } from "@rfetch/lib/testing/suite";
+import { remote } from "@rfetch/lib/testing/remote";
+import { listen } from "@rfetch/lib/testing/server";
 import memory from "@rfetch/memory";
 import backend from "./main.js";
 

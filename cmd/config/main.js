@@ -1,8 +1,8 @@
 import { env } from "node:process";
 
 import { join } from "node:path";
-import { CONFIG_NAME } from "../../lib/fspath.js";
-import * as INI from "../../lib/ini.js";
+import { CONFIG_NAME } from "@rfetch/lib/fspath";
+import * as INI from "@rfetch/lib/ini";
 
 /**
  * The names of remotes that rclone accepts (`fspath.CheckConfigName`):

@@ -11,8 +11,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
 
-import { remote } from "@rfetch/testing/remote";
-import { listen } from "@rfetch/testing/server";
+import { remote } from "@rfetch/lib/testing/remote";
+import { listen } from "@rfetch/lib/testing/server";
 // Sets the global `fetch` that reads the paths of remotes.
 import "../../mod.js";
 import chunker from "@rfetch/chunker";

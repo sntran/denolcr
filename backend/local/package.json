@@ -21,8 +21,5 @@
   "license": "ISC",
   "dependencies": {
     "@rfetch/lib": "^0.1.0"
-  },
-  "devDependencies": {
-    "@rfetch/testing": "^0.1.0"
   }
 }
