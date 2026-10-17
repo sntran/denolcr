@@ -7,8 +7,7 @@
  * Because it has no parameters you can just use it with the `:memory:` remote
  * name.
  */
-import { formatBytes } from "../../lib/format.js";
-import { escapeHTML } from "../../lib/html.js";
+import { renderListing } from "../../lib/listing.js";
 import { mimeType } from "../../lib/mime.js";
 import { decodePath } from "../../lib/path.js";
 
@@ -112,78 +111,31 @@ async function memory(request) {
 function listing(path, searchParams) {
   // The children are the paths in the folder with no other "/" than a "/" at
   // the end for a folder.
-  /** @type {string[]} */
-  const children = [];
-  for (const key of cache.keys()) {
+  /** @type {import("../../lib/listing.js").Entry[]} */
+  const entries = [];
+  for (const [key, file] of cache) {
     if (key === path || !key.startsWith(path)) continue;
     const child = key.slice(path.length);
     const slash = child.indexOf("/");
-    if (slash === -1 || slash === child.length - 1) {
-      children.push(child);
+    if (slash === -1) {
+      entries.push({
+        Name: child,
+        IsDir: false,
+        Size: file.size,
+        MimeType: file.type || mimeType(child),
+        ModTime: new Date(file.lastModified).toISOString(),
+      });
+    } else if (slash === child.length - 1) {
+      entries.push({
+        Name: child.slice(0, -1),
+        IsDir: true,
+        Size: -1,
+        MimeType: "",
+        ModTime: "",
+      });
     }
   }
-  children.sort((a, b) => a.localeCompare(b));
-
-  const query = escapeHTML(`${searchParams}`);
-
-  return new ReadableStream({
-    start(controller) {
-      controller.enqueue(`
-        <table cellpadding="4">
-        <thead>
-          <tr>
-            <th></th>
-            <th>Name</th>
-            <th>Size</th>
-            <th>Modified</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>📁</td>
-            <td><a href="../?${query}">Go up</a></td>
-            <td>—</td>
-            <td>—</td>
-          </tr>
-      `);
-
-      for (const child of children) {
-        const file = cache.get(path + child);
-        const isDirectory = file === null;
-        const name = isDirectory ? child.slice(0, -1) : child;
-        const href = `${encodeURIComponent(name)}${isDirectory ? "/" : ""}`;
-        const type = isDirectory ? "" : file.type || mimeType(name);
-        const lastModified = isDirectory ? null : new Date(file.lastModified);
-
-        controller.enqueue(`<tr>
-          <td>${isDirectory ? "📁" : "📄"}</td>
-          <td>
-            <a
-              href="${href}?${query}"
-              type="${escapeHTML(type)}"
-            >${escapeHTML(child)}</a>
-          </td>
-          <td>${
-          isDirectory ? "—" : `<data
-              value="${file.size}"
-            >${formatBytes(file.size, { locale: true })}</data>`
-        }
-          </td>
-          <td>${
-          lastModified
-            ? `<time
-                datetime="${lastModified.toISOString()}"
-              >${lastModified.toLocaleString()}</time>`
-            : "-"
-        }
-          </td>
-        </tr>`);
-      }
-
-      controller.enqueue("</tbody></table>");
-      controller.close();
-    },
-  }).pipeThrough(new TextEncoderStream());
+  return renderListing(entries, { query: `${searchParams}` });
 }
 
 export default {
