@@ -39,8 +39,9 @@ export { Progress } from "./lib/streams/progress.js";
 const globalFetch = globalThis.fetch;
 
 /**
- * A `fetch` with support for remote URL. It does not replace the global
- * `fetch`: import it.
+ * A `fetch` with support for remote URL. The import of this module sets it
+ * as the global `fetch`. Thus a backend on top of other remotes, for example
+ * crypt, calls `fetch(":memory:/path")` and does not import rfetch.
  *
  * The syntax of the paths passed to the rfetch command are as follows.
  *
@@ -229,18 +230,13 @@ export async function fetch(input, init = {}) {
   const url = new URL(`${pathname}?${params}`, import.meta.url || `file:`);
   // Creates a new request with the initial init.
   const request = new Request(url, init);
-  // Clones that request and updates the headers. A backend on top of other
-  // remotes, for example crypt, sends its requests to them with this fetch.
+  // Clones that request and updates the headers.
   return backend.fetch(
     new Request(request, {
       headers,
     }),
-    REMOTE,
   );
 }
 
-/**
- * The env of a backend: `REMOTE` gets the requests of a backend to the
- * remote under it, for example `:memory:/path` for crypt.
- */
-const REMOTE = { REMOTE: { fetch } };
+// The other URLs go to the original `fetch`.
+globalThis.fetch = fetch;

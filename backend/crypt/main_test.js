@@ -11,9 +11,6 @@ import { fetch } from "../../mod.js";
 import { mimeType } from "../../lib/mime.js";
 import { decode, default as crypt, deriveKey, encode } from "./main.js";
 
-/** The remotes under the backend, through the fetch of rfetch. */
-const env = { REMOTE: { fetch } };
-
 // The password "123456" and the salt, obscured.
 const PASSWORD = "UmyLSdRHfew6aual28-ggx78qHqSfQ";
 const SALT = "Cj3gLa5PVwc2aot0QpKiOZ3YEzs3Sw";
@@ -124,7 +121,6 @@ test("encode", async () => {
 
 test("GET of the fixtures", async () => {
   const fs = remote(crypt, {
-    env,
     params: { remote: "crypt", password: PASSWORD, password2: SALT },
   });
   for (const name of Object.keys(CRYPT)) {
@@ -149,10 +145,10 @@ const params = {
   password2: SALT,
 };
 
-backendSuite("crypt", crypt, { env, params });
+backendSuite("crypt", crypt, { params });
 
 describe("crypt", () => {
-  const fs = remote(crypt, { env, params });
+  const fs = remote(crypt, { params });
 
   test("puts no password in the links of a list", async () => {
     await fs.put("secret/a b.txt", new TextEncoder().encode("a"));
@@ -182,7 +178,7 @@ describe("crypt", () => {
   });
 
   test("gives 400 for a password that is not obscured", async () => {
-    const bad = remote(crypt, { env, params: { ...params, password: "!!" } });
+    const bad = remote(crypt, { params: { ...params, password: "!!" } });
     const response = await bad.get("");
     assert.equal(response.status, 400);
     assert.ok(!(await response.text()).includes("!!"));
@@ -204,20 +200,14 @@ describe("crypt", () => {
   /** A file of 3 blocks and a part of a block. */
   const content = new Uint8Array(3 * 65536 + 100).map((_, i) => i * 7 + 1);
 
-  test("reads only the header and the blocks of a range", async () => {
+  test("reads only the header and the blocks of a range", async (t) => {
     /** The `Range` of each request to the remote. */
     const ranges = [];
-    const counted = remote(crypt, {
-      params,
-      env: {
-        REMOTE: {
-          fetch(input, init = {}) {
-            ranges.push(new Headers(init.headers).get("Range"));
-            return fetch(input, init);
-          },
-        },
-      },
+    t.mock.method(globalThis, "fetch", (input, init = {}) => {
+      ranges.push(new Headers(init.headers).get("Range"));
+      return fetch(input, init);
     });
+    const counted = remote(crypt, { params });
     await counted.put("blocks.bin", content);
 
     ranges.length = 0;
@@ -242,20 +232,14 @@ describe("crypt", () => {
     assert.deepEqual(ranges, ["bytes=0-31", `bytes=196688-${size - 1}`]);
   });
 
-  test("gives a range when the remote sends all the file", async () => {
+  test("gives a range when the remote sends all the file", async (t) => {
     // A remote that does not read the ranges.
-    const full = remote(crypt, {
-      params,
-      env: {
-        REMOTE: {
-          fetch(input, init = {}) {
-            const headers = new Headers(init.headers);
-            headers.delete("Range");
-            return fetch(input, { ...init, headers });
-          },
-        },
-      },
+    t.mock.method(globalThis, "fetch", (input, init = {}) => {
+      const headers = new Headers(init.headers);
+      headers.delete("Range");
+      return fetch(input, { ...init, headers });
     });
+    const full = remote(crypt, { params });
     await full.put("full.bin", content);
     for (
       const [header, start, end] of [["bytes=70000-140000", 70000, 140000]]

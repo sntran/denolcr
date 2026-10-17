@@ -20,11 +20,9 @@ import { dirname, join } from "node:path";
 import process from "node:process";
 
 import { remote } from "../../lib/testing/remote.js";
-import { fetch } from "../../mod.js";
+// Sets the global `fetch` that reads the paths of remotes.
+import "../../mod.js";
 import chunker from "./main.js";
-
-/** The remotes under the backend, through the fetch of rfetch. */
-const env = { REMOTE: { fetch } };
 
 const RCLONE = process.env.RCLONE || "rclone";
 const hasRclone = spawnSync(RCLONE, ["version"]).status === 0;
@@ -109,7 +107,6 @@ describe("chunker and rclone", {
   for (const [mode, options] of Object.entries(MODES)) {
     const rfetch = (side) =>
       remote(chunker, {
-        env,
         params: { remote: `${mode}/${side}`, ...options },
       });
 
@@ -185,7 +182,6 @@ describe("chunker and rclone", {
 
   test("rclone reads a file that rfetch writes with no Content-Length", async () => {
     const fs = remote(chunker, {
-      env,
       params: { remote: "rename/by-rfetch", ...MODES.rename },
     });
     for (const size of [10, 3000]) {

@@ -6,17 +6,12 @@
  * imports nothing of rfetch: it gets all from the request and from `env`.
  *
  * A backend on top of another remote, for example crypt, sends its requests
- * to that remote with `env.REMOTE.fetch`, as a service binding of
- * Cloudflare. With no `REMOTE`, it uses the global `fetch`.
+ * to that remote with the global `fetch`, for example
+ * `fetch(":memory:/path")`. The host sets the global `fetch` that reads
+ * such a path: `mod.js` in Node.js, and `_worker.js` in a Worker.
  *
  * @typedef {Object} Backend
- * @property {(request: Request, env?: Env) => Response | Promise<Response>} fetch
- */
-
-/**
- * @typedef {Object} Env
- * @property {{ fetch: typeof fetch }} [REMOTE] Gets the requests to the
- *   remote under the backend.
+ * @property {(request: Request, env?: Object) => Response | Promise<Response>} fetch
  */
 
 export { default as alias } from "./alias/main.js";

@@ -7,20 +7,15 @@ import { remote } from "../../lib/testing/remote.js";
 import { fetch } from "../../mod.js";
 import backend from "./main.js";
 
-/** The remotes under the backend, through the fetch of rfetch. */
-const env = { REMOTE: { fetch } };
-
 // Small chunks, thus the files of the suite have more than one chunk.
 const CHUNK = "64k";
 
 backendSuite("chunker", backend, {
-  env,
   params: { remote: ":memory:/chunker", chunk_size: CHUNK },
 });
 // Without metadata, a name is always in chunks. rclone does not read the
 // name of a chunk with "\n": "." of Go does not match it.
 backendSuite("chunker meta_format=none", backend, {
-  env,
   params: {
     remote: ":memory:/none",
     chunk_size: CHUNK,
@@ -30,7 +25,6 @@ backendSuite("chunker meta_format=none", backend, {
   skipName: /\n/,
 });
 backendSuite("chunker transactions=norename", backend, {
-  env,
   params: {
     remote: ":memory:/norename",
     chunk_size: CHUNK,
@@ -46,7 +40,6 @@ function content(size) {
 describe("chunker", () => {
   const root = ":memory:/layout";
   const fs = remote(backend, {
-    env,
     params: { remote: root, chunk_size: "1k" },
   });
 
@@ -160,14 +153,13 @@ describe("chunker", () => {
         },
       ]
     ) {
-      const response = await remote(backend, { env, params }).get("");
+      const response = await remote(backend, { params }).get("");
       assert.equal(response.status, 400, JSON.stringify(params));
     }
   });
 
   test("names the chunks with name_format and start_from", async () => {
     const custom = remote(backend, {
-      env,
       params: {
         remote: root,
         chunk_size: "1k",
@@ -186,24 +178,18 @@ describe("chunker", () => {
     await custom.delete("a.bin");
   });
 
-  test("reads only the chunks of a range", async () => {
+  test("reads only the chunks of a range", async (t) => {
     /** The chunk and the `Range` of each GET of a chunk. */
     const reads = [];
+    t.mock.method(globalThis, "fetch", (input, init = {}) => {
+      const name = decodeURIComponent(input.slice(input.lastIndexOf("/") + 1));
+      if (/_chunk\.\d+$/.test(name) && (init.method ?? "GET") === "GET") {
+        reads.push([name, new Headers(init.headers).get("Range")]);
+      }
+      return fetch(input, init);
+    });
     const counted = remote(backend, {
       params: { remote: root, chunk_size: "1k" },
-      env: {
-        REMOTE: {
-          fetch(input, init = {}) {
-            const name = decodeURIComponent(
-              input.slice(input.lastIndexOf("/") + 1),
-            );
-            if (/_chunk\.\d+$/.test(name) && (init.method ?? "GET") === "GET") {
-              reads.push([name, new Headers(init.headers).get("Range")]);
-            }
-            return fetch(input, init);
-          },
-        },
-      },
     });
     const data = content(3000);
     await counted.put("range.bin", data);

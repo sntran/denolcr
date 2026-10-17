@@ -64,19 +64,23 @@ export default {
 A backend imports nothing of rfetch, for example `mod.js`. It is a Worker of
 Cloudflare: it gets all from the request and from `env`, the second argument of
 `fetch`. A backend on top of another remote, for example `crypt` or `chunker`,
-sends its requests to that remote with `env.REMOTE.fetch`, as a service binding.
-With no `REMOTE`, it uses the global `fetch`. The `fetch` of `mod.js` and
-`_worker.js` give `REMOTE`: it reads remotes as `:memory:/path`. In the tests,
-give the same `env` to the suite:
+sends its requests to that remote with the global `fetch`, for example
+`fetch(":memory:/crypt/file.bin")`. The host sets the global `fetch` that reads
+such a path: the import of `mod.js` sets it, and `_worker.js` imports `mod.js`.
+The tests of such a backend import `mod.js` too:
 
 ```js
-import { fetch } from "../../mod.js";
+// Sets the global `fetch` that reads the paths of remotes.
+import "../../mod.js";
 
 backendSuite("crypt", crypt, {
-  env: { REMOTE: { fetch } },
   params: { remote: ":memory:/crypt", password },
 });
 ```
+
+To count or change the requests to the remote in a test, replace the global
+`fetch` with `t.mock.method(globalThis, "fetch", …)`. The test runner puts the
+original `fetch` back at the end of the test.
 
 ## Architecture
 

@@ -23,13 +23,11 @@ import { relink } from "../../lib/listing.js";
 import { decodePath, encodePath } from "../../lib/path.js";
 
 /**
+ * Sends the requests to the remote of the alias with the global `fetch`.
  * @param {Request} request
- * @param {{ REMOTE?: { fetch: typeof fetch } }} [env] `REMOTE` gets the
- *   requests to the remote of the alias, as a service binding of Cloudflare.
- *   With no `REMOTE`, the global `fetch` gets them.
  * @returns {Promise<Response>}
  */
-async function alias(request, env = {}) {
+async function alias(request) {
   const { method } = request;
   const { pathname, searchParams } = new URL(request.url);
 
@@ -49,8 +47,7 @@ async function alias(request, env = {}) {
     init.body = request.body;
     init.duplex = "half";
   }
-  const fetcher = env.REMOTE ?? globalThis;
-  const response = await fetcher.fetch(remote + encodePath(path), init);
+  const response = await fetch(remote + encodePath(path), init);
   if (!response.ok) {
     return response;
   }

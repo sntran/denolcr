@@ -6,11 +6,9 @@ import assert from "node:assert/strict";
 
 import { backendSuite } from "../../lib/testing/suite.js";
 import { remote } from "../../lib/testing/remote.js";
-import { fetch } from "../../mod.js";
+// Sets the global `fetch` that reads the paths of remotes.
+import "../../mod.js";
 import backend from "./main.js";
-
-/** The remotes under the backend, through the fetch of rfetch. */
-const env = { REMOTE: { fetch } };
 
 test("local path", async () => {
   const requestInit = {
@@ -21,7 +19,7 @@ test("local path", async () => {
   const url = new URL(`/backend/?remote=.`, import.meta.url);
 
   const request = new Request(url, requestInit);
-  const response = await backend.fetch(request, env);
+  const response = await backend.fetch(request);
   const html = await response.text();
 
   const entries = await readdir(join(cwd, "backend"), { withFileTypes: true });
@@ -37,10 +35,10 @@ test("local path", async () => {
   }
 });
 
-backendSuite("alias", backend, { env, params: { remote: ":memory:/alias" } });
+backendSuite("alias", backend, { params: { remote: ":memory:/alias" } });
 
 test("the links of a list are in the alias", async () => {
-  const fs = remote(backend, { env, params: { remote: ":memory:/links" } });
+  const fs = remote(backend, { params: { remote: ":memory:/links" } });
   await fs.put("a b.txt", new TextEncoder().encode("a"));
   const html = await fs.get("").then((response) => response.text());
   assert.ok(html.includes(` href="a%20b.txt?remote=%3Amemory%3A%2Flinks"`));

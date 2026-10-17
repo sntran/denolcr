@@ -154,14 +154,12 @@ const SECRETBOX_OPTIONS = {
 const SECRETS = ["password", "password2"];
 
 /**
- * Serves a crypted remote.
+ * Serves a crypted remote. The requests to the remote under crypt go to the
+ * global `fetch`.
  * @param {Request} request
- * @param {{ REMOTE?: { fetch: typeof fetch } }} [env] `REMOTE` gets the
- *   requests to the remote under crypt, as a service binding of Cloudflare.
- *   With no `REMOTE`, the global `fetch` gets them.
  * @returns {Promise<Response>}
  */
-async function crypt(request, env = {}) {
+async function crypt(request) {
   const { method } = request;
   const { pathname, searchParams } = new URL(request.url);
 
@@ -188,7 +186,6 @@ async function crypt(request, env = {}) {
     return new Response("The password is not obscured", { status: 400 });
   }
 
-  const fetcher = env.REMOTE ?? globalThis;
   const isDirectory = path.endsWith("/");
   const target = remote + cipher.names.encrypt(path);
 
@@ -199,11 +196,11 @@ async function crypt(request, env = {}) {
 
   const range = request.headers.get("Range");
   if (method === "GET" && !isDirectory && range !== null) {
-    return await getRange(fetcher, target, headers, cipher, path, range);
+    return await getRange(target, headers, cipher, path, range);
   }
 
   if (method === "GET" || method === "HEAD") {
-    const response = await fetcher.fetch(target, { method, headers });
+    const response = await fetch(target, { method, headers });
     if (!response.ok) {
       return response;
     }
@@ -258,7 +255,7 @@ async function crypt(request, env = {}) {
       init.duplex = "half";
     }
 
-    const response = await fetcher.fetch(target, init);
+    const response = await fetch(target, init);
     await response.body?.cancel();
     const result = new Headers();
     if (response.ok) {
@@ -268,7 +265,7 @@ async function crypt(request, env = {}) {
   }
 
   if (method === "DELETE") {
-    const response = await fetcher.fetch(target, { method, headers });
+    const response = await fetch(target, { method, headers });
     await response.body?.cancel();
     return new Response(null, { status: response.status });
   }
@@ -284,7 +281,6 @@ async function crypt(request, env = {}) {
  * encrypted file gives its nonce and its size, then only the blocks of the
  * range are read and decrypted. When the remote sends all the file for a
  * range, all the file is decrypted, and the answer has the range only.
- * @param {{ fetch: typeof fetch }} fetcher The remote.
  * @param {string} target The encrypted path on the remote.
  * @param {Headers} headers The headers of the request, with no `Range`.
  * @param {{ dataKey: Uint8Array }} cipher
@@ -292,14 +288,14 @@ async function crypt(request, env = {}) {
  * @param {string} header The `Range` of the request.
  * @returns {Promise<Response>}
  */
-async function getRange(fetcher, target, headers, cipher, path, header) {
+async function getRange(target, headers, cipher, path, header) {
   const { magic, blockSize } = SECRETBOX_OPTIONS;
   const headerSize = magic.length + 24;
   const blockLength = blockSize + 16;
 
   const init = { headers: new Headers(headers) };
   init.headers.set("Range", `bytes=0-${headerSize - 1}`);
-  const first = await fetcher.fetch(target, init);
+  const first = await fetch(target, init);
   if (first.status === 416) {
     // The encrypted file is shorter than its header.
     return new Response(Errors.TOO_SHORT, { status: 500 });
@@ -380,7 +376,7 @@ async function getRange(fetcher, target, headers, cipher, path, header) {
     Number(total),
   ) - 1;
   init.headers.set("Range", `bytes=${from}-${to}`);
-  const second = await fetcher.fetch(target, init);
+  const second = await fetch(target, init);
   if (!second.ok) {
     await second.body?.cancel();
     return new Response(null, { status: 502 });

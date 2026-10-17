@@ -19,11 +19,9 @@ import process from "node:process";
 import fc from "fast-check";
 
 import { remote } from "../../lib/testing/remote.js";
-import { fetch } from "../../mod.js";
+// Sets the global `fetch` that reads the paths of remotes.
+import "../../mod.js";
 import crypt from "./main.js";
-
-/** The remotes under the backend, through the fetch of rfetch. */
-const env = { REMOTE: { fetch } };
 
 const RCLONE = process.env.RCLONE || "rclone";
 const hasRclone = spawnSync(RCLONE, ["version"]).status === 0;
@@ -73,7 +71,6 @@ describe("crypt and rclone", {
    */
   const rfetch = (name) =>
     remote(crypt, {
-      env,
       params: { remote: name, password: PASSWORD, password2: SALT },
     });
 

@@ -13,7 +13,8 @@ import process from "node:process";
 
 import { remote } from "../../lib/testing/remote.js";
 import { listen } from "../../lib/testing/server.js";
-import { fetch } from "../../mod.js";
+// Sets the global `fetch` that reads the paths of remotes.
+import "../../mod.js";
 import chunker from "../chunker/main.js";
 import crypt from "../crypt/main.js";
 import memory from "../memory/main.js";
@@ -181,7 +182,6 @@ describe("rclone reads ranges of rfetch", {
       chunk_size: "64k",
     }],
   };
-  const env = { REMOTE: { fetch } };
   const data = content(3 * 65536 + 1000);
   let server;
 
@@ -194,10 +194,10 @@ describe("rclone reads ranges of rfetch", {
       for (const [key, value] of Object.entries(params)) {
         url.searchParams.set(key, value);
       }
-      return backend.fetch(new Request(url, request), env);
+      return backend.fetch(new Request(url, request));
     });
     for (const [backend, params] of Object.values(BACKENDS)) {
-      const response = await remote(backend, { params, env }).put(
+      const response = await remote(backend, { params }).put(
         "data.bin",
         data,
       );

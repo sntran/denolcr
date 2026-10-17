@@ -1,5 +1,6 @@
 import * as backends from "./backend/main.js";
-import { fetch } from "./mod.js";
+// Sets the global `fetch` that reads the paths of remotes.
+import "./mod.js";
 
 /**
  * A handler
@@ -39,9 +40,7 @@ function remote(request, env, params) {
 
   request = new Request(url, request);
 
-  // A backend on top of other remotes, for example crypt, sends its
-  // requests to them with the fetch of rfetch, as REMOTE.
-  return backend.fetch(request, { ...env, REMOTE: env.REMOTE ?? { fetch } });
+  return backend.fetch(request, env);
 }
 
 const routes = {

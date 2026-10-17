@@ -169,25 +169,22 @@ export const options = {
  * @property {boolean} noRename True for the transactions "norename".
  * @property {boolean} failHard
  * @property {ReturnType<typeof nameFormat>} names
- * @property {{ fetch: typeof fetch }} fetcher The remote under the chunker:
- *   `env.REMOTE`, or the global `fetch`.
  */
 
 /**
+ * Sends the requests to the remote under the chunker with the global
+ * `fetch`.
  * @param {Request} request
- * @param {{ REMOTE?: { fetch: typeof fetch } }} [env] `REMOTE` gets the
- *   requests to the remote under the chunker, as a service binding of
- *   Cloudflare. With no `REMOTE`, the global `fetch` gets them.
  * @returns {Promise<Response>}
  */
-async function chunker(request, env = {}) {
+async function chunker(request) {
   const { method } = request;
   const { pathname, searchParams } = new URL(request.url);
 
   /** @type {Config} */
   let config;
   try {
-    config = configOf(searchParams, env);
+    config = configOf(searchParams);
   } catch (error) {
     return new Response(error.message, { status: 400 });
   }
@@ -249,10 +246,9 @@ class ChunkerError extends Error {
 /**
  * Reads the options, as `NewFs` of the chunker of rclone.
  * @param {URLSearchParams} searchParams
- * @param {{ REMOTE?: { fetch: typeof fetch } }} env
  * @returns {Config}
  */
-function configOf(searchParams, env) {
+function configOf(searchParams) {
   const get = (name) => searchParams.get(name) ?? options.default[name];
 
   const remote = searchParams.get("remote")?.replace(/\/$/, "");
@@ -310,7 +306,6 @@ function configOf(searchParams, env) {
     noRename,
     failHard: get("fail_hard") === "true",
     names: nameFormat(get("name_format"), startFrom),
-    fetcher: env.REMOTE ?? globalThis,
   };
 }
 
@@ -914,7 +909,7 @@ async function deleteFile(config, dir, name) {
  * @returns {Promise<Response>}
  */
 function send(config, path, init) {
-  return config.fetcher.fetch(config.remote + encodePath(path), init);
+  return fetch(config.remote + encodePath(path), init);
 }
 
 /**
