@@ -7,9 +7,8 @@
  * Because it has no parameters you can just use it with the `:memory:` remote
  * name.
  */
-import { extname } from "node:path";
-import { format as formatBytes } from "@std/fmt/bytes";
-import { contentType } from "@std/media-types";
+import { formatBytes } from "../../lib/format.js";
+import { mimeType } from "../../lib/mime.js";
 
 /**
  * @type {Map<string, File | null>}
@@ -87,9 +86,7 @@ async function memory(request) {
                 filePath += "/";
               }
 
-              const type = isDirectory
-                ? ""
-                : contentType(extname(pathname)) || "";
+              const type = isDirectory ? "" : mimeType(pathname);
               const size = Number(isDirectory ? "-1" : value.size);
               const lastModified = value?.lastModified
                 ? new Date(value?.lastModified)

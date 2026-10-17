@@ -1,7 +1,7 @@
 import process from "node:process";
-import { extname, join } from "node:path";
-import { format as formatBytes } from "@std/fmt/bytes";
-import { contentType } from "@std/media-types";
+import { join } from "node:path";
+import { formatBytes } from "../../lib/format.js";
+import { mimeType } from "../../lib/mime.js";
 
 /**
  * Serves a local remote
@@ -112,7 +112,7 @@ async function local(request) {
 
       headers.set("Content-Type", "text/html;charset=utf-8");
     } else {
-      headers.append("Content-Type", contentType(extname(pathname)) || "");
+      headers.append("Content-Type", mimeType(pathname));
       headers.append("Content-Length", stats.size.toString());
 
       if (method === "GET") {

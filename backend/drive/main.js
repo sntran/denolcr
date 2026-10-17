@@ -1,4 +1,4 @@
-import { format as formatBytes } from "@std/fmt/bytes";
+import { formatBytes } from "../../lib/format.js";
 
 import { auth } from "./auth.js";
 import { list } from "./list.js";

@@ -93,10 +93,9 @@
  * - 1049120 bytes total (a 0.05% overhead). This is the overhead for big files.
  */
 
-import { extname } from "node:path";
 import { scryptAsync as scrypt } from "@noble/hashes/scrypt";
 import { HTMLRewriter } from "@sntran/html-rewriter";
-import { contentType } from "@std/media-types";
+import { mimeType } from "../../lib/mime.js";
 import { fetch } from "../../mod.js";
 import { reveal } from "../../cmd/obscure/main.js";
 import PathCipher from "./PathCipher.js";
@@ -186,7 +185,7 @@ async function crypt(request) {
   let { status, statusText, headers, body } = response;
   headers = new Headers(headers);
 
-  const mimetype = contentType(extname(pathname)) || "";
+  const mimetype = mimeType(pathname);
   if (mimetype) {
     headers.set("Content-Type", mimetype);
   }
@@ -217,7 +216,7 @@ async function crypt(request) {
           }
 
           if (type) {
-            type = contentType(extname(basename)) || type;
+            type = mimeType(basename);
             element.setAttribute("type", type);
           }
         },

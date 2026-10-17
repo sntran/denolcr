@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 import { Buffer } from "node:buffer";
-import { extname, join } from "node:path";
-import { contentType } from "@std/media-types";
+import { join } from "node:path";
+import { mimeType } from "../../lib/mime.js";
 import assert from "node:assert/strict";
 import fc from "fast-check";
 
@@ -118,7 +118,7 @@ test("GET", async (t) => {
       assert.deepEqual(size, originalFile.byteLength);
 
       const type = response.headers.get("Content-Type");
-      assert.deepEqual(type, contentType(extname(originalFilename)));
+      assert.deepEqual(type, mimeType(originalFilename));
 
       response.body?.cancel();
     }

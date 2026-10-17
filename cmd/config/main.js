@@ -1,7 +1,7 @@
 import { env } from "node:process";
 
 import { join } from "node:path";
-import * as INI from "@std/ini";
+import * as INI from "../../lib/ini.js";
 
 const NAME_REGEX = /^[\w.][\w.\s-]*$/;
 
@@ -65,10 +65,7 @@ export async function config(subcommand, name, options, init) {
    * @type {Object}
    */
   let config = INI.parse(ini);
-  const encodeOptions = {
-    section: "",
-    whitespace: true,
-  };
+  const encodeOptions = { section: "" };
 
   switch (subcommand) {
     case "create": { // Create a new remote with name, type and options.

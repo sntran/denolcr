@@ -25,7 +25,7 @@
  */
 
 import { HTMLRewriter } from "@sntran/html-rewriter";
-import { format as formatBytes } from "@std/fmt/bytes";
+import { formatBytes } from "../../lib/format.js";
 import { toLocaleISOString } from "../../lib/time.js";
 
 export const options = {

@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import process from "node:process";
 import { readdir, readFile, stat } from "node:fs/promises";
-import { extname, join } from "node:path";
-import { contentType } from "@std/media-types";
+import { join } from "node:path";
+import { mimeType } from "../../lib/mime.js";
 import assert from "node:assert/strict";
 
 import backend from "./main.js";
@@ -63,7 +63,7 @@ test("GET", async (t) => {
 
       assert.equal(
         headers.get("Content-Type"),
-        contentType(extname(name)) || "",
+        mimeType(name),
       );
       assert.equal(headers.get("Content-Length"), `${file.size}`);
       assert.equal(
@@ -97,8 +97,7 @@ test("PUT", async (t) => {
     const request = new Request(url, {
       method: "PUT",
       headers: {
-        "Content-Type": contentType(extname(newFile)) ||
-          "application/octet-stream",
+        "Content-Type": mimeType(newFile),
         "Content-Length": `${encoder.encode(body).byteLength}`,
       },
       body,
@@ -153,8 +152,7 @@ test("PUT", async (t) => {
     const request = new Request(url, {
       method: "PUT",
       headers: {
-        "Content-Type": contentType(extname(newFile)) ||
-          "application/octet-stream",
+        "Content-Type": mimeType(newFile),
         "Content-Length": `${encoder.encode(body).byteLength}`,
       },
       body,

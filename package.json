@@ -31,9 +31,6 @@
     "@noble/hashes": "^1.4.0",
     "@sntran/html-rewriter": "^0.2.0",
     "@sntran/serve": "^0.0.1",
-    "@std/fmt": "npm:@jsr/std__fmt@^0.225.4",
-    "@std/ini": "npm:@jsr/std__ini@^0.225.1",
-    "@std/media-types": "npm:@jsr/std__media-types@^1.0.0-rc.1",
     "base32-decode": "^1.0.0",
     "base32-encode": "^2.0.0"
   },
