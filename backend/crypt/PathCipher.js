@@ -1,5 +1,5 @@
 import { AES, decodeBase32, encodeBase32 } from "../../deps.js";
-import { Decrypt, Encrypt } from "./eme.js";
+import * as EME from "./eme.js";
 import { pad, Padding, unpad } from "./padding.js";
 
 const encoder = new TextEncoder();
@@ -41,7 +41,7 @@ export default function PathCipher({ nameKey, nameTweak } = {}) {
     if (name === "") return "";
     const ciphertext = encoder.encode(name);
     const paddedCipherText = pad(ciphertext, Padding.PKCS7, 16);
-    const rawCipherText = Encrypt(nameCipher, nameTweak, paddedCipherText);
+    const rawCipherText = EME.encrypt(nameCipher, nameTweak, paddedCipherText);
 
     const encodedCipher = encodeBase32(rawCipherText, "RFC4648-HEX");
     return encodedCipher.replace(/=+$/, "").toLowerCase();
@@ -68,7 +68,7 @@ export default function PathCipher({ nameKey, nameTweak } = {}) {
     const rawCipherText = new Uint8Array(
       decodeBase32(name.toUpperCase(), "RFC4648-HEX"),
     );
-    const paddedPlaintext = Decrypt(nameCipher, nameTweak, rawCipherText);
+    const paddedPlaintext = EME.decrypt(nameCipher, nameTweak, rawCipherText);
     return decoder.decode(unpad(paddedPlaintext, Padding.PKCS7, 16));
   }
 

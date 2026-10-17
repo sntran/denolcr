@@ -3,8 +3,9 @@ import {
   notDeepEqual as assertNotEquals,
   ok as assert,
   rejects as assertRejects,
+  throws as assertThrows,
 } from "node:assert/strict";
-export { assert, assertEquals, assertNotEquals, assertRejects };
+export { assert, assertEquals, assertNotEquals, assertRejects, assertThrows };
 
 /**
  * Asserts a header
