@@ -146,3 +146,69 @@ test("lsjson gives the names with no percent-encoding", async () => {
     { Name: name, Path: name },
   ]);
 });
+
+/** Puts the files, with percent-encoding in each name of each path. */
+async function putAll(location, paths) {
+  for (const path of paths) {
+    const encoded = path.split("/").map(encodeURIComponent).join("/");
+    const response = await fetch(`${location}${encoded}`, {
+      method: "PUT",
+      headers: { "Content-Length": `${encoder.encode(path).byteLength}` },
+      body: path,
+    });
+    assert.equal(response.status, 201, path);
+  }
+}
+
+/** The paths of the entries of `lsjson --recursive`, in order. */
+async function walk(location) {
+  const result = await lsjson(location, { recursive: "true" })
+    .then((response) => response.json());
+  return result.map(({ Path, IsDir, Size }) => ({ Path, IsDir, Size }))
+    .sort((a, b) => a.Path < b.Path ? -1 : +(a.Path > b.Path));
+}
+
+/** Folders and files with names that have "?", "#", "%" and spaces. */
+const HARD = ["a?b/c#d/e%f.txt", "a?b/g h.txt", "i%20j/k?.txt", "l#/m"];
+
+/** The entries of the files of HARD and of their folders. */
+function entries(paths) {
+  const all = new Map();
+  for (const path of paths) {
+    const names = path.split("/");
+    for (let i = 1; i < names.length; i++) {
+      const folder = names.slice(0, i).join("/");
+      all.set(folder, { Path: folder, IsDir: true, Size: -1 });
+    }
+    all.set(path, {
+      Path: path,
+      IsDir: false,
+      Size: encoder.encode(path).length,
+    });
+  }
+  return [...all.values()].sort((a, b) =>
+    a.Path < b.Path ? -1 : +(a.Path > b.Path)
+  );
+}
+
+test("lsjson --recursive keeps the names with ? and # in folders", async () => {
+  await putAll(":memory:/recursive/", HARD);
+  assert.deepEqual(await walk(":memory:/recursive/"), entries(HARD));
+});
+
+test("lsjson lists one file with a hard name", async () => {
+  const result = await lsjson(
+    `:memory:/recursive/a%3Fb/${encodeURIComponent("g h.txt")}`,
+  )
+    .then((response) => response.json());
+  assert.deepEqual(result.map(({ Name }) => Name), ["g h.txt"]);
+});
+
+test("lsjson reads a connection string with a / in a value", async () => {
+  // "test-password", obscured by rclone.
+  const password = "4OSlj-ZYMGdEIGjcWg_gc-DL4O3TFAvr4ct_yV4";
+  const location =
+    `:crypt,remote=':memory:/lsjson/crypt',password=${password}:`;
+  await putAll(location, HARD);
+  assert.deepEqual(await walk(location), entries(HARD));
+});

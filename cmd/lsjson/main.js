@@ -1,5 +1,6 @@
 import { basename } from "node:path";
 import { HTMLRewriter } from "@sntran/html-rewriter";
+import { parse } from "../../lib/fspath.js";
 import { toLocaleISOString } from "../../lib/time.js";
 
 import { fetch } from "../../mod.js";
@@ -55,16 +56,23 @@ const decoder = new TextDecoder();
  * @returns {Promise<Response>}
  */
 export async function lsjson(location, flags = {}) {
-  const isDirectory = location.endsWith("/");
+  // Only the path in the remote has folders: a value of the connection
+  // string can have a "/" too, for example `:crypt,remote='a/b':path`.
+  const parsed = parse(location);
+  const prefix = location.slice(0, location.length - parsed.path.length);
+  const path = parsed.path;
+  const isDirectory = path === "" || path.endsWith("/");
   const init = { method: "GET" };
-  const segments = location.split("/");
+  let folder = path;
   let filename;
-  // If file, remove the last segment to query the parent directory.
+  // If file, list the parent directory and keep only the file.
   if (!isDirectory) {
-    filename = segments.pop();
+    const slash = path.lastIndexOf("/") + 1;
+    folder = path.slice(0, slash);
+    filename = nameOf(path.slice(slash));
   }
   const params = new URLSearchParams(flags);
-  const url = `${segments.join("/")}?${params}`;
+  const url = `${prefix}${folder}?${params}`;
   let response = await fetch(url, init);
 
   if (!response.ok) {
@@ -176,7 +184,10 @@ export async function lsjson(location, flags = {}) {
               // Inside, we await for the `done` promise to be resolved
               // before enqueueing the next item.
               const promise = (async () => {
-                const response = await lsjson(`${location}${name}/`, {
+                // The name of the folder in the path has percent-encoding,
+                // else a "?" or a "#" in the name starts a query.
+                const child = `${location}${encodeURIComponent(name)}/`;
+                const response = await lsjson(child, {
                   ...flags,
                   max_depth: String(maxDepth - 1),
                 });
@@ -278,4 +289,19 @@ function concat(a, b) {
   result.set(a, 0);
   result.set(b, a.byteLength);
   return result;
+}
+
+/**
+ * The name of a file in the path of a location, as a backend reads it: with
+ * no percent-encoding.
+ * @param {string} segment For example `a%20b.txt` or `a b.txt`.
+ * @returns {string}
+ */
+function nameOf(segment) {
+  const { pathname } = new URL(segment, "file:///");
+  try {
+    return decodeURIComponent(pathname.slice(1));
+  } catch {
+    return pathname.slice(1);
+  }
 }
