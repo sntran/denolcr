@@ -41,7 +41,6 @@ const NAME_REGEX = /^[\w.][\w.\s-]*$/;
 export async function config(subcommand, name, options, init) {
   const { readFile, writeFile } = await import("node:fs/promises");
 
-  let file = "", ini = "";
   // Order as specified at https://rclone.org/docs/#config-config-file.
   const PATHS = [
     "rfetch.conf",
@@ -51,6 +50,8 @@ export async function config(subcommand, name, options, init) {
     join(config_dir(), "rclone", "rclone.conf"),
     join(env["HOME"], ".rclone.conf"),
   ];
+  // With no file, the file is the default file of rclone.
+  let file = PATHS[4], ini = "";
   for await (const path of PATHS) {
     try {
       ini = await readFile(path, { encoding: "utf8" });
