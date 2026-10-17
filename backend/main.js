@@ -26,3 +26,4 @@ export { default as drive } from "./drive/main.js";
 export { default as http } from "./http/main.js";
 export { default as local } from "./local/main.js";
 export { default as memory } from "./memory/main.js";
+export { default as s3 } from "./s3/main.js";

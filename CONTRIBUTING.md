@@ -184,6 +184,13 @@ the files `rclone_test.js` of the backends. They run when `rclone` is in the
 skipped. The tests of `lib/list.js` compare it with the `encoding/csv` package
 of Go, when `go` is in the `PATH` or when the variable `GO` is its path.
 
+The tests of `s3` use `rclone serve s3`, a server of the S3 API on a local
+folder. They also run on a real service when the variables `S3_TEST_ENDPOINT`
+and `S3_TEST_BUCKET` are set, with the region in `S3_TEST_REGION` (`auto` by
+default). Put the credentials in `RCLONE_S3_ACCESS_KEY_ID` and
+`RCLONE_S3_SECRET_ACCESS_KEY`. Use a bucket only for the tests: the tests make
+folders in it and delete them.
+
 ## Continuous integration
 
 The workflow `.github/workflows/ci.yml` runs for each push and each pull

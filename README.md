@@ -12,6 +12,8 @@ A [Rclone wrapper for WebAssembly build](./rclone.js) is also available.
 - HTTP [:page_facing_up:](https://rclone.org/http/)
 - The local filesystem [:page_facing_up:](https://rclone.org/local/)
 - Memory [:page_facing_up:](https://rclone.org/memory/)
+- S3: Amazon S3 and the services with the same API, for example Cloudflare R2
+  [:page_facing_up:](https://rclone.org/s3/)
 
 ### Virtual storage providers
 
