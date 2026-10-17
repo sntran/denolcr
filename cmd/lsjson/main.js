@@ -137,7 +137,8 @@ export async function lsjson(location, flags = {}) {
             return;
           }
 
-          const name = basename(pathname);
+          // The link has percent-encoding, and the name has none.
+          const name = decodeURIComponent(basename(pathname));
 
           // If listing a file, skip other files.
           if (filename && name !== filename) {

@@ -132,3 +132,16 @@ test(`lsjson("${pathname}", { recursive: true })`, async (t) => {
     },
   );
 });
+
+test("lsjson gives the names with no percent-encoding", async () => {
+  const name = "a b?#%.txt";
+  await fetch(`:memory:/names/${encodeURIComponent(name)}`, {
+    method: "PUT",
+    body: "a",
+  });
+
+  const result = await lsjson(":memory:/names/").then((res) => res.json());
+  assert.deepEqual(result.map(({ Name, Path }) => ({ Name, Path })), [
+    { Name: name, Path: name },
+  ]);
+});
