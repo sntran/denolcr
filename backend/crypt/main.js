@@ -98,6 +98,12 @@ import { HTMLRewriter } from "@sntran/html-rewriter";
 import { formatBytes } from "../../lib/format.js";
 import { mimeType } from "../../lib/mime.js";
 import { decodePath } from "../../lib/path.js";
+import {
+  notSatisfiable,
+  parseRange,
+  partialHeaders,
+  sliceStream,
+} from "../../lib/range.js";
 import { sized } from "../../lib/streams/sized.js";
 import { reveal } from "../../cmd/obscure/main.js";
 import PathCipher from "./PathCipher.js";
@@ -106,6 +112,7 @@ import {
   DecryptionStream,
   encryptedSize,
   EncryptionStream,
+  Errors,
 } from "./secretbox.js";
 
 const encoder = new TextEncoder();
@@ -190,6 +197,11 @@ async function crypt(request, env = {}) {
   const headers = new Headers(request.headers);
   headers.delete("Range");
 
+  const range = request.headers.get("Range");
+  if (method === "GET" && !isDirectory && range !== null) {
+    return await getRange(fetcher, target, headers, cipher, path, range);
+  }
+
   if (method === "GET" || method === "HEAD") {
     const response = await fetcher.fetch(target, { method, headers });
     if (!response.ok) {
@@ -199,7 +211,10 @@ async function crypt(request, env = {}) {
       return listing(response, cipher, searchParams);
     }
 
-    const result = new Headers({ "Content-Type": mimeType(path) });
+    const result = new Headers({
+      "Content-Type": mimeType(path),
+      "Accept-Ranges": "bytes",
+    });
     const size = sizeOf(response.headers.get("Content-Length"));
     if (size >= 0) {
       result.set("Content-Length", `${size}`);
@@ -261,6 +276,134 @@ async function crypt(request, env = {}) {
   return new Response(null, {
     status: 405,
     headers: { Allow: "GET, HEAD, PUT, DELETE" },
+  });
+}
+
+/**
+ * Gets a range of a file, as the seek of rclone: the header of the
+ * encrypted file gives its nonce and its size, then only the blocks of the
+ * range are read and decrypted. When the remote sends all the file for a
+ * range, all the file is decrypted, and the answer has the range only.
+ * @param {{ fetch: typeof fetch }} fetcher The remote.
+ * @param {string} target The encrypted path on the remote.
+ * @param {Headers} headers The headers of the request, with no `Range`.
+ * @param {{ dataKey: Uint8Array }} cipher
+ * @param {string} path The path of the file.
+ * @param {string} header The `Range` of the request.
+ * @returns {Promise<Response>}
+ */
+async function getRange(fetcher, target, headers, cipher, path, header) {
+  const { magic, blockSize } = SECRETBOX_OPTIONS;
+  const headerSize = magic.length + 24;
+  const blockLength = blockSize + 16;
+
+  const init = { headers: new Headers(headers) };
+  init.headers.set("Range", `bytes=0-${headerSize - 1}`);
+  const first = await fetcher.fetch(target, init);
+  if (first.status === 416) {
+    // The encrypted file is shorter than its header.
+    return new Response(Errors.TOO_SHORT, { status: 500 });
+  }
+  if (!first.ok) {
+    return first;
+  }
+
+  // The size of the encrypted file.
+  const total = first.status === 206
+    ? first.headers.get("Content-Range")?.match(/\/(\d+)$/)?.[1] ?? null
+    : first.headers.get("Content-Length");
+  const size = sizeOf(total);
+  if (size < 0) {
+    await first.body?.cancel();
+    return new Response("The size of the encrypted file is not correct", {
+      status: 500,
+    });
+  }
+
+  let range;
+  try {
+    range = parseRange(header, size);
+  } catch {
+    await first.body?.cancel();
+    return notSatisfiable(size);
+  }
+
+  const result = new Headers({
+    "Content-Type": mimeType(path),
+    "Accept-Ranges": "bytes",
+  });
+  const lastModified = first.headers.get("Last-Modified");
+  if (lastModified) result.set("Last-Modified", lastModified);
+  const decrypt = (options) =>
+    new DecryptionStream(cipher.dataKey, { ...SECRETBOX_OPTIONS, ...options });
+
+  if (first.status !== 206) {
+    // The remote sent all the file.
+    let body = first.body.pipeThrough(decrypt());
+    let length = size;
+    if (range) {
+      length = range.end - range.start + 1;
+      body = sliceStream(body, range.start, length);
+      for (const [name, value] of Object.entries(partialHeaders(range, size))) {
+        result.set(name, value);
+      }
+    } else {
+      result.set("Content-Length", `${size}`);
+    }
+    return new Response(sized(body, length), {
+      status: range ? 206 : 200,
+      headers: result,
+    });
+  }
+
+  const bytes = new Uint8Array(await first.arrayBuffer());
+  if (
+    bytes.length < headerSize ||
+    magic.some((byte, index) => bytes[index] !== byte)
+  ) {
+    return new Response(Errors.BAD_MAGIC, { status: 500 });
+  }
+  const nonce = bytes.slice(magic.length, headerSize);
+  const { start, end } = range ?? { start: 0, end: size - 1 };
+  const length = size === 0 ? 0 : end - start + 1;
+  if (length === 0) {
+    result.set("Content-Length", "0");
+    return new Response(null, { headers: result });
+  }
+
+  // The blocks of the range.
+  const block = Math.floor(start / blockSize);
+  const lastBlock = Math.floor(end / blockSize);
+  const from = headerSize + block * blockLength;
+  const to = Math.min(
+    headerSize + (lastBlock + 1) * blockLength,
+    Number(total),
+  ) - 1;
+  init.headers.set("Range", `bytes=${from}-${to}`);
+  const second = await fetcher.fetch(target, init);
+  if (!second.ok) {
+    await second.body?.cancel();
+    return new Response(null, { status: 502 });
+  }
+  // A remote that sends all the file sends the blocks before the range too.
+  let data = second.body;
+  if (second.status !== 206) data = sliceStream(data, from, to - from + 1);
+  const body = sliceStream(
+    data.pipeThrough(decrypt({ nonce, block })),
+    start - block * blockSize,
+    length,
+  );
+
+  if (range) {
+    for (const [name, value] of Object.entries(partialHeaders(range, size))) {
+      result.set(name, value);
+    }
+  } else {
+    result.set("Content-Length", `${size}`);
+  }
+  return new Response(sized(body, length), {
+    status: range ? 206 : 200,
+    headers: result,
   });
 }
 

@@ -200,4 +200,76 @@ describe("crypt", () => {
     const response = await fs.get("plain2.txt");
     await assert.rejects(response.arrayBuffer(), /bad magic/);
   });
+
+  /** A file of 3 blocks and a part of a block. */
+  const content = new Uint8Array(3 * 65536 + 100).map((_, i) => i * 7 + 1);
+
+  test("reads only the header and the blocks of a range", async () => {
+    /** The `Range` of each request to the remote. */
+    const ranges = [];
+    const counted = remote(crypt, {
+      params,
+      env: {
+        REMOTE: {
+          fetch(input, init = {}) {
+            ranges.push(new Headers(init.headers).get("Range"));
+            return fetch(input, init);
+          },
+        },
+      },
+    });
+    await counted.put("blocks.bin", content);
+
+    ranges.length = 0;
+    const response = await counted.get("blocks.bin", {
+      Range: "bytes=65536-65536",
+    });
+    assert.equal(response.status, 206);
+    assert.deepEqual(
+      new Uint8Array(await response.arrayBuffer()),
+      content.subarray(65536, 65537),
+    );
+    // The header is 32 bytes, and a block is 65536 + 16 bytes.
+    assert.deepEqual(ranges, ["bytes=0-31", "bytes=65584-131135"]);
+
+    ranges.length = 0;
+    const last = await counted.get("blocks.bin", { Range: "bytes=-1" });
+    assert.deepEqual(
+      new Uint8Array(await last.arrayBuffer()),
+      content.subarray(-1),
+    );
+    const size = 32 + 3 * 65552 + 116;
+    assert.deepEqual(ranges, ["bytes=0-31", `bytes=196688-${size - 1}`]);
+  });
+
+  test("gives a range when the remote sends all the file", async () => {
+    // A remote that does not read the ranges.
+    const full = remote(crypt, {
+      params,
+      env: {
+        REMOTE: {
+          fetch(input, init = {}) {
+            const headers = new Headers(init.headers);
+            headers.delete("Range");
+            return fetch(input, { ...init, headers });
+          },
+        },
+      },
+    });
+    await full.put("full.bin", content);
+    for (
+      const [header, start, end] of [["bytes=70000-140000", 70000, 140000]]
+    ) {
+      const response = await full.get("full.bin", { Range: header });
+      assert.equal(response.status, 206);
+      assert.equal(
+        response.headers.get("Content-Range"),
+        `bytes ${start}-${end}/${content.length}`,
+      );
+      assert.deepEqual(
+        new Uint8Array(await response.arrayBuffer()),
+        content.subarray(start, end + 1),
+      );
+    }
+  });
 });

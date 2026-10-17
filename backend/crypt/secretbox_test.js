@@ -3,11 +3,13 @@ import assert from "node:assert/strict";
 import fc from "fast-check";
 
 import {
+  add,
   decryptedSize,
   DecryptionStream,
   encryptedSize,
   EncryptionStream,
   Errors,
+  increment,
 } from "./secretbox.js";
 
 /** The options of rclone crypt. */
@@ -267,4 +269,49 @@ test("decrypts what it encrypts, at the size of the blocks of rclone", async () 
       content,
     );
   }
+});
+
+test("adds a number to a nonce as the same number of increments", () => {
+  // Bytes of 0xff make carries into the next bytes.
+  const byte = fc.oneof(fc.constant(0xff), fc.integer({ min: 0, max: 255 }));
+  fc.assert(
+    fc.property(
+      fc.array(byte, { minLength: 24, maxLength: 24 }),
+      fc.nat(700),
+      (bytes, number) => {
+        const expected = Uint8Array.from(bytes);
+        for (let index = 0; index < number; index++) increment(expected);
+        assert.deepEqual(add(Uint8Array.from(bytes), number), expected);
+      },
+    ),
+  );
+  // A carry out of the last byte goes away, as in rclone.
+  assert.deepEqual(add(new Uint8Array(24).fill(0xff), 1), new Uint8Array(24));
+});
+
+test("decrypts the blocks of a file from any block", async () => {
+  await fc.assert(
+    fc.asyncProperty(
+      fc.uint8Array({ minLength: 32, maxLength: 32 }),
+      fc.integer({ min: 1, max: 16 }),
+      fc.uint8Array({ maxLength: 300 }),
+      fc.nat(),
+      async (key, blockSize, content, choice) => {
+        const options = { magic: RCLONE.magic, blockSize };
+        const encrypted = await through(
+          [content],
+          new EncryptionStream(key, options),
+        );
+        const headerSize = RCLONE.magic.length + 24;
+        const nonce = encrypted.slice(RCLONE.magic.length, headerSize);
+        const blocks = Math.ceil(content.length / blockSize);
+        const block = blocks ? choice % blocks : 0;
+        const decrypted = await through(
+          [encrypted.subarray(headerSize + block * (blockSize + 16))],
+          new DecryptionStream(key, { ...options, nonce, block }),
+        );
+        assert.deepEqual(decrypted, content.subarray(block * blockSize));
+      },
+    ),
+  );
 });

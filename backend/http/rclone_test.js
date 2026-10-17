@@ -13,6 +13,9 @@ import process from "node:process";
 
 import { remote } from "../../lib/testing/remote.js";
 import { listen } from "../../lib/testing/server.js";
+import { fetch } from "../../mod.js";
+import chunker from "../chunker/main.js";
+import crypt from "../crypt/main.js";
 import memory from "../memory/main.js";
 import http from "./main.js";
 
@@ -160,4 +163,106 @@ describe("http and rclone", {
     ]);
     assert.deepEqual(normalize(await walk(url)), expected);
   });
+});
+
+describe("rclone reads ranges of rfetch", {
+  skip: !hasRclone && "rclone is not installed. Set RCLONE to its path.",
+}, () => {
+  const folder = mkdtempSync(join(tmpdir(), "rfetch-range-"));
+  /** The backends under the server, with their options. */
+  const BACKENDS = {
+    crypt: [crypt, {
+      remote: ":memory:/rclone-range-crypt",
+      // "test-password", obscured by rclone.
+      password: "4OSlj-ZYMGdEIGjcWg_gc-DL4O3TFAvr4ct_yV4",
+    }],
+    chunker: [chunker, {
+      remote: ":memory:/rclone-range-chunker",
+      chunk_size: "64k",
+    }],
+  };
+  const env = { REMOTE: { fetch } };
+  const data = content(3 * 65536 + 1000);
+  let server;
+
+  before(async () => {
+    server = await listen((request) => {
+      const url = new URL(request.url);
+      const [, name] = url.pathname.split("/");
+      const [backend, params] = BACKENDS[name];
+      url.pathname = url.pathname.slice(name.length + 1);
+      for (const [key, value] of Object.entries(params)) {
+        url.searchParams.set(key, value);
+      }
+      return backend.fetch(new Request(url, request), env);
+    });
+    for (const [backend, params] of Object.values(BACKENDS)) {
+      const response = await remote(backend, { params, env }).put(
+        "data.bin",
+        data,
+      );
+      assert.equal(response.status, 201);
+    }
+  });
+  after(async () => {
+    await server?.close();
+    rmSync(folder, { recursive: true, force: true });
+  });
+
+  /**
+   * The output of `rclone cat` for a range of a file of the server.
+   * @param {string} url
+   * @param {number} offset
+   * @param {number} count
+   */
+  function cat(url, offset, count) {
+    return new Promise((resolve, reject) => {
+      const child = spawn(
+        RCLONE,
+        [
+          "cat",
+          "--http-url",
+          url,
+          ":http:data.bin",
+          "--offset",
+          `${offset}`,
+          "--count",
+          `${count}`,
+        ],
+        { env: { PATH: process.env.PATH, HOME: folder } },
+      );
+      const chunks = [];
+      let stderr = "";
+      child.stdout.on("data", (chunk) => chunks.push(chunk));
+      child.stderr.on("data", (chunk) => stderr += chunk);
+      child.on("error", reject);
+      child.on("close", (status) => {
+        if (status === 0) resolve(new Uint8Array(Buffer.concat(chunks)));
+        else reject(new Error(`rclone cat ${url}: ${stderr}`));
+      });
+    });
+  }
+
+  for (const name of Object.keys(BACKENDS)) {
+    test(`${name}: rclone cat --offset --count gives the bytes`, async () => {
+      const url = `${server.url}${name}/`;
+      for (
+        const [offset, count] of [
+          [0, 1],
+          [65535, 2],
+          [65536, 65536],
+          [100000, 70000],
+          [data.length - 1, 1],
+          [70000, -1],
+        ]
+      ) {
+        const end = count < 0 ? data.length : offset + count;
+        assert.deepEqual(
+          await cat(url, offset, count),
+          data.subarray(offset, end),
+          `${name} --offset ${offset} --count ${count}`,
+        );
+      }
+    });
+  }
 });

@@ -69,8 +69,13 @@ export class DecryptionStream extends TransformStream {
   /**
    * Creates a new decryption stream. It reads the header and the blocks from
    * chunks of any size. An error of the stream has a message of `Errors`.
+   *
+   * With the option `nonce`, the stream reads blocks with no header, from the
+   * block `block` of the file: the nonce of the header goes up by `block`, as
+   * `newDecrypterSeek` of rclone. Thus a range of a file needs only its
+   * header and its blocks in the range.
    * @param {Uint8Array} key
-   * @param {Options} [options]
+   * @param {Options & { nonce?: Uint8Array, block?: number }} [options]
    */
   constructor(key, options = {}) {
     const { magic = DEFAULT_MAGIC, blockSize = DEFAULT_BLOCK_SIZE } = options;
@@ -78,7 +83,9 @@ export class DecryptionStream extends TransformStream {
     const blockLength = blockSize + TAG_SIZE;
 
     /** @type {Uint8Array | null} */
-    let nonce = null;
+    let nonce = options.nonce
+      ? add(options.nonce.slice(), options.block ?? 0)
+      : null;
     /** The data that is not a full header or block yet. */
     let pending = new Uint8Array(0);
 
@@ -191,10 +198,26 @@ function concat(a, b) {
 }
 
 /**
+ * Adds a number to the nonce, in place, as `nonce.add` of rclone: the first
+ * byte is the lowest.
+ * @param {Uint8Array} nonce
+ * @param {number} number
+ */
+export function add(nonce, number) {
+  let carry = BigInt(number);
+  for (let offset = 0; offset < nonce.length && carry > 0n; offset++) {
+    const sum = BigInt(nonce[offset]) + (carry & 0xffn);
+    nonce[offset] = Number(sum & 0xffn);
+    carry = (carry >> 8n) + (sum >> 8n);
+  }
+  return nonce;
+}
+
+/**
  * Adds 1 to the nonce, in place: the first byte is the lowest.
  * @param {Uint8Array} nonce
  */
-function increment(nonce) {
+export function increment(nonce) {
   for (let offset = 0; offset < nonce.length; offset++) {
     nonce[offset] = (nonce[offset] + 1) & 0xff;
     // No carry when the byte is not 0 after the addition.
