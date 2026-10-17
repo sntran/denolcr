@@ -1,6 +1,7 @@
 import { env } from "node:process";
 import * as backends from "./backend/main.js";
 import * as commands from "./cmd/main.js";
+import { parse } from "./lib/fspath.js";
 
 export * from "./cmd/main.js";
 
@@ -34,9 +35,6 @@ export { Progress } from "./lib/streams/progress.js";
  * @property {string} Tier
  * @property {Object} Metadata
  */
-
-const REMOTE_REGEX =
-  /^(:)?(?:([\w.][\w.\s-]*(?:,[\w=,"'*#.:@%-_\/]+)?):)?([^:]*)$/;
 
 const globalFetch = globalThis.fetch;
 
@@ -112,10 +110,9 @@ export async function fetch(input, init = {}) {
     return globalFetch(input, init);
   }
 
-  const [, colon, remote = "local", path] = input.match(REMOTE_REGEX) || [];
-  if (!remote && !path) {
-    return globalFetch(input, init);
-  }
+  // The parts of the path, as rclone reads them. It throws a SyntaxError
+  // for a path that is not correct.
+  const parsed = parse(input);
 
   // The final params.
   const params = new URLSearchParams();
@@ -130,16 +127,17 @@ export async function fetch(input, init = {}) {
     }
   }
 
-  // Remote can be connection string with arguments separated by commas.
-  let [name, ...args] = remote.split(",");
+  let { name } = parsed;
 
   /**
    * @type {Remote}
    */
   let config;
 
-  if (colon || remote === "local") { // the location has format `:type:path/to/file`
-    config = { type: name };
+  if (name === "") { // A local path.
+    config = { type: "local" };
+  } else if (name.startsWith(":")) { // `:type:path/to/file`
+    config = { type: name.slice(1) };
     name = "";
   } else {
     const response = await commands.config("show", name, undefined, {
@@ -186,7 +184,7 @@ export async function fetch(input, init = {}) {
   }
 
   // `searchParams` may contain other flags not for the current backend.
-  const { pathname, searchParams } = new URL(path, "file:");
+  const { pathname, searchParams } = new URL(parsed.path, "file:");
 
   // Overrides with flags in request's search params.
   searchParams.forEach((value, key) => {
@@ -196,11 +194,9 @@ export async function fetch(input, init = {}) {
   });
 
   // Overrides with parameters in connection string.
-  args.forEach((arg) => {
-    const [key, value = "true"] = arg.split("=");
-    // `value` can be encoded through URLSearchParams.
-    params.set(key, decodeURIComponent(value));
-  });
+  for (const [key, value] of Object.entries(parsed.config)) {
+    params.set(key, value);
+  }
 
   const headers = new Headers(init.headers);
 

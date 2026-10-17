@@ -196,7 +196,8 @@ test("fetch", async (t) => {
         const { pathname, searchParams } = new URL(url, "file:");
 
         assert.deepEqual(pathname, "/");
-        assert.deepEqual(searchParams.get("remote"), `'${cwd}'`);
+        // As in rclone, the quotes are not a part of the value.
+        assert.deepEqual(searchParams.get("remote"), cwd);
       });
 
       await t.test(
@@ -214,7 +215,11 @@ test("fetch", async (t) => {
           const { pathname, searchParams } = new URL(url, "file:");
 
           assert.deepEqual(pathname, "/");
-          assert.deepEqual(searchParams.get("remote"), `':local:${cwd}'`);
+          // The value in quotes can have "," and ":", as in rclone.
+          assert.deepEqual(
+            searchParams.get("remote"),
+            `:local,case_sensitive=true:${cwd}`,
+          );
         },
       );
     });

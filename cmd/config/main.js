@@ -1,6 +1,7 @@
 import { env } from "node:process";
 
 import { join } from "node:path";
+import { CONFIG_NAME } from "../../lib/fspath.js";
 import * as INI from "../../lib/ini.js";
 
 /**
@@ -8,7 +9,7 @@ import * as INI from "../../lib/ini.js";
  * letters, numbers, `_`, `-`, `.`, `+`, `@` and space, but not `-` or space
  * at the start, and not space at the end.
  */
-export const NAME_REGEX = /^[\w\p{L}\p{N}.+@]+(?:[ -]+[\w\p{L}\p{N}.+@-]+)*$/u;
+export const NAME_REGEX = new RegExp(`^${CONFIG_NAME}$`, "u");
 
 /**
  * @typedef {Object<string, string>} Options
