@@ -1,5 +1,5 @@
 import { test } from "node:test";
-import { assert } from "../../dev_deps.js";
+import assert from "node:assert/strict";
 import { lsd } from "./main.js";
 
 test("lsd", () => {

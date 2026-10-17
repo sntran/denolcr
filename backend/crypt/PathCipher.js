@@ -1,4 +1,5 @@
-import { decodeBase32, encodeBase32 } from "../../deps.js";
+import decodeBase32 from "base32-decode";
+import encodeBase32 from "base32-encode";
 import { aes256 } from "./aes.js";
 import * as EME from "./eme.js";
 import { pad, Padding, unpad } from "./padding.js";

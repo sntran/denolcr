@@ -1,6 +1,7 @@
 import { env } from "node:process";
 
-import { config_dir, INI, join } from "../../deps.js";
+import { join } from "node:path";
+import * as INI from "@std/ini";
 
 const NAME_REGEX = /^[\w.][\w.\s-]*$/;
 
@@ -143,4 +144,23 @@ export async function config(subcommand, name, options, init) {
     default:
       return new Response();
   }
+}
+
+/**
+ * Retrieves the configuration directory for current platform.
+ * @returns {string | null}
+ */
+export function config_dir() {
+  let dir = env["XDG_CONFIG_HOME"];
+  if (!dir) {
+    dir = env["APPDATA"]; // Windows
+  }
+  if (!dir) {
+    dir = env["HOME"];
+    if (dir) {
+      dir += "/.config";
+    }
+  }
+
+  return dir;
 }

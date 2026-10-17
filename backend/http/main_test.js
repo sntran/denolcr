@@ -1,12 +1,12 @@
 import { test } from "node:test";
-import { assertEquals } from "../../dev_deps.js";
+import assert from "node:assert/strict";
 import backend from "./main.js";
 
 test("GET", async (t) => {
   await t.test("error without url searchParam", async () => {
     const url = new URL("/", "file:");
     const response = await backend.fetch(new Request(url));
-    assertEquals(response.status, 400);
+    assert.deepEqual(response.status, 400);
   });
 
   await t.test("a file", async () => {
@@ -22,7 +22,7 @@ test("GET", async (t) => {
     // Then compares with result from the backend
     response = await backend.fetch(new Request(url));
     const actual = await response.text();
-    assertEquals(
+    assert.deepEqual(
       actual,
       expected,
       "should be the same as fetching the remote file directly",

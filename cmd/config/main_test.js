@@ -1,9 +1,10 @@
 import { test } from "node:test";
 import { readFile, unlink, writeFile } from "node:fs/promises";
-import { config_dir, join } from "../../deps.js";
-import { assert, assertEquals, fc } from "../../dev_deps.js";
+import { join } from "node:path";
+import assert from "node:assert/strict";
+import fc from "fast-check";
 
-import { config as configure } from "./main.js";
+import { config as configure, config_dir } from "./main.js";
 
 test("config", async (t) => {
   let command = "file";
@@ -11,7 +12,7 @@ test("config", async (t) => {
     const configDir = config_dir();
     let path = await configure(command).then((res) => res.text());
 
-    assertEquals(
+    assert.deepEqual(
       path,
       join(configDir, "rclone", "rclone.conf"),
       "should default to config directory",
@@ -19,7 +20,7 @@ test("config", async (t) => {
 
     await writeFile("rclone.conf", new Uint8Array());
     path = await configure(command).then((res) => res.text());
-    assertEquals(
+    assert.deepEqual(
       path,
       "rclone.conf",
       "should use rclone.conf at current directory first",
@@ -29,7 +30,7 @@ test("config", async (t) => {
   command = "create";
   await t.test(command, async () => {
     let config = await readFile("rclone.conf", { encoding: "utf8" });
-    assertEquals(config, "", "initial empty config");
+    assert.deepEqual(config, "", "initial empty config");
 
     await fc.assert(
       fc.asyncProperty(fc.string(), async (name) => {
@@ -51,12 +52,12 @@ test("config", async (t) => {
     });
 
     config = await readFile("rclone.conf", { encoding: "utf8" });
-    assertEquals(
+    assert.deepEqual(
       config,
       "[source]\ntype = local",
       "should have the new remote added",
     );
-    assertEquals(
+    assert.deepEqual(
       await response.text(),
       config,
       "should return the new remote in response",
@@ -68,12 +69,12 @@ test("config", async (t) => {
     });
 
     config = await readFile("rclone.conf", { encoding: "utf8" });
-    assertEquals(
+    assert.deepEqual(
       config,
       "[source]\ntype = local\n\n[target]\ntype = local",
       "should have both remotes",
     );
-    assertEquals(
+    assert.deepEqual(
       await response.text(),
       `[target]\ntype = local`,
       "should have only the new remote in response",
@@ -84,28 +85,28 @@ test("config", async (t) => {
   await t.test(command, async () => {
     const config = await readFile("rclone.conf", { encoding: "utf8" });
     let response = await configure(command);
-    assertEquals(
+    assert.deepEqual(
       await response.text(),
       config,
       "should return the full config when name is not specified",
     );
 
     response = await configure(command, "source");
-    assertEquals(
+    assert.deepEqual(
       await response.text(),
       "[source]\ntype = local",
       "should return only remote specified by name",
     );
 
     response = await configure(command, "target");
-    assertEquals(
+    assert.deepEqual(
       await response.text(),
       "[target]\ntype = local",
       "should return only remote specified by name",
     );
 
     response = await configure(command, "404");
-    assertEquals(
+    assert.deepEqual(
       response.status,
       404,
       "should return 404 when remote not found",
@@ -129,19 +130,19 @@ test("config", async (t) => {
     const remote = `[target]\ntype = alias\nremote = source:`;
 
     const config = await readFile("rclone.conf", { encoding: "utf8" });
-    assertEquals(
+    assert.deepEqual(
       config,
       `[source]\ntype = local\n\n${remote}`,
       "should have the remote updated",
     );
-    assertEquals(
+    assert.deepEqual(
       await response.text(),
       remote,
       "should return the updated remote in response",
     );
 
     response = await configure(command, "404", {});
-    assertEquals(
+    assert.deepEqual(
       response.status,
       404,
       "should return 404 when remote not found",
@@ -151,7 +152,7 @@ test("config", async (t) => {
   command = "dump";
   await t.test(command, async () => {
     const response = await configure(command);
-    assertEquals(await response.json(), {
+    assert.deepEqual(await response.json(), {
       source: {
         type: "local",
       },
@@ -166,19 +167,19 @@ test("config", async (t) => {
   await t.test(command, async () => {
     let response = await configure(command, "target");
     const config = await readFile("rclone.conf", { encoding: "utf8" });
-    assertEquals(
+    assert.deepEqual(
       config,
       "[source]\ntype = local",
       "should have the remote deleted",
     );
-    assertEquals(
+    assert.deepEqual(
       await response.text(),
       "",
       "should not return the deleted remote in response",
     );
 
     response = await configure(command, "404");
-    assertEquals(
+    assert.deepEqual(
       response.status,
       200,
       "should still return 200 when remote not found",

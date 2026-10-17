@@ -99,7 +99,7 @@
  * to missing chunk errors (especially missing last chunk) than format with
  * metadata enabled.
  */
-import { crypto, encodeHex } from "../../deps.js";
+import { createHash } from "node:crypto";
 import { Chunker } from "../../lib/streams/chunker.js";
 import { fetch } from "../../mod.js";
 
@@ -246,7 +246,7 @@ async function chunker(request) {
     let fileSize = 0;
 
     const streams = metaFormat === "none" ? [request.body] : request.body.tee();
-    const digestStream = streams[1] && crypto.subtle.digest("MD5", streams[1]);
+    const digestStream = streams[1] && md5(streams[1]);
 
     /**
      * @type {Uint8Array}
@@ -303,7 +303,7 @@ async function chunker(request) {
               ver: METADATA_VERSION,
               size: fileSize,
               nchunks: chunkIndex - startFrom,
-              md5: encodeHex(await digestStream),
+              md5: await digestStream,
             };
             // Adds metadata.
             await fetch(`${remote}/${fileName}`, {
@@ -385,3 +385,16 @@ async function upload(url, init) {
 export default {
   fetch: chunker,
 };
+
+/**
+ * Gives the MD5 of the stream, in hexadecimal.
+ * @param {ReadableStream<Uint8Array>} stream
+ * @returns {Promise<string>}
+ */
+async function md5(stream) {
+  const hash = createHash("md5");
+  for await (const chunk of stream) {
+    hash.update(chunk);
+  }
+  return hash.digest("hex");
+}

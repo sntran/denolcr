@@ -17,7 +17,7 @@ fs.
 - Uses `backend/local/main.js` as reference, or the boilerplate below:
 
 ```ts
-import {} from "../../deps.js";
+import { join } from "node:path";
 
 function router(request: Request) {
   const { method, url } = request;

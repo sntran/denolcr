@@ -1,5 +1,5 @@
 import { test } from "node:test";
-import { assert, assertEquals } from "../../dev_deps.js";
+import assert from "node:assert/strict";
 import { lsjson } from "./main.js";
 
 const encoder = new TextEncoder();
@@ -55,44 +55,44 @@ test(`lsjson("${pathname}")`, async (t) => {
     const text = await response.clone().text();
     const lines = text.trim().split("\n");
 
-    assertEquals(lines.shift(), "[");
+    assert.deepEqual(lines.shift(), "[");
 
     for (const child of tree[pathname]) {
       const line = lines.shift().replace(/,$/, "");
       const file = JSON.parse(line);
-      assertEquals(file.Name, child.replace("/", ""));
+      assert.deepEqual(file.Name, child.replace("/", ""));
     }
 
-    assertEquals(lines[0], "]");
+    assert.deepEqual(lines[0], "]");
   });
 
   await t.test("Path field is same as Name", async () => {
     const result = await response.clone().json();
     for (const file of result) {
-      assertEquals(file.Path, file.Name);
+      assert.deepEqual(file.Path, file.Name);
     }
   });
 
   await t.test("each object is a chunk in body stream", async () => {
     const reader = response.body.getReader();
     let result = await reader.read();
-    assertEquals(result.done, false);
-    assertEquals(decoder.decode(result.value).trim(), "[");
+    assert.deepEqual(result.done, false);
+    assert.deepEqual(decoder.decode(result.value).trim(), "[");
 
     for (const child of tree[pathname]) {
       result = await reader?.read();
-      assertEquals(result.done, false);
+      assert.deepEqual(result.done, false);
       const line = decoder.decode(result.value).trim().replace(/,$/, "");
       const file = JSON.parse(line);
-      assertEquals(file.Name, child.replace("/", ""));
+      assert.deepEqual(file.Name, child.replace("/", ""));
     }
 
     result = await reader?.read();
-    assertEquals(result.done, false);
-    assertEquals(decoder.decode(result.value).trim(), "]");
+    assert.deepEqual(result.done, false);
+    assert.deepEqual(decoder.decode(result.value).trim(), "]");
 
     result = await reader?.read();
-    assertEquals(result.done, true);
+    assert.deepEqual(result.done, true);
   });
 });
 

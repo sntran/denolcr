@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import process from "node:process";
 import { readdir } from "node:fs/promises";
-import { join } from "../../deps.js";
-import { assert } from "../../dev_deps.js";
+import { join } from "node:path";
+import assert from "node:assert/strict";
 
 import backend from "./main.js";
 

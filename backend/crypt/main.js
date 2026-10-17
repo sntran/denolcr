@@ -93,7 +93,10 @@
  * - 1049120 bytes total (a 0.05% overhead). This is the overhead for big files.
  */
 
-import { contentType, extname, scrypt } from "../../deps.js";
+import { extname } from "node:path";
+import { scryptAsync as scrypt } from "@noble/hashes/scrypt";
+import { HTMLRewriter } from "@sntran/html-rewriter";
+import { contentType } from "@std/media-types";
 import { fetch } from "../../mod.js";
 import { reveal } from "../../cmd/obscure/main.js";
 import PathCipher from "./PathCipher.js";

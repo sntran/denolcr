@@ -24,7 +24,9 @@
  * To just download a single file it is easier to use [copyurl](../../cmd/copyurl/main.js).
  */
 
-import { formatBytes, HTMLRewriter, toLocaleISOString } from "../../deps.js";
+import { HTMLRewriter } from "@sntran/html-rewriter";
+import { format as formatBytes } from "@std/fmt/bytes";
+import { toLocaleISOString } from "../../lib/time.js";
 
 export const options = {
   boolean: [

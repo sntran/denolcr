@@ -1,9 +1,20 @@
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
-import { contentType, extname, join } from "../../deps.js";
-import { assert, assertEquals, equalBytes, fc } from "../../dev_deps.js";
+import { Buffer } from "node:buffer";
+import { extname, join } from "node:path";
+import { contentType } from "@std/media-types";
+import assert from "node:assert/strict";
+import fc from "fast-check";
 
 import { decode, default as crypt, encode } from "./main.js";
+
+/**
+ * Tells if the two arrays have the same bytes.
+ * @param {Uint8Array} a
+ * @param {Uint8Array} b
+ * @returns {boolean}
+ */
+const sameBytes = (a, b) => Buffer.compare(a, b) === 0;
 
 const PASSWORD = "UmyLSdRHfew6aual28-ggx78qHqSfQ";
 const SALT = "Cj3gLa5PVwc2aot0QpKiOZ3YEzs3Sw";
@@ -36,7 +47,7 @@ test("decode", async () => {
 
   for await (const originalFilename of Object.keys(CRYPT)) {
     const decoded = await getText(encode(options, originalFilename));
-    assertEquals(decoded, CRYPT[originalFilename]);
+    assert.deepEqual(decoded, CRYPT[originalFilename]);
   }
 });
 
@@ -65,7 +76,7 @@ test("encode", async () => {
   const ciphertexts = await getText(encode(options, ...plaintexts));
   // Decodes all ciphertexts into plaintexts separated by newlines.
   const decoded = await getText(decode(options, ...ciphertexts.split("\n")));
-  assertEquals(decoded, plaintexts.join("\n"));
+  assert.deepEqual(decoded, plaintexts.join("\n"));
 });
 
 test("GET", async (t) => {
@@ -86,7 +97,7 @@ test("GET", async (t) => {
       response = await crypt.fetch(request);
 
       const decryptedFile = new Uint8Array(await response.arrayBuffer());
-      assert(equalBytes(decryptedFile, originalFile));
+      assert(sameBytes(decryptedFile, originalFile));
     }
   });
 
@@ -104,10 +115,10 @@ test("GET", async (t) => {
       response = await crypt.fetch(request);
 
       const size = Number(response.headers.get("Content-Length"));
-      assertEquals(size, originalFile.byteLength);
+      assert.deepEqual(size, originalFile.byteLength);
 
       const type = response.headers.get("Content-Type");
-      assertEquals(type, contentType(extname(originalFilename)));
+      assert.deepEqual(type, contentType(extname(originalFilename)));
 
       response.body?.cancel();
     }
@@ -132,10 +143,10 @@ test("PUT", async () => {
 
     // Asserts file does not exist in the original remote.
     response = await fetch(join(remote, originalFilename));
-    assertEquals(response.status, 404);
+    assert.deepEqual(response.status, 404);
 
     response = await fetch(join(remote, encryptedFilename));
-    assertEquals(response.status, 404);
+    assert.deepEqual(response.status, 404);
 
     // Uploads the file to the crypt remote.
     request = new Request(url, {
@@ -146,21 +157,21 @@ test("PUT", async () => {
 
     // Asserts original file does not exist in the original remote.
     response = await fetch(join(remote, originalFilename));
-    assertEquals(response.status, 404);
+    assert.deepEqual(response.status, 404);
 
     // Asserts encrypted file exists in the original remote.
     response = await fetch(join(remote, encryptedFilename));
-    assertEquals(response.status, 200);
+    assert.deepEqual(response.status, 200);
     const encryptedBuffer = new Uint8Array(await response.arrayBuffer());
-    assert(!equalBytes(encryptedBuffer, originalFile));
+    assert(!sameBytes(encryptedBuffer, originalFile));
 
     const magic = encryptedBuffer.subarray(0, 8);
-    assertEquals(magic, MAGIC, "should have magic header");
+    assert.deepEqual(magic, MAGIC, "should have magic header");
 
     // Gets the new file from the crypt remote.
     request = new Request(url);
     response = await crypt.fetch(request);
     const decryptedFile = new Uint8Array(await response.arrayBuffer());
-    assert(equalBytes(decryptedFile, originalFile));
+    assert(sameBytes(decryptedFile, originalFile));
   }
 });

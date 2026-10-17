@@ -4,13 +4,13 @@
  * `rclone` must be in the PATH. Run with `node backend/chunker/main_bench.js`.
  */
 import { spawn } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { once } from "node:events";
 import { Writable } from "node:stream";
-import { mkBuffer } from "../../deps.js";
 import { bench } from "../../lib/bench.js";
 import backend from "./main.js";
 
-const buffer = mkBuffer(1024 * 1024 * 10); // 10M
+const buffer = randomBytes(1024 * 1024 * 10); // 10M
 const file = new File([buffer], "10M.bin", {
   type: "application/octet-stream",
 });

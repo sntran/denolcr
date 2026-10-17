@@ -2,7 +2,7 @@ import { test } from "node:test";
 import process from "node:process";
 import { unlink, writeFile } from "node:fs/promises";
 import { serve } from "@sntran/serve";
-import { assert, assertEquals } from "./dev_deps.js";
+import assert from "node:assert/strict";
 
 import { config } from "./mod.js";
 
@@ -39,16 +39,16 @@ test("fetch", async (t) => {
       });
       const { status, headers } = response;
 
-      assertEquals(status, 200);
-      assertEquals(headers.get("Content-Type"), "message/http");
+      assert.deepEqual(status, 200);
+      assert.deepEqual(headers.get("Content-Type"), "message/http");
 
-      assertEquals(headers.get("Via"), "local/1.1");
+      assert.deepEqual(headers.get("Via"), "local/1.1");
 
       const body = await response.text();
       const [, _method, url] = body.match(/^(TRACE) (.*) HTTP\/1.1$/m) || [];
       const { pathname } = new URL(url, "file:");
 
-      assertEquals(pathname, cwd);
+      assert.deepEqual(pathname, cwd);
     });
 
     // Sets up
@@ -65,20 +65,20 @@ test("fetch", async (t) => {
       const { status, headers } = await fetch(":local:", {
         method: "TRACE",
       });
-      assertEquals(status, 200);
-      assertEquals(headers.get("Content-Type"), "message/http");
+      assert.deepEqual(status, 200);
+      assert.deepEqual(headers.get("Content-Type"), "message/http");
 
-      assertEquals(headers.get("Via"), "local/1.1");
+      assert.deepEqual(headers.get("Via"), "local/1.1");
     });
 
     await t.test("name:", async () => {
       const { status, headers } = await fetch("source:", {
         method: "TRACE",
       });
-      assertEquals(status, 200);
-      assertEquals(headers.get("Content-Type"), "message/http");
+      assert.deepEqual(status, 200);
+      assert.deepEqual(headers.get("Content-Type"), "message/http");
 
-      assertEquals(headers.get("Via"), "local/1.1 source");
+      assert.deepEqual(headers.get("Via"), "local/1.1 source");
     });
 
     /** Connection string */
@@ -91,17 +91,17 @@ test("fetch", async (t) => {
         });
         const { status, headers } = response;
 
-        assertEquals(status, 200);
-        assertEquals(headers.get("Content-Type"), "message/http");
+        assert.deepEqual(status, 200);
+        assert.deepEqual(headers.get("Content-Type"), "message/http");
 
-        assertEquals(headers.get("Via"), "alias/1.1 target");
+        assert.deepEqual(headers.get("Via"), "alias/1.1 target");
 
         const body = await response.text();
         const [, _method, url] = body.match(/^(TRACE) (.*) HTTP\/1.1$/m) || [];
         const { pathname, searchParams } = new URL(url, "file:");
 
-        assertEquals(pathname, "/");
-        assertEquals(searchParams.get("remote"), `source:`);
+        assert.deepEqual(pathname, "/");
+        assert.deepEqual(searchParams.get("remote"), `source:`);
       });
 
       await t.test(
@@ -116,8 +116,8 @@ test("fetch", async (t) => {
             [];
           const { searchParams } = new URL(url, "file:");
 
-          assertEquals(searchParams.get("remote"), `source:`);
-          assertEquals(searchParams.get("skip_links"), `true`);
+          assert.deepEqual(searchParams.get("remote"), `source:`);
+          assert.deepEqual(searchParams.get("skip_links"), `true`);
         },
       );
 
@@ -133,7 +133,7 @@ test("fetch", async (t) => {
             [];
           const { searchParams } = new URL(url, "file:");
 
-          assertEquals(searchParams.get("remote"), `/tmp/1`);
+          assert.deepEqual(searchParams.get("remote"), `/tmp/1`);
           assert(
             !searchParams.has("alias_remote"),
             "should not have param prefixed with backend type",
@@ -153,7 +153,7 @@ test("fetch", async (t) => {
             [];
           const { searchParams } = new URL(url, "file:");
 
-          assertEquals(searchParams.get("remote"), `/tmp/2`);
+          assert.deepEqual(searchParams.get("remote"), `/tmp/2`);
           assert(
             !searchParams.has("config_target_remote"),
             "should not have param prefixed with remote name",
@@ -169,18 +169,18 @@ test("fetch", async (t) => {
           });
           const { status, headers } = response;
 
-          assertEquals(status, 200);
-          assertEquals(headers.get("Content-Type"), "message/http");
+          assert.deepEqual(status, 200);
+          assert.deepEqual(headers.get("Content-Type"), "message/http");
 
-          assertEquals(headers.get("Via"), "alias/1.1 target");
+          assert.deepEqual(headers.get("Via"), "alias/1.1 target");
 
           const body = await response.text();
           const [, _method, url] = body.match(/^(TRACE) (.*) HTTP\/1.1$/m) ||
             [];
           const { pathname, searchParams } = new URL(url, "file:");
 
-          assertEquals(pathname, "/");
-          assertEquals(searchParams.get("remote"), `'/tmp/3'`);
+          assert.deepEqual(pathname, "/");
+          assert.deepEqual(searchParams.get("remote"), `'/tmp/3'`);
         },
       );
 
@@ -195,8 +195,8 @@ test("fetch", async (t) => {
         const [, _method, url] = body.match(/^(TRACE) (.*) HTTP\/1.1$/m) || [];
         const { pathname, searchParams } = new URL(url, "file:");
 
-        assertEquals(pathname, "/");
-        assertEquals(searchParams.get("remote"), `'${cwd}'`);
+        assert.deepEqual(pathname, "/");
+        assert.deepEqual(searchParams.get("remote"), `'${cwd}'`);
       });
 
       await t.test(
@@ -213,8 +213,8 @@ test("fetch", async (t) => {
             [];
           const { pathname, searchParams } = new URL(url, "file:");
 
-          assertEquals(pathname, "/");
-          assertEquals(searchParams.get("remote"), `':local:${cwd}'`);
+          assert.deepEqual(pathname, "/");
+          assert.deepEqual(searchParams.get("remote"), `':local:${cwd}'`);
         },
       );
     });

@@ -1,5 +1,7 @@
 import process from "node:process";
-import { contentType, extname, formatBytes, join } from "../../deps.js";
+import { extname, join } from "node:path";
+import { format as formatBytes } from "@std/fmt/bytes";
+import { contentType } from "@std/media-types";
 
 /**
  * Serves a local remote

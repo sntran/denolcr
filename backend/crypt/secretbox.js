@@ -1,7 +1,7 @@
 /**
  * @module crypt/secretbox
  */
-import { xsalsa20poly1305 } from "../../deps.js";
+import { xsalsa20poly1305 } from "@noble/ciphers/salsa";
 
 /**
  * Options for secretbox

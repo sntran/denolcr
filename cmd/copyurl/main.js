@@ -1,4 +1,4 @@
-import { basename, resolve } from "../../deps.js";
+import { basename, resolve } from "node:path";
 
 import { fetch } from "../../mod.js";
 

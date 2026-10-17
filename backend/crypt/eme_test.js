@@ -1,11 +1,7 @@
 import { test } from "node:test";
 import { aes256 } from "./aes.js";
-import {
-  assertEquals,
-  assertNotEquals,
-  assertThrows,
-  fc,
-} from "../../dev_deps.js";
+import assert from "node:assert/strict";
+import fc from "fast-check";
 
 import { decrypt, encrypt } from "./eme.js";
 
@@ -105,8 +101,8 @@ test("the vectors of rfjakob/eme", () => {
   const tweak = new Uint8Array(16);
   for (const [size, expected] of Object.entries(VECTORS)) {
     const zeros = new Uint8Array(Number(size));
-    assertEquals(encrypt(cipher, tweak, zeros), expected);
-    assertEquals(decrypt(cipher, tweak, expected), zeros);
+    assert.deepEqual(encrypt(cipher, tweak, zeros), expected);
+    assert.deepEqual(decrypt(cipher, tweak, expected), zeros);
   }
 });
 
@@ -121,8 +117,8 @@ test("decrypt gives the data that encrypt took", () => {
     fc.property(KEY, TWEAK, DATA, (key, tweak, data) => {
       const cipher = aes256(key);
       const encrypted = encrypt(cipher, tweak, data);
-      assertEquals(encrypted.length, data.length);
-      assertEquals(decrypt(cipher, tweak, encrypted), data);
+      assert.deepEqual(encrypted.length, data.length);
+      assert.deepEqual(decrypt(cipher, tweak, encrypted), data);
     }),
   );
 });
@@ -136,13 +132,13 @@ test("a change of one bit of the input or of the tweak changes each block", () =
       const changed = data.slice();
       changed[(bit >> 3) % data.length] ^= 1 << (bit & 7);
       blocks(encrypt(cipher, tweak, changed)).forEach((block, j) =>
-        assertNotEquals(block, before[j])
+        assert.notDeepEqual(block, before[j])
       );
 
       const otherTweak = tweak.slice();
       otherTweak[(bit >> 3) % 16] ^= 1 << (bit & 7);
       blocks(encrypt(cipher, otherTweak, data)).forEach((block, j) =>
-        assertNotEquals(block, before[j])
+        assert.notDeepEqual(block, before[j])
       );
     }),
   );
@@ -155,9 +151,12 @@ test("encrypt and decrypt do not change their input, also a Buffer", () => {
     const tweak = make(16);
     const data = make(64).fill(7);
     const encrypted = encrypt(cipher, tweak, data);
-    assertEquals(decrypt(cipher, tweak, encrypted), new Uint8Array(64).fill(7));
-    assertEquals(new Uint8Array(tweak), new Uint8Array(16));
-    assertEquals(new Uint8Array(data), new Uint8Array(64).fill(7));
+    assert.deepEqual(
+      decrypt(cipher, tweak, encrypted),
+      new Uint8Array(64).fill(7),
+    );
+    assert.deepEqual(new Uint8Array(tweak), new Uint8Array(16));
+    assert.deepEqual(new Uint8Array(data), new Uint8Array(64).fill(7));
   }
 });
 
@@ -165,16 +164,16 @@ test("the tweak is 16 bytes, and the data are 1 to 128 blocks", () => {
   const cipher = aes256(new Uint8Array(32));
   const tweak = new Uint8Array(16);
   for (const f of [encrypt, decrypt]) {
-    assertThrows(() => f(cipher, new Uint8Array(15), new Uint8Array(16)), {
+    assert.throws(() => f(cipher, new Uint8Array(15), new Uint8Array(16)), {
       name: "TypeError",
       message: "EME: the tweak must be 16 bytes.",
     });
-    assertThrows(() => f(cipher, tweak, [0, 0]), {
+    assert.throws(() => f(cipher, tweak, [0, 0]), {
       name: "TypeError",
       message: "EME: the data must be a Uint8Array.",
     });
     for (const size of [0, 15, 17, 2064]) {
-      assertThrows(() => f(cipher, tweak, new Uint8Array(size)), {
+      assert.throws(() => f(cipher, tweak, new Uint8Array(size)), {
         name: "RangeError",
         message:
           `EME: the data must be 1 to 128 blocks of 16 bytes, not ${size} bytes.`,

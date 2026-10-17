@@ -1,14 +1,23 @@
 import { test } from "node:test";
-import { crypto, encodeHex, mkBuffer } from "../../deps.js";
-import { assert, assertEquals, equalBytes } from "../../dev_deps.js";
+import { Buffer } from "node:buffer";
+import { createHash, randomBytes } from "node:crypto";
+import assert from "node:assert/strict";
 import memory from "../memory/main.js";
 import backend from "./main.js";
 
-const buffer = mkBuffer(1024 * 1024 * 10); // 10M
+/**
+ * Tells if the two arrays have the same bytes.
+ * @param {Uint8Array} a
+ * @param {Uint8Array} b
+ * @returns {boolean}
+ */
+const sameBytes = (a, b) => Buffer.compare(a, b) === 0;
+
+const buffer = new Uint8Array(randomBytes(1024 * 1024 * 10)); // 10M
 const file = new File([buffer], "10M.bin", {
   type: "application/octet-stream",
 });
-const MD5 = encodeHex(await crypto.subtle.digest("MD5", buffer));
+const MD5 = createHash("md5").update(buffer).digest("hex");
 
 let chunkSize = 1024 * 1024 * 4; // 4M
 
@@ -48,16 +57,16 @@ test("PUT", async (t) => {
       const chunkName = `${
         encodeURIComponent(file.name)
       }.rclone_chunk.00${startFrom}`;
-      assertEquals(link, `<${chunkName}>`, `should have ${chunkName}`);
+      assert.deepEqual(link, `<${chunkName}>`, `should have ${chunkName}`);
 
       request = new Request(new URL(`/${chunkName}`, "memory:/"));
       response = await memory.fetch(request);
       const chunk = await response.arrayBuffer();
 
       if (startFrom < chunks) {
-        assertEquals(chunk.byteLength, chunkSize);
+        assert.deepEqual(chunk.byteLength, chunkSize);
       } else {
-        assertEquals(chunk.byteLength, file.size % chunkSize);
+        assert.deepEqual(chunk.byteLength, file.size % chunkSize);
       }
     }
   });
@@ -99,7 +108,7 @@ test("PUT", async (t) => {
       } else {
         chunkName = `${encodeURIComponent(file.name)}.part${startFrom}`;
       }
-      assertEquals(
+      assert.deepEqual(
         link,
         `<${chunkName}>`,
         `chunk ${startFrom} should have name of ${chunkName}, not ${link}`,
@@ -110,9 +119,9 @@ test("PUT", async (t) => {
       const chunk = await response.arrayBuffer();
 
       if (startFrom < chunks - 1) {
-        assertEquals(chunk.byteLength, chunkSize);
+        assert.deepEqual(chunk.byteLength, chunkSize);
       } else {
-        assertEquals(chunk.byteLength, file.size % chunkSize);
+        assert.deepEqual(chunk.byteLength, file.size % chunkSize);
       }
     }
   });
@@ -142,10 +151,10 @@ test("PUT", async (t) => {
     request = new Request(new URL(`/${file.name}`, "memory:/"));
     response = await memory.fetch(request);
     const metadata = await response.json();
-    assertEquals(metadata.ver, 1);
-    assertEquals(metadata.size, file.size);
-    assertEquals(metadata.nchunks, Math.ceil(file.size / chunkSize));
-    assertEquals(metadata.md5, MD5);
+    assert.deepEqual(metadata.ver, 1);
+    assert.deepEqual(metadata.size, file.size);
+    assert.deepEqual(metadata.nchunks, Math.ceil(file.size / chunkSize));
+    assert.deepEqual(metadata.md5, MD5);
   });
 
   await cleanup();
@@ -168,11 +177,11 @@ test("PUT", async (t) => {
     const links = response.headers.get("Link")?.split(/,\s*/);
     const chunks = Math.ceil(file.size / chunkSize);
 
-    assertEquals(links.length, chunks);
+    assert.deepEqual(links.length, chunks);
 
     request = new Request(new URL(`/${file.name}`, "memory:/"));
     response = await memory.fetch(request);
-    assertEquals(response.status, 404);
+    assert.deepEqual(response.status, 404);
   });
 
   await cleanup();
@@ -196,8 +205,8 @@ test("PUT", async (t) => {
     response = await memory.fetch(request);
     const links = response.headers.get("Link")?.split(/,\s*/);
 
-    assertEquals(links.length, 1, "should only have 1 file");
-    assertEquals(
+    assert.deepEqual(links.length, 1, "should only have 1 file");
+    assert.deepEqual(
       links[0],
       `<${encodeURIComponent(file.name)}>`,
       "should have the original file name",
@@ -207,7 +216,7 @@ test("PUT", async (t) => {
     response = await memory.fetch(request);
     const body = await response.arrayBuffer();
     assert(
-      equalBytes(new Uint8Array(body), buffer),
+      sameBytes(new Uint8Array(body), buffer),
       "should be the original file",
     );
   });
@@ -230,7 +239,7 @@ test("GET", async (t) => {
     request = new Request(url);
     response = await backend.fetch(request);
     const body = await response.arrayBuffer();
-    assert(equalBytes(new Uint8Array(body), buffer));
+    assert(sameBytes(new Uint8Array(body), buffer));
   });
 
   await cleanup();
@@ -249,7 +258,7 @@ test("GET", async (t) => {
     response = await backend.fetch(request);
     const body = await response.arrayBuffer();
     assert(
-      equalBytes(new Uint8Array(body), buffer),
+      sameBytes(new Uint8Array(body), buffer),
       "should return original file",
     );
   });
@@ -270,7 +279,7 @@ test("GET", async (t) => {
     response = await backend.fetch(request);
     const body = await response.arrayBuffer();
     assert(
-      equalBytes(new Uint8Array(body), buffer),
+      sameBytes(new Uint8Array(body), buffer),
       "should return original file",
     );
   });
@@ -291,7 +300,7 @@ test("GET", async (t) => {
     response = await fetch(request);
     const body = await response.arrayBuffer();
     assert(
-      equalBytes(new Uint8Array(body), buffer),
+      sameBytes(new Uint8Array(body), buffer),
       "should return original file",
     );
   });
@@ -313,7 +322,7 @@ test("GET", async (t) => {
     request = new Request(url);
     response = await backend.fetch(request);
     let body = await response.json();
-    assertEquals(body, json, "should return original file");
+    assert.deepEqual(body, json, "should return original file");
 
     await cleanup();
 
@@ -328,7 +337,7 @@ test("GET", async (t) => {
     request = new Request(url);
     response = await backend.fetch(request);
     body = await response.json();
-    assertEquals(body, json, "should return original file");
+    assert.deepEqual(body, json, "should return original file");
   });
 });
 

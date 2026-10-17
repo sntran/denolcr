@@ -1,5 +1,6 @@
 import { test } from "node:test";
-import { assertEquals, fc } from "../../dev_deps.js";
+import assert from "node:assert/strict";
+import fc from "fast-check";
 
 import { DecryptionStream, EncryptionStream } from "./secretbox.js";
 
@@ -17,7 +18,7 @@ test("decrypt/crypt", () => {
         const result = new Uint8Array(
           await new Response(decryptionStream).arrayBuffer(),
         );
-        assertEquals(result, content);
+        assert.deepEqual(result, content);
       },
     ),
   );

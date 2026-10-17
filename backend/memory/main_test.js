@@ -1,6 +1,6 @@
 import { test } from "node:test";
-import { join } from "../../deps.js";
-import { assert, assertEquals, assertHeader } from "../../dev_deps.js";
+import { join } from "node:path";
+import assert from "node:assert/strict";
 
 import backend from "./main.js";
 
@@ -64,8 +64,8 @@ test("PUT", async (t) => {
       });
       const { status, headers } = await fetch(request);
 
-      assertEquals(status, 201, "should respond with 201 Created");
-      assertHeader(headers, "Content-Location", fixture);
+      assert.deepEqual(status, 201, "should respond with 201 Created");
+      assert.equal(headers.get("Content-Location"), fixture);
     }
   });
 });
@@ -108,7 +108,7 @@ test("GET", async (t) => {
       const url = new URL(fixture, "memory:/");
       const response = await fetch(new Request(url));
       const responseText = await response.text();
-      assertEquals(responseText, fixture, "should have the same content");
+      assert.deepEqual(responseText, fixture, "should have the same content");
     }
   });
 });
@@ -123,10 +123,18 @@ test("DELETE", async (t) => {
           method: "DELETE",
         }),
       );
-      assertEquals(response.status, 204, "should respond with 204 No Content");
+      assert.deepEqual(
+        response.status,
+        204,
+        "should respond with 204 No Content",
+      );
 
       response = await fetch(new Request(url));
-      assertEquals(response.status, 404, "should respond with 404 Not Found");
+      assert.deepEqual(
+        response.status,
+        404,
+        "should respond with 404 Not Found",
+      );
     }
   });
 
@@ -138,12 +146,20 @@ test("DELETE", async (t) => {
         method: "DELETE",
       }),
     );
-    assertEquals(response.status, 204, "should respond with 204 No Content");
+    assert.deepEqual(
+      response.status,
+      204,
+      "should respond with 204 No Content",
+    );
 
     for await (const fixture of descendants(pathname)) {
       const url = new URL(fixture, "memory:/");
       const response = await fetch(new Request(url));
-      assertEquals(response.status, 404, "should respond with 404 Not Found");
+      assert.deepEqual(
+        response.status,
+        404,
+        "should respond with 404 Not Found",
+      );
     }
   });
 });

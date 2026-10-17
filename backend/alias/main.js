@@ -19,7 +19,7 @@
  * allowed as a remote. To alias the current directory use `.` instead.
  */
 
-import { join } from "../../deps.js";
+import { join } from "node:path";
 import { fetch } from "../../mod.js";
 
 /**

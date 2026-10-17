@@ -1,5 +1,5 @@
 import { test } from "node:test";
-import { assert } from "../../dev_deps.js";
+import assert from "node:assert/strict";
 import { copy } from "./main.js";
 
 test("copy", () => {

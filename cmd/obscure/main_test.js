@@ -1,5 +1,6 @@
 import { test } from "node:test";
-import { assertEquals, fc } from "../../dev_deps.js";
+import assert from "node:assert/strict";
+import fc from "fast-check";
 import { obscure, reveal } from "./main.js";
 
 /**
@@ -9,7 +10,7 @@ import { obscure, reveal } from "./main.js";
  */
 async function assertResponse(response, expected) {
   response = await response;
-  assertEquals(await response.text(), expected);
+  assert.deepEqual(await response.text(), expected);
 }
 
 test("reveal", () => {

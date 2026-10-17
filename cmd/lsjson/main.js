@@ -1,4 +1,6 @@
-import { basename, HTMLRewriter, toLocaleISOString } from "../../deps.js";
+import { basename } from "node:path";
+import { HTMLRewriter } from "@sntran/html-rewriter";
+import { toLocaleISOString } from "../../lib/time.js";
 
 import { fetch } from "../../mod.js";
 

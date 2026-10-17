@@ -7,7 +7,9 @@
  * Because it has no parameters you can just use it with the `:memory:` remote
  * name.
  */
-import { contentType, extname, formatBytes } from "../../deps.js";
+import { extname } from "node:path";
+import { format as formatBytes } from "@std/fmt/bytes";
+import { contentType } from "@std/media-types";
 
 /**
  * @type {Map<string, File | null>}

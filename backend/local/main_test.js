@@ -1,13 +1,9 @@
 import { test } from "node:test";
 import process from "node:process";
 import { readdir, readFile, stat } from "node:fs/promises";
-import { contentType, extname, join } from "../../deps.js";
-import {
-  assert,
-  assertEquals,
-  assertHeader,
-  assertRejects,
-} from "../../dev_deps.js";
+import { extname, join } from "node:path";
+import { contentType } from "@std/media-types";
+import assert from "node:assert/strict";
 
 import backend from "./main.js";
 
@@ -65,15 +61,21 @@ test("GET", async (t) => {
       const response = await fetch(request);
       const { headers, body } = response;
 
-      assertHeader(headers, "Content-Type", contentType(extname(name)) || "");
-      assertHeader(headers, "Content-Length", `${file.size}`);
-      assertHeader(headers, "Last-Modified", file.mtime?.toUTCString() || "");
+      assert.equal(
+        headers.get("Content-Type"),
+        contentType(extname(name)) || "",
+      );
+      assert.equal(headers.get("Content-Length"), `${file.size}`);
+      assert.equal(
+        headers.get("Last-Modified"),
+        file.mtime?.toUTCString() || "",
+      );
 
       assert(
         body instanceof ReadableStream,
         "should have body as a ReadableStream",
       );
-      assertEquals(
+      assert.deepEqual(
         await response.text(),
         await readFile(path, "utf8"),
         "should have the same content",
@@ -103,10 +105,10 @@ test("PUT", async (t) => {
     });
     const { status, headers } = await fetch(request);
 
-    assertEquals(status, 201, "should respond with 201 Created");
-    assertHeader(headers, "Content-Location", `/${newFile}`);
+    assert.deepEqual(status, 201, "should respond with 201 Created");
+    assert.equal(headers.get("Content-Location"), `/${newFile}`);
 
-    assertEquals(
+    assert.deepEqual(
       await readFile(targetFile, "utf8"),
       body,
       "should have the same content",
@@ -114,7 +116,11 @@ test("PUT", async (t) => {
 
     // Also checks the content with a GET request.
     const response = await fetch(new Request(url));
-    assertEquals(await response.text(), body, "should have the same content");
+    assert.deepEqual(
+      await response.text(),
+      body,
+      "should have the same content",
+    );
   });
 
   await t.test("a new folder", async () => {
@@ -131,8 +137,8 @@ test("PUT", async (t) => {
     });
     const { status, headers } = await fetch(request);
 
-    assertEquals(status, 201, "should respond with 201 Created");
-    assertHeader(headers, "Content-Location", `/${newFolder}`);
+    assert.deepEqual(status, 201, "should respond with 201 Created");
+    assert.equal(headers.get("Content-Location"), `/${newFolder}`);
 
     const stats = await stat(targetFolder);
     assert(stats.isDirectory, "should be a directory");
@@ -155,10 +161,13 @@ test("PUT", async (t) => {
     });
     const { status, headers } = await fetch(request);
 
-    assertEquals(status, 201, "should respond with 201 Created");
-    assertHeader(headers, "Content-Location", `/${join(newFolder, newFile)}`);
+    assert.deepEqual(status, 201, "should respond with 201 Created");
+    assert.equal(
+      headers.get("Content-Location"),
+      `/${join(newFolder, newFile)}`,
+    );
 
-    assertEquals(
+    assert.deepEqual(
       await readFile(targetFile, "utf8"),
       body,
       "should have the same content",
@@ -166,7 +175,11 @@ test("PUT", async (t) => {
 
     // Also checks the content with a GET request.
     const response = await fetch(new Request(url));
-    assertEquals(await response.text(), body, "should have the same content");
+    assert.deepEqual(
+      await response.text(),
+      body,
+      "should have the same content",
+    );
   });
 });
 
@@ -179,9 +192,9 @@ test("DELETE", async (t) => {
       method: "DELETE",
     });
     const { status } = await fetch(request);
-    assertEquals(status, 204, "should respond with 204 No Content");
+    assert.deepEqual(status, 204, "should respond with 204 No Content");
 
-    assertRejects(() => {
+    assert.rejects(() => {
       return stat(targetFile);
     });
   });
@@ -194,9 +207,9 @@ test("DELETE", async (t) => {
       method: "DELETE",
     });
     const { status } = await fetch(request);
-    assertEquals(status, 204, "should respond with 204 No Content");
+    assert.deepEqual(status, 204, "should respond with 204 No Content");
 
-    assertRejects(() => {
+    assert.rejects(() => {
       return stat(targetFolder);
     });
   });
