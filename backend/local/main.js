@@ -1,5 +1,3 @@
-#!/usr/bin/env -S deno serve --allow-all
-
 import process from "node:process";
 import { contentType, extname, formatBytes, join } from "../../deps.js";
 

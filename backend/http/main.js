@@ -1,5 +1,3 @@
-#!/usr/bin/env -S deno serve --allow-all
-
 /**
  * The HTTP remote is a read only remote for reading files of a webserver. The
  * webserver should provide file listings which rfetch will read and turn into

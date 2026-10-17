@@ -9,9 +9,9 @@ Choose a name. The docs here will use `remote` as an example.
 Note that in rfetch terminology a file system backend is called a remote or an
 fs.
 
-- `deno init backend/remote`
-- Edit "backend/remote/main.js" and "backend/remote/main_test.js" for the new
-  backend.
+- Make the folder "backend/remote" with the files "main.js" and
+  "main_test.js" for the new backend. The tests use the test runner of
+  Node.js (`node:test`).
 - Implements a `fetch` default export function that handles "GET", "PUT" and
   "DELETE".
 - Uses `backend/local/main.js` as reference, or the boilerplate below:

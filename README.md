@@ -40,9 +40,11 @@ These backends adapt or modify other storage providers
 
 ## Development
 
-- Clone the repository and navigate to the folder.
-- `deno task start` to execute commands.
-- Alternatively, `deno task install` to install a `rfetch` executable in PATH
-  that is symbolic linked to the `main.js` file and use `rfetch` in place of
-  `deno task start`.
-- `deno task test` to run the test suites.
+- Clone the repository and go to its folder.
+- `npm install` to get the dependencies (Node.js 22.2 or later).
+- `npm start -- COMMAND ...` to run a command.
+- Alternatively, `npm link` to install a `rfetch` program in the PATH, with a
+  symbolic link to `main.js`, and use `rfetch` in place of `npm start --`.
+- `npm test` to run the tests, with the test runner of Node.js.
+- `npm run bench` to compare some commands with `rclone`, which must be in the
+  PATH.

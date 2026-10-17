@@ -1,5 +1,3 @@
-#!/usr/bin/env -S deno serve --allow-all
-
 /**
  * Memory Backend
  *

@@ -1,5 +1,3 @@
-#!/usr/bin/env -S deno serve --allow-all
-
 import { formatBytes } from "../../deps.js";
 
 import { auth } from "./auth.js";
