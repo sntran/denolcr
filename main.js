@@ -44,7 +44,7 @@ const options = {
   "transfers": {
     type: "string",
     default: env["RCLONE_TRANSFERS"] || "4",
-  }
+  },
 };
 
 const {
