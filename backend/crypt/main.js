@@ -99,7 +99,6 @@ import { formatBytes } from "../../lib/format.js";
 import { mimeType } from "../../lib/mime.js";
 import { decodePath } from "../../lib/path.js";
 import { sized } from "../../lib/streams/sized.js";
-import { fetch } from "../../mod.js";
 import { reveal } from "../../cmd/obscure/main.js";
 import PathCipher from "./PathCipher.js";
 import {
@@ -150,9 +149,12 @@ const SECRETS = ["password", "password2"];
 /**
  * Serves a crypted remote.
  * @param {Request} request
+ * @param {{ REMOTE?: { fetch: typeof fetch } }} [env] `REMOTE` gets the
+ *   requests to the remote under crypt, as a service binding of Cloudflare.
+ *   With no `REMOTE`, the global `fetch` gets them.
  * @returns {Promise<Response>}
  */
-async function crypt(request) {
+async function crypt(request, env = {}) {
   const { method } = request;
   const { pathname, searchParams } = new URL(request.url);
 
@@ -179,6 +181,7 @@ async function crypt(request) {
     return new Response("The password is not obscured", { status: 400 });
   }
 
+  const fetcher = env.REMOTE ?? globalThis;
   const isDirectory = path.endsWith("/");
   const target = remote + cipher.names.encrypt(path);
 
@@ -188,7 +191,7 @@ async function crypt(request) {
   headers.delete("Range");
 
   if (method === "GET" || method === "HEAD") {
-    const response = await fetch(target, { method, headers });
+    const response = await fetcher.fetch(target, { method, headers });
     if (!response.ok) {
       return response;
     }
@@ -240,7 +243,7 @@ async function crypt(request) {
       init.duplex = "half";
     }
 
-    const response = await fetch(target, init);
+    const response = await fetcher.fetch(target, init);
     await response.body?.cancel();
     const result = new Headers();
     if (response.ok) {
@@ -250,7 +253,7 @@ async function crypt(request) {
   }
 
   if (method === "DELETE") {
-    const response = await fetch(target, { method, headers });
+    const response = await fetcher.fetch(target, { method, headers });
     await response.body?.cancel();
     return new Response(null, { status: response.status });
   }

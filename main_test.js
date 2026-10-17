@@ -4,7 +4,7 @@ import { unlink, writeFile } from "node:fs/promises";
 import { serve } from "@sntran/serve";
 import assert from "node:assert/strict";
 
-import { config } from "./mod.js";
+import { config, fetch } from "./mod.js";
 
 test("fetch", async (t) => {
   await t.test("global", () => {

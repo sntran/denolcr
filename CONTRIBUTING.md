@@ -61,6 +61,23 @@ export default {
 };
 ```
 
+A backend imports nothing of rfetch, for example `mod.js`. It is a Worker of
+Cloudflare: it gets all from the request and from `env`, the second argument of
+`fetch`. A backend on top of another remote, for example `crypt` or `chunker`,
+sends its requests to that remote with `env.REMOTE.fetch`, as a service binding.
+With no `REMOTE`, it uses the global `fetch`. The `fetch` of `mod.js` and
+`_worker.js` give `REMOTE`: it reads remotes as `:memory:/path`. In the tests,
+give the same `env` to the suite:
+
+```js
+import { fetch } from "../../mod.js";
+
+backendSuite("crypt", crypt, {
+  env: { REMOTE: { fetch } },
+  params: { remote: ":memory:/crypt", password },
+});
+```
+
 ## Architecture
 
 - `GET /folder/`: displays HTML page with folder content.

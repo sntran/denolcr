@@ -106,7 +106,6 @@ import { mimeType } from "../../lib/mime.js";
 import { decodePath, encodePath } from "../../lib/path.js";
 import { parseSize } from "../../lib/size.js";
 import { sized } from "../../lib/streams/sized.js";
-import { fetch } from "../../mod.js";
 
 /** The largest metadata that rclone reads, and that it writes, in bytes. */
 const MAX_METADATA_SIZE = 1023;
@@ -164,20 +163,25 @@ export const options = {
  * @property {boolean} noRename True for the transactions "norename".
  * @property {boolean} failHard
  * @property {ReturnType<typeof nameFormat>} names
+ * @property {{ fetch: typeof fetch }} fetcher The remote under the chunker:
+ *   `env.REMOTE`, or the global `fetch`.
  */
 
 /**
  * @param {Request} request
+ * @param {{ REMOTE?: { fetch: typeof fetch } }} [env] `REMOTE` gets the
+ *   requests to the remote under the chunker, as a service binding of
+ *   Cloudflare. With no `REMOTE`, the global `fetch` gets them.
  * @returns {Promise<Response>}
  */
-async function chunker(request) {
+async function chunker(request, env = {}) {
   const { method } = request;
   const { pathname, searchParams } = new URL(request.url);
 
   /** @type {Config} */
   let config;
   try {
-    config = configOf(searchParams);
+    config = configOf(searchParams, env);
   } catch (error) {
     return new Response(error.message, { status: 400 });
   }
@@ -195,7 +199,7 @@ async function chunker(request) {
       return await listFolder(config, path, method, `${searchParams}`);
     }
     // A folder is a folder of the remote.
-    const response = await fetch(config.remote + encodePath(path), {
+    const response = await send(config, path, {
       method,
       headers: request.headers,
     });
@@ -239,9 +243,10 @@ class ChunkerError extends Error {
 /**
  * Reads the options, as `NewFs` of the chunker of rclone.
  * @param {URLSearchParams} searchParams
+ * @param {{ REMOTE?: { fetch: typeof fetch } }} env
  * @returns {Config}
  */
-function configOf(searchParams) {
+function configOf(searchParams, env) {
   const get = (name) => searchParams.get(name) ?? options.default[name];
 
   const remote = searchParams.get("remote")?.replace(/\/$/, "");
@@ -299,6 +304,7 @@ function configOf(searchParams) {
     noRename,
     failHard: get("fail_hard") === "true",
     names: nameFormat(get("name_format"), startFrom),
+    fetcher: env.REMOTE ?? globalThis,
   };
 }
 
@@ -379,7 +385,7 @@ function nameFormat(pattern, startFrom) {
  * @param {string} dir The path of the folder, with "/" at the end.
  */
 async function listRemote(config, dir) {
-  const response = await fetch(config.remote + encodePath(dir));
+  const response = await send(config, dir);
   if (response.status === 404) {
     await response.body?.cancel();
     return null;
@@ -547,7 +553,7 @@ function writeMetadata(size, nchunks, { md5, sha1 }, xact) {
  */
 function metadataReader(config, dir) {
   return async (name) => {
-    const response = await fetch(config.remote + encodePath(dir + name));
+    const response = await send(config, dir + name);
     if (!response.ok) {
       await response.body?.cancel();
       return null;
@@ -668,7 +674,7 @@ async function getFile(config, dir, name, method) {
   }
   if (!file.chunks) {
     // A file of the remote.
-    return await fetch(config.remote + encodePath(dir + name), { method });
+    return await send(config, dir + name, { method });
   }
 
   const headers = new Headers({
@@ -681,18 +687,19 @@ async function getFile(config, dir, name, method) {
   if (method === "HEAD") {
     return new Response(null, { headers });
   }
-  const urls = file.chunks.map((chunk) =>
-    config.remote + encodePath(dir + chunk.Name)
-  );
-  return new Response(sized(concatenate(urls), file.size), { headers });
+  const paths = file.chunks.map((chunk) => dir + chunk.Name);
+  return new Response(sized(concatenate(config, paths), file.size), {
+    headers,
+  });
 }
 
 /**
  * Gives the data of files of the remote, one after the other.
- * @param {string[]} urls
+ * @param {Config} config
+ * @param {string[]} paths
  * @returns {ReadableStream<Uint8Array>}
  */
-function concatenate(urls) {
+function concatenate(config, paths) {
   let index = 0;
   /** @type {ReadableStreamDefaultReader<Uint8Array> | null} */
   let reader = null;
@@ -700,11 +707,11 @@ function concatenate(urls) {
     async pull(controller) {
       while (true) {
         if (!reader) {
-          if (index === urls.length) {
+          if (index === paths.length) {
             controller.close();
             return;
           }
-          const response = await fetch(urls[index++]);
+          const response = await send(config, paths[index++]);
           if (!response.ok || !response.body) {
             throw new Error(`chunker: chunk ${index} gave ${response.status}`);
           }
@@ -772,11 +779,7 @@ async function putFile(config, dir, name, request, pathname) {
     const type = request.headers.get("Content-Type");
     if (type) headers.set("Content-Type", type);
     headers.set("Content-Length", `${length}`);
-    await put(
-      config.remote + encodePath(dir + name),
-      source.take(length),
-      headers,
-    );
+    await put(config, dir + name, source.take(length), headers);
     await source.end(length);
     written.add(name);
   } else {
@@ -793,11 +796,7 @@ async function putFile(config, dir, name, request, pathname) {
       const headers = new Headers();
       if (length !== null) headers.set("Content-Length", `${chunkSize}`);
       const before = source.count;
-      await put(
-        config.remote + encodePath(dir + chunkName),
-        source.take(chunkSize, hash),
-        headers,
-      );
+      await put(config, dir + chunkName, source.take(chunkSize, hash), headers);
       size += source.count - before;
       written.add(chunkName);
       chunkNo++;
@@ -808,7 +807,8 @@ async function putFile(config, dir, name, request, pathname) {
       const hashes = hash ? { [config.hash]: hash.digest("hex") } : {};
       const metadata = writeMetadata(size, chunkNo, hashes, xact);
       await put(
-        config.remote + encodePath(dir + name),
+        config,
+        dir + name,
         new Blob([metadata]).stream(),
         new Headers({
           "Content-Type": "application/json",
@@ -822,7 +822,7 @@ async function putFile(config, dir, name, request, pathname) {
   // The chunks of the old version go away.
   for (const entry of old) {
     if (!written.has(entry.Name)) {
-      await remove(config.remote + encodePath(dir + entry.Name));
+      await remove(config, dir + entry.Name);
     }
   }
 
@@ -847,19 +847,31 @@ async function deleteFile(config, dir, name) {
   // stays.
   entries.sort((a, b) => (b.Name === name) - (a.Name === name));
   for (const entry of entries) {
-    await remove(config.remote + encodePath(dir + entry.Name));
+    await remove(config, dir + entry.Name);
   }
   return new Response(null, { status: 204 });
 }
 
 /**
+ * Sends a request to the remote under the chunker.
+ * @param {Config} config
+ * @param {string} path The path in the remote, with no percent-encoding.
+ * @param {RequestInit} [init]
+ * @returns {Promise<Response>}
+ */
+function send(config, path, init) {
+  return config.fetcher.fetch(config.remote + encodePath(path), init);
+}
+
+/**
  * Puts a body on the remote, or throws.
- * @param {string} url
+ * @param {Config} config
+ * @param {string} path
  * @param {ReadableStream<Uint8Array>} body
  * @param {Headers} headers
  */
-async function put(url, body, headers) {
-  const response = await fetch(url, {
+async function put(config, path, body, headers) {
+  const response = await send(config, path, {
     method: "PUT",
     headers,
     body,
@@ -871,9 +883,9 @@ async function put(url, body, headers) {
   }
 }
 
-/** @param {string} url */
-async function remove(url) {
-  const response = await fetch(url, { method: "DELETE" });
+/** @param {Config} config @param {string} path */
+async function remove(config, path) {
+  const response = await send(config, path, { method: "DELETE" });
   await response.body?.cancel();
 }
 

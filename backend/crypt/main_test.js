@@ -7,8 +7,12 @@ import fc from "fast-check";
 
 import { backendSuite } from "../../lib/testing/suite.js";
 import { remote } from "../../lib/testing/remote.js";
+import { fetch } from "../../mod.js";
 import { mimeType } from "../../lib/mime.js";
 import { decode, default as crypt, deriveKey, encode } from "./main.js";
+
+/** The remotes under the backend, through the fetch of rfetch. */
+const env = { REMOTE: { fetch } };
 
 // The password "123456" and the salt, obscured.
 const PASSWORD = "UmyLSdRHfew6aual28-ggx78qHqSfQ";
@@ -120,6 +124,7 @@ test("encode", async () => {
 
 test("GET of the fixtures", async () => {
   const fs = remote(crypt, {
+    env,
     params: { remote: "crypt", password: PASSWORD, password2: SALT },
   });
   for (const name of Object.keys(CRYPT)) {
@@ -144,10 +149,10 @@ const params = {
   password2: SALT,
 };
 
-backendSuite("crypt", crypt, { params });
+backendSuite("crypt", crypt, { env, params });
 
 describe("crypt", () => {
-  const fs = remote(crypt, { params });
+  const fs = remote(crypt, { env, params });
 
   test("puts no password in the links of a list", async () => {
     await fs.put("secret/a b.txt", new TextEncoder().encode("a"));
@@ -163,7 +168,7 @@ describe("crypt", () => {
 
   test("lists no file with a name that does not decrypt", async () => {
     // A file that is not encrypted, next to the encrypted files.
-    await globalThis.fetch(":memory:/crypt/plain.txt", {
+    await fetch(":memory:/crypt/plain.txt", {
       method: "PUT",
       body: "plain",
     });
@@ -173,11 +178,11 @@ describe("crypt", () => {
     assert.ok(!names.includes("plain.txt"));
     assert.equal(names.length, 1);
     await fs.delete("encrypted.txt");
-    await globalThis.fetch(":memory:/crypt/plain.txt", { method: "DELETE" });
+    await fetch(":memory:/crypt/plain.txt", { method: "DELETE" });
   });
 
   test("gives 400 for a password that is not obscured", async () => {
-    const bad = remote(crypt, { params: { ...params, password: "!!" } });
+    const bad = remote(crypt, { env, params: { ...params, password: "!!" } });
     const response = await bad.get("");
     assert.equal(response.status, 400);
     assert.ok(!(await response.text()).includes("!!"));
@@ -188,7 +193,7 @@ describe("crypt", () => {
       encode({ password: PASSWORD, password2: SALT }, "plain2.txt"),
     );
     // The name is encrypted, but the data is not.
-    await globalThis.fetch(`:memory:/crypt/${encrypted}`, {
+    await fetch(`:memory:/crypt/${encrypted}`, {
       method: "PUT",
       body: "not encrypted data, longer than a header of 32 bytes",
     });

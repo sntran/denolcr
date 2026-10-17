@@ -1,4 +1,5 @@
 import * as backends from "./backend/main.js";
+import { fetch } from "./mod.js";
 
 /**
  * A handler
@@ -21,7 +22,7 @@ import * as backends from "./backend/main.js";
  * @param {string} [params.path]
  * @returns {Promise<Response}
  */
-function remote(request, _env, params) {
+function remote(request, env, params) {
   let { remote, path = "/" } = params;
 
   const backend = backends[remote];
@@ -38,7 +39,9 @@ function remote(request, _env, params) {
 
   request = new Request(url, request);
 
-  return backend.fetch(request);
+  // A backend on top of other remotes, for example crypt, sends its
+  // requests to them with the fetch of rfetch, as REMOTE.
+  return backend.fetch(request, { ...env, REMOTE: env.REMOTE ?? { fetch } });
 }
 
 const routes = {

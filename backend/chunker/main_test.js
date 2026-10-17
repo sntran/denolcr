@@ -4,17 +4,23 @@ import { createHash } from "node:crypto";
 
 import { backendSuite } from "../../lib/testing/suite.js";
 import { remote } from "../../lib/testing/remote.js";
+import { fetch } from "../../mod.js";
 import backend from "./main.js";
+
+/** The remotes under the backend, through the fetch of rfetch. */
+const env = { REMOTE: { fetch } };
 
 // Small chunks, thus the files of the suite have more than one chunk.
 const CHUNK = "64k";
 
 backendSuite("chunker", backend, {
+  env,
   params: { remote: ":memory:/chunker", chunk_size: CHUNK },
 });
 // Without metadata, a name is always in chunks. rclone does not read the
 // name of a chunk with "\n": "." of Go does not match it.
 backendSuite("chunker meta_format=none", backend, {
+  env,
   params: {
     remote: ":memory:/none",
     chunk_size: CHUNK,
@@ -24,6 +30,7 @@ backendSuite("chunker meta_format=none", backend, {
   skipName: /\n/,
 });
 backendSuite("chunker transactions=norename", backend, {
+  env,
   params: {
     remote: ":memory:/norename",
     chunk_size: CHUNK,
@@ -38,11 +45,14 @@ function content(size) {
 
 describe("chunker", () => {
   const root = ":memory:/layout";
-  const fs = remote(backend, { params: { remote: root, chunk_size: "1k" } });
+  const fs = remote(backend, {
+    env,
+    params: { remote: root, chunk_size: "1k" },
+  });
 
   /** The names of the files on the remote under the chunker. */
   async function layout(path = "") {
-    const response = await globalThis.fetch(`${root}/${path}`);
+    const response = await fetch(`${root}/${path}`);
     const html = await response.text();
     return [...html.matchAll(/<a href="([^"?]+)/g)]
       .map(([, href]) => decodeURIComponent(href))
@@ -52,7 +62,7 @@ describe("chunker", () => {
 
   /** @param {string} path */
   async function text(path) {
-    return await globalThis.fetch(`${root}/${path}`).then((r) => r.text());
+    return await fetch(`${root}/${path}`).then((r) => r.text());
   }
 
   test("puts a small file as it is, and a large file in chunks", async () => {
@@ -123,7 +133,7 @@ describe("chunker", () => {
 
   test("hides a file with a missing chunk", async () => {
     await fs.put("broken.bin", content(2500));
-    await globalThis.fetch(`${root}/broken.bin.rclone_chunk.002`, {
+    await fetch(`${root}/broken.bin.rclone_chunk.002`, {
       method: "DELETE",
     });
     assert.deepEqual(await fs.list(""), []);
@@ -150,13 +160,14 @@ describe("chunker", () => {
         },
       ]
     ) {
-      const response = await remote(backend, { params }).get("");
+      const response = await remote(backend, { env, params }).get("");
       assert.equal(response.status, 400, JSON.stringify(params));
     }
   });
 
   test("names the chunks with name_format and start_from", async () => {
     const custom = remote(backend, {
+      env,
       params: {
         remote: root,
         chunk_size: "1k",

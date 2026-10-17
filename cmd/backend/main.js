@@ -1,3 +1,5 @@
+import { fetch } from "../../mod.js";
+
 /**
  * Run a backend-specific command.
  *

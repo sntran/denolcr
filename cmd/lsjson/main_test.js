@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { fetch } from "../../mod.js";
 import { lsjson } from "./main.js";
 
 const encoder = new TextEncoder();
