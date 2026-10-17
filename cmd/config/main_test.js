@@ -1,10 +1,21 @@
 import { test } from "node:test";
-import { readFile, unlink, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
+import process from "node:process";
 import assert from "node:assert/strict";
 import fc from "fast-check";
 
 import { config as configure, config_dir, NAME_REGEX } from "./main.js";
+
+// Each test file runs in its own process. These tests use a new folder as the
+// current folder and as the home folder. Thus they do not change the files of
+// the person, or the rclone.conf of other tests that run at the same time.
+const folder = await mkdtemp(join(tmpdir(), "rfetch-config-"));
+process.chdir(folder);
+process.env.HOME = folder;
+delete process.env.XDG_CONFIG_HOME;
+delete process.env.APPDATA;
 
 test("config", async (t) => {
   let command = "file";
@@ -54,12 +65,12 @@ test("config", async (t) => {
     config = await readFile("rclone.conf", { encoding: "utf8" });
     assert.deepEqual(
       config,
-      "[source]\ntype = local",
+      "[source]\ntype = local\n",
       "should have the new remote added",
     );
     assert.deepEqual(
       await response.text(),
-      config,
+      "[source]\ntype = local",
       "should return the new remote in response",
     );
 
@@ -71,7 +82,7 @@ test("config", async (t) => {
     config = await readFile("rclone.conf", { encoding: "utf8" });
     assert.deepEqual(
       config,
-      "[source]\ntype = local\n\n[target]\ntype = local",
+      "[source]\ntype = local\n\n[target]\ntype = local\n",
       "should have both remotes",
     );
     assert.deepEqual(
@@ -154,7 +165,7 @@ test("config", async (t) => {
     const config = await readFile("rclone.conf", { encoding: "utf8" });
     assert.deepEqual(
       config,
-      `[source]\ntype = local\n\n${remote}`,
+      `[source]\ntype = local\n\n${remote}\n`,
       "should have the remote updated",
     );
     assert.deepEqual(
@@ -191,7 +202,7 @@ test("config", async (t) => {
     const config = await readFile("rclone.conf", { encoding: "utf8" });
     assert.deepEqual(
       config,
-      "[source]\ntype = local",
+      "[source]\ntype = local\n",
       "should have the remote deleted",
     );
     assert.deepEqual(
@@ -208,6 +219,28 @@ test("config", async (t) => {
     );
   });
 
+  await t.test("keeps the comments of the person", async () => {
+    await writeFile(
+      "rclone.conf",
+      "# My remotes.\n\n# Old disk.\n[old]\ntype = local\n\n" +
+        "[work]\n# The type.\ntype = local\n",
+    );
+    await configure("create", "new", { type: "memory" });
+    await configure("update", "work", { type: "alias", remote: "new:" });
+    await configure("delete", "old");
+    assert.equal(
+      await readFile("rclone.conf", { encoding: "utf8" }),
+      "# My remotes.\n\n[work]\n# The type.\ntype = alias\n" +
+        "remote = new:\n\n[new]\ntype = memory\n",
+    );
+    assert.equal(
+      await configure("show").then((response) => response.text()),
+      await readFile("rclone.conf", { encoding: "utf8" }),
+      "show gives the file with the comments",
+    );
+  });
+
   // Cleans up
   await unlink("rclone.conf");
+  await rm(folder, { recursive: true, force: true });
 });

@@ -67,28 +67,30 @@ export async function config(subcommand, name, options, init) {
     }
   }
 
+  const configFile = new INI.ConfigFile(ini);
   /**
    * @type {Object}
    */
-  let config = INI.parse(ini);
+  let config = configFile.config;
 
   /**
-   * Writes the config to the file, and answers with the remote. An option
+   * Changes the file, and answers with the remote. The other lines of the
+   * file do not change, thus the comments of the person stay. An option
    * that the file cannot keep, for example a value with a line break, gives
    * 400 and the file does not change.
-   * @param {Object} config
+   * @param {(configFile: INI.ConfigFile) => void} change
    * @param {string} name
    */
-  async function save(config, name) {
-    let text;
+  async function save(change, name) {
     try {
-      text = INI.stringify(config);
+      change(configFile);
     } catch (error) {
       if (!(error instanceof TypeError)) throw error;
       return new Response(error.message, { status: 400 });
     }
-    await writeFile(file, text);
-    return new Response(INI.stringify(config[name], { section: name }));
+    await writeFile(file, configFile.toString());
+    const remote = configFile.config[name];
+    return new Response(INI.stringify(remote, { section: name }));
   }
 
   switch (subcommand) {
@@ -96,13 +98,12 @@ export async function config(subcommand, name, options, init) {
       if (!NAME_REGEX.test(name)) {
         return new Response(`Invalid remote name: ${name}`, { status: 400 });
       }
-      config[name] = options;
-      return await save(config, name);
+      return await save((configFile) => configFile.set(name, options), name);
     }
 
     case "delete": // Delete an existing remote.
-      delete config[name];
-      await writeFile(file, INI.stringify(config));
+      configFile.delete(name);
+      await writeFile(file, configFile.toString());
       return new Response();
 
     case "disconnect": // Disconnects user from remote
@@ -133,6 +134,10 @@ export async function config(subcommand, name, options, init) {
         return Response.json(config);
       }
 
+      // The whole file, with its comments, as `rclone config show`.
+      if (typeof name !== "string") {
+        return new Response(configFile.toString());
+      }
       return new Response(INI.stringify(config, { section: name }));
 
     case "touch": // Ensure configuration file exists.
@@ -143,10 +148,7 @@ export async function config(subcommand, name, options, init) {
       if (!Object.hasOwn(config, name)) {
         return new Response("", { status: 404 });
       }
-      const remote = config[name];
-
-      Object.assign(remote, options);
-      return await save(config, name);
+      return await save((configFile) => configFile.update(name, options), name);
     }
 
     case "userinfo": // Prints info about logged in user of remote.
