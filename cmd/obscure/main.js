@@ -1,46 +1,58 @@
 const ALGORITHM = "AES-CTR";
 
-const KEY = await crypto.subtle.importKey(
-  "raw",
-  // https://github.com/rclone/rclone/blob/10c884552caab3d3d8484ed3401e94f983a23f93/fs/config/obscure/obscure.go#L17-L22
-  Uint8Array.from([
-    0x9c,
-    0x93,
-    0x5b,
-    0x48,
-    0x73,
-    0x0a,
-    0x55,
-    0x4d,
-    0x6b,
-    0xfd,
-    0x7c,
-    0x63,
-    0xc8,
-    0x86,
-    0xa9,
-    0x2b,
-    0xd3,
-    0x90,
-    0x19,
-    0x8e,
-    0xb8,
-    0x12,
-    0x8a,
-    0xfb,
-    0xf4,
-    0xde,
-    0x16,
-    0x2b,
-    0x8b,
-    0x95,
-    0xf6,
-    0x38,
-  ]),
-  ALGORITHM,
-  false,
-  ["encrypt", "decrypt"],
-);
+/** @type {Promise<CryptoKey> | undefined} */
+let key;
+
+/**
+ * Gives the key of rclone for `obscure`. The import happens at the first use,
+ * not at the load of the module: a top-level await breaks the bundle of a
+ * Worker, and a Worker cannot use some APIs at the load.
+ * @returns {Promise<CryptoKey>}
+ */
+function getKey() {
+  key ??= crypto.subtle.importKey(
+    "raw",
+    // https://github.com/rclone/rclone/blob/10c884552caab3d3d8484ed3401e94f983a23f93/fs/config/obscure/obscure.go#L17-L22
+    Uint8Array.from([
+      0x9c,
+      0x93,
+      0x5b,
+      0x48,
+      0x73,
+      0x0a,
+      0x55,
+      0x4d,
+      0x6b,
+      0xfd,
+      0x7c,
+      0x63,
+      0xc8,
+      0x86,
+      0xa9,
+      0x2b,
+      0xd3,
+      0x90,
+      0x19,
+      0x8e,
+      0xb8,
+      0x12,
+      0x8a,
+      0xfb,
+      0xf4,
+      0xde,
+      0x16,
+      0x2b,
+      0x8b,
+      0x95,
+      0xf6,
+      0x38,
+    ]),
+    ALGORITHM,
+    false,
+    ["encrypt", "decrypt"],
+  );
+  return key;
+}
 
 const BlockSize = 16;
 
@@ -64,7 +76,7 @@ export async function obscure(password) {
       counter: iv,
       length: 64,
     },
-    KEY,
+    await getKey(),
     plaintext,
   );
   // Copies the encrypted buffer into the ciphertext buffer.
@@ -94,7 +106,7 @@ export async function reveal(cipherText) {
       counter: iv,
       length: 64,
     },
-    KEY,
+    await getKey(),
     data,
   );
 
