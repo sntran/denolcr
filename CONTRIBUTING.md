@@ -98,6 +98,9 @@ modification time.
 - `<data value>` is the size in bytes, for a file only.
 - `<time datetime>` is the time in ISO 8601.
 
+`renderListing` of `lib/listing.js` writes such a list from the entries of a
+folder, and `readListing` reads it.
+
 ## Tests of a backend
 
 Each backend must pass the shared tests of `lib/testing/suite.js`. These tests
@@ -131,6 +134,14 @@ and deletes it at the end. It tests:
 - `PUT` over a file, `DELETE` of a file, and `DELETE` of a folder with all that
   is in it.
 
+Two other options are for some backends only:
+
+- `skipName`: the suite skips the names that match this regular expression. Use
+  it only for a limit that the backend has in rclone too. For example, rclone
+  cannot read the name of a chunk with a line break.
+- `writer`: for a read only backend, for example `http`, the `PUT` and `DELETE`
+  requests go to this backend, and the backend under test reads the files.
+
 Put the tests for what only one backend does in the same file, after the suite.
 For example, the tests of the local backend make sure that a path cannot go out
 of the root folder.
@@ -139,5 +150,14 @@ Run all the tests with `npm test`, or the tests of one backend with
 `node --test backend/remote`.
 
 Some tests compare rfetch with rclone, for example the tests of `lib/ini.js` and
-`backend/crypt/rclone_test.js`. They run when `rclone` is in the `PATH`, or when
-the variable `RCLONE` is the path of rclone. Else they are skipped.
+the files `rclone_test.js` of the backends. They run when `rclone` is in the
+`PATH`, or when the variable `RCLONE` is the path of rclone. Else they are
+skipped. The tests of `lib/list.js` compare it with the `encoding/csv` package
+of Go, when `go` is in the `PATH` or when the variable `GO` is its path.
+
+## Continuous integration
+
+The workflow `.github/workflows/ci.yml` runs for each push and each pull
+request. It installs rclone and Go, runs `npm test` with Node.js 22, 24 and 26,
+and runs `deno fmt --check`. Before a push, run `npm test` and
+`deno fmt --check`.

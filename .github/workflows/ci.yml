@@ -1,0 +1,76 @@
+# The checks of each push and of each pull request:
+#
+# - npm test: the tests, with the oldest Node.js of package.json and the
+#   newer versions. The job installs rclone and Go, thus the tests that
+#   compare rfetch with rclone and with Go run too.
+# - deno fmt --check: the format of the files.
+#
+# This workflow deploys nothing: the Pages project deploys the branches.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+# A new push to a branch stops the old run of that branch.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  RCLONE_VERSION: 1.75.1
+  RCLONE_SHA256: 982b5aa772841168f8e380f139e9e787b2a105403e32b94da8676a0e1c0a13ab
+  DENO_VERSION: 2.9.6
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24, 26]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      # Go runs the tests of lib/list.js against encoding/csv.
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: false
+
+      - name: Install rclone
+        run: |
+          mkdir -p "$HOME/bin" "$RUNNER_TEMP/rclone"
+          cd "$RUNNER_TEMP/rclone"
+          zip="rclone-v$RCLONE_VERSION-linux-amd64.zip"
+          curl -fsSLO "https://downloads.rclone.org/v$RCLONE_VERSION/$zip"
+          echo "$RCLONE_SHA256  $zip" | sha256sum -c -
+          unzip -q "$zip"
+          install -m 755 "rclone-v$RCLONE_VERSION-linux-amd64/rclone" "$HOME/bin/rclone"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+          echo "RCLONE=$HOME/bin/rclone" >> "$GITHUB_ENV"
+
+      - run: npm ci
+
+      - run: npm test
+
+  format:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: ${{ env.DENO_VERSION }}
+
+      - run: deno fmt --check
