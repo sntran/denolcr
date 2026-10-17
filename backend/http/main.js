@@ -25,7 +25,7 @@
  */
 
 import { HTMLRewriter } from "@sntran/html-rewriter";
-import { parseList } from "../../lib/list.js";
+import { parseList } from "./list.js";
 import { childOf, renderListing } from "../../lib/listing.js";
 import { mimeType } from "../../lib/mime.js";
 import { decodePath, encodePath } from "../../lib/path.js";

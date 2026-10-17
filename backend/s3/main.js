@@ -54,7 +54,7 @@ import {
   isXMLText,
   parseXML,
   textOf,
-} from "../../lib/xml.js";
+} from "./xml.js";
 import { EMPTY_PAYLOAD, sign, UNSIGNED_PAYLOAD, uriEncode } from "./sigv4.js";
 
 export const options = {
