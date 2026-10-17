@@ -87,7 +87,8 @@ async function local(request) {
                 isDirectory ? "/" : ""
               }`;
 
-              const { size, mtime } = await stat(join(absolutePath, name));
+              const { size, mtimeMs } = await stat(join(absolutePath, name));
+              const mtime = timeOf(mtimeMs);
 
               controller.enqueue(`<tr>
                 <td>${isDirectory ? "📁" : "📄"}</td>
@@ -170,8 +171,9 @@ async function local(request) {
       }
     }
 
-    const mtime = stats.mtime?.toUTCString();
-    if (mtime) headers.append("Last-Modified", mtime);
+    if (stats.mtimeMs !== undefined) {
+      headers.append("Last-Modified", timeOf(stats.mtimeMs).toUTCString());
+    }
   } else if (method === "PUT") {
     // Folder ending with trailing slash.
     if (path.endsWith("/")) {
@@ -221,6 +223,16 @@ async function local(request) {
 function isOutside(root, path) {
   const rest = relative(root, path);
   return rest === ".." || rest.startsWith(`..${sep}`) || isAbsolute(rest);
+}
+
+/**
+ * The time of a file to the millisecond. As in Go, the time is cut, not
+ * rounded: the `mtime` of Node.js is rounded to the nearest millisecond.
+ * @param {number} mtimeMs
+ * @returns {Date}
+ */
+function timeOf(mtimeMs) {
+  return new Date(Math.floor(mtimeMs));
 }
 
 export default {
