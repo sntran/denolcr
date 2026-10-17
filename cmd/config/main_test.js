@@ -4,7 +4,7 @@ import { join } from "node:path";
 import assert from "node:assert/strict";
 import fc from "fast-check";
 
-import { config as configure, config_dir } from "./main.js";
+import { config as configure, config_dir, NAME_REGEX } from "./main.js";
 
 test("config", async (t) => {
   let command = "file";
@@ -34,7 +34,7 @@ test("config", async (t) => {
 
     await fc.assert(
       fc.asyncProperty(fc.string(), async (name) => {
-        fc.pre(!/^[\w.][\w.\s-]*$/.test(name));
+        fc.pre(!NAME_REGEX.test(name));
 
         const response = await configure(command, name, {
           type: "local",
@@ -42,7 +42,7 @@ test("config", async (t) => {
 
         assert(
           !response.ok,
-          "name may only contain 0-9, A-Z, a-z, _, -, . and space, but not start with - or space",
+          "name may only contain letters, numbers, _, -, ., +, @ and space, but not start with - or space, and not end with space",
         );
       }),
     );
@@ -81,6 +81,25 @@ test("config", async (t) => {
     );
   });
 
+  await t.test("the same names as rclone", () => {
+    for (const name of ["a", "a b", "a-b", "a.b+c@d", "_", "世界", "é1"]) {
+      assert.ok(NAME_REGEX.test(name), name);
+    }
+    for (const name of ["", " a", "-a", "a ", "a\nb", "a:b", "a/b", "a=b"]) {
+      assert.ok(!NAME_REGEX.test(name), JSON.stringify(name));
+    }
+  });
+
+  await t.test("400 for an option that the file cannot keep", async () => {
+    const before = await readFile("rclone.conf", { encoding: "utf8" });
+    const response = await configure("create", "broken", {
+      type: "local",
+      key: "line 1\nline 2",
+    });
+    assert.equal(response.status, 400);
+    assert.equal(await readFile("rclone.conf", { encoding: "utf8" }), before);
+  });
+
   command = "show";
   await t.test(command, async () => {
     const config = await readFile("rclone.conf", { encoding: "utf8" });
@@ -111,6 +130,9 @@ test("config", async (t) => {
       404,
       "should return 404 when remote not found",
     );
+
+    response = await configure(command, "toString");
+    assert.equal(response.status, 404, "a key of Object is not a remote");
 
     response = await configure(command, "source", undefined, {
       headers: {
