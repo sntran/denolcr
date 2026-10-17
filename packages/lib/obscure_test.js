@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fc from "fast-check";
-import { obscure, reveal } from "./main.js";
+import { obscure, reveal } from "./obscure.js";
 
 /**
  * Asserts a text Response contains the expected string.

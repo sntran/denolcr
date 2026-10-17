@@ -1,4 +1,4 @@
-import * as backends from "../../backend/main.js";
+import { backends } from "../../backend/main.js";
 import * as commands from "../main.js";
 
 /**

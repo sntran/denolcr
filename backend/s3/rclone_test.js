@@ -10,7 +10,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import process from "node:process";
 
-import { remote } from "../../lib/testing/remote.js";
+import { remote } from "@rfetch/testing/remote";
 import { KEYS, serveS3 } from "./testing.js";
 import s3 from "./main.js";
 

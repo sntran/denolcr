@@ -8,9 +8,9 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import process from "node:process";
 
-import { backendSuite } from "../../lib/testing/suite.js";
-import { remote } from "../../lib/testing/remote.js";
-import { listen } from "../../lib/testing/server.js";
+import { backendSuite } from "@rfetch/testing/suite";
+import { remote } from "@rfetch/testing/remote";
+import { listen } from "@rfetch/testing/server";
 import s3 from "./main.js";
 import { KEYS, serveS3 } from "./testing.js";
 

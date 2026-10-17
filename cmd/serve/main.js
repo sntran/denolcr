@@ -1,5 +1,5 @@
 import { fetch } from "../../mod.js";
-import * as backends from "../../backend/main.js";
+import { load } from "../../backend/main.js";
 
 /**
  * Serves a remote backend
@@ -24,7 +24,10 @@ export async function serve(protocol, remote, flags = {}) {
     }
   });
 
-  const backend = backends[type];
+  const backend = await load(type);
+  if (!backend) {
+    throw new Error(`Backend ${type} not found.`);
+  }
 
   if (protocol === "http") {
     const { serve } = await import("./http/main.js");

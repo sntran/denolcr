@@ -14,11 +14,32 @@
  * @property {(request: Request, env?: Object) => Response | Promise<Response>} fetch
  */
 
-export { default as alias } from "./alias/main.js";
-export { default as chunker } from "./chunker/main.js";
-export { default as crypt } from "./crypt/main.js";
-export { default as drive } from "./drive/main.js";
-export { default as http } from "./http/main.js";
-export { default as local } from "./local/main.js";
-export { default as memory } from "./memory/main.js";
-export { default as s3 } from "./s3/main.js";
+/**
+ * The backends of rfetch, by type. Each backend is the npm package
+ * `@rfetch/TYPE`. It loads at its first use, thus rfetch loads only the
+ * backends that it needs. The names of the packages are literal, thus a
+ * bundler, for example the bundler of wrangler, can find them.
+ * @type {Record<string, () => Promise<{ default: Backend }>>}
+ */
+export const backends = {
+  alias: () => import("@rfetch/alias"),
+  chunker: () => import("@rfetch/chunker"),
+  crypt: () => import("@rfetch/crypt"),
+  drive: () => import("@rfetch/drive"),
+  http: () => import("@rfetch/http"),
+  local: () => import("@rfetch/local"),
+  memory: () => import("@rfetch/memory"),
+  s3: () => import("@rfetch/s3"),
+};
+
+/**
+ * Loads a backend.
+ * @param {string} type For example `crypt`.
+ * @returns {Promise<Backend | undefined>} `undefined` for a type that is not
+ *   a backend of rfetch.
+ */
+export async function load(type) {
+  if (!Object.hasOwn(backends, type)) return undefined;
+  const { default: backend } = await backends[type]();
+  return backend;
+}

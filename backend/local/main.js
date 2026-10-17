@@ -1,10 +1,10 @@
 import process from "node:process";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
-import { formatBytes } from "../../lib/format.js";
-import { escapeHTML } from "../../lib/html.js";
-import { mimeType } from "../../lib/mime.js";
-import { decodePath } from "../../lib/path.js";
-import { notSatisfiable, parseRange, partialHeaders } from "../../lib/range.js";
+import { formatBytes } from "@rfetch/lib/format";
+import { escapeHTML } from "@rfetch/lib/html";
+import { mimeType } from "@rfetch/lib/mime";
+import { decodePath } from "@rfetch/lib/path";
+import { notSatisfiable, parseRange, partialHeaders } from "@rfetch/lib/range";
 
 /**
  * Serves a local remote: the files and the folders in the current folder.

@@ -95,17 +95,17 @@
 
 import { scryptAsync as scrypt } from "@noble/hashes/scrypt";
 import { HTMLRewriter } from "@sntran/html-rewriter";
-import { formatBytes } from "../../lib/format.js";
-import { mimeType } from "../../lib/mime.js";
-import { decodePath } from "../../lib/path.js";
+import { formatBytes } from "@rfetch/lib/format";
+import { mimeType } from "@rfetch/lib/mime";
+import { decodePath } from "@rfetch/lib/path";
 import {
   notSatisfiable,
   parseRange,
   partialHeaders,
   sliceStream,
-} from "../../lib/range.js";
-import { sized } from "../../lib/streams/sized.js";
-import { reveal } from "../../cmd/obscure/main.js";
+} from "@rfetch/lib/range";
+import { sized } from "@rfetch/lib/sized";
+import { reveal } from "@rfetch/lib/obscure";
 import PathCipher from "./PathCipher.js";
 import {
   decryptedSize,

@@ -1,0 +1,36 @@
+{
+  "name": "@rfetch/lib",
+  "version": "0.1.0",
+  "description": "The code that the backends of rfetch share: the list of a folder, paths, ranges, types of files, sizes, and the obscure of rclone.",
+  "type": "module",
+  "exports": {
+    "./format": "./format.js",
+    "./html": "./html.js",
+    "./listing": "./listing.js",
+    "./mime": "./mime.js",
+    "./obscure": "./obscure.js",
+    "./path": "./path.js",
+    "./range": "./range.js",
+    "./size": "./size.js",
+    "./sized": "./sized.js"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22.2.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sntran/rfetch.git",
+    "directory": "packages/lib"
+  },
+  "author": "Trần Nguyễn Sơn",
+  "license": "ISC",
+  "dependencies": {
+    "@sntran/html-rewriter": "^0.2.0"
+  },
+  "devDependencies": {
+    "fast-check": "^3.19.0"
+  }
+}

@@ -7,10 +7,10 @@
  * Because it has no parameters you can just use it with the `:memory:` remote
  * name.
  */
-import { renderListing } from "../../lib/listing.js";
-import { mimeType } from "../../lib/mime.js";
-import { decodePath } from "../../lib/path.js";
-import { notSatisfiable, parseRange, partialHeaders } from "../../lib/range.js";
+import { renderListing } from "@rfetch/lib/listing";
+import { mimeType } from "@rfetch/lib/mime";
+import { decodePath } from "@rfetch/lib/path";
+import { notSatisfiable, parseRange, partialHeaders } from "@rfetch/lib/range";
 
 /**
  * The files and the folders, by their path with no percent-encoding. The path
@@ -130,7 +130,7 @@ async function memory(request) {
 function listing(path, searchParams) {
   // The children are the paths in the folder with no other "/" than a "/" at
   // the end for a folder.
-  /** @type {import("../../lib/listing.js").Entry[]} */
+  /** @type {import("@rfetch/lib/listing").Entry[]} */
   const entries = [];
   for (const [key, file] of cache) {
     if (key === path || !key.startsWith(path)) continue;

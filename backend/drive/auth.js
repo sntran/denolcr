@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer";
 
-import { reveal } from "../../cmd/obscure/main.js";
+import { reveal } from "@rfetch/lib/obscure";
 
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 

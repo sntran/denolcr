@@ -1,0 +1,28 @@
+{
+  "name": "@rfetch/chunker",
+  "version": "0.1.0",
+  "description": "The chunker backend of rfetch: it cuts large files into chunks, as rclone.",
+  "type": "module",
+  "exports": {
+    ".": "./main.js"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22.2.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sntran/rfetch.git",
+    "directory": "backend/chunker"
+  },
+  "author": "Trần Nguyễn Sơn",
+  "license": "ISC",
+  "dependencies": {
+    "@rfetch/lib": "^0.1.0"
+  },
+  "devDependencies": {
+    "@rfetch/testing": "^0.1.0"
+  }
+}

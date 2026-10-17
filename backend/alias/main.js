@@ -19,8 +19,8 @@
  * allowed as a remote. To alias the current directory use `.` instead.
  */
 
-import { relink } from "../../lib/listing.js";
-import { decodePath, encodePath } from "../../lib/path.js";
+import { relink } from "@rfetch/lib/listing";
+import { decodePath, encodePath } from "@rfetch/lib/path";
 
 /**
  * Sends the requests to the remote of the alias with the global `fetch`.

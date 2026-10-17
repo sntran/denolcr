@@ -4,8 +4,8 @@ import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import assert from "node:assert/strict";
 
-import { backendSuite } from "../../lib/testing/suite.js";
-import { remote } from "../../lib/testing/remote.js";
+import { backendSuite } from "@rfetch/testing/suite";
+import { remote } from "@rfetch/testing/remote";
 // Sets the global `fetch` that reads the paths of remotes.
 import "../../mod.js";
 import backend from "./main.js";

@@ -26,9 +26,9 @@
 
 import { HTMLRewriter } from "@sntran/html-rewriter";
 import { parseList } from "./list.js";
-import { childOf, renderListing } from "../../lib/listing.js";
-import { mimeType } from "../../lib/mime.js";
-import { decodePath, encodePath } from "../../lib/path.js";
+import { childOf, renderListing } from "@rfetch/lib/listing";
+import { mimeType } from "@rfetch/lib/mime";
+import { decodePath, encodePath } from "@rfetch/lib/path";
 
 export const options = {
   boolean: [
@@ -243,14 +243,14 @@ async function getFolder(url, method, headers, noHead, query) {
  * of a table of rfetch also give the size and the time.
  * @param {Response} response
  * @param {URL} base The URL of the folder.
- * @returns {Promise<import("../../lib/listing.js").Entry[]>}
+ * @returns {Promise<import("@rfetch/lib/listing").Entry[]>}
  */
 async function readIndex(response, base) {
-  /** @type {import("../../lib/listing.js").Entry[]} */
+  /** @type {import("@rfetch/lib/listing").Entry[]} */
   const entries = [];
   const seen = new Set();
   let inRow = false;
-  /** @type {import("../../lib/listing.js").Entry | null} */
+  /** @type {import("@rfetch/lib/listing").Entry | null} */
   let current = null;
 
   await new HTMLRewriter()
@@ -305,10 +305,10 @@ async function readIndex(response, base) {
  * Sends a HEAD request for each file with no size, as rclone does for each
  * file of a list. As in rclone, a file is not in the list when its HEAD
  * request fails.
- * @param {import("../../lib/listing.js").Entry[]} entries
+ * @param {import("@rfetch/lib/listing").Entry[]} entries
  * @param {URL} base The URL of the folder.
  * @param {Headers} headers
- * @returns {Promise<import("../../lib/listing.js").Entry[]>}
+ * @returns {Promise<import("@rfetch/lib/listing").Entry[]>}
  */
 async function head(entries, base, headers) {
   const files = entries.filter((entry) => !entry.IsDir && entry.Size < 0);

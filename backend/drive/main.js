@@ -1,4 +1,4 @@
-import { formatBytes } from "../../lib/format.js";
+import { formatBytes } from "@rfetch/lib/format";
 
 import { auth } from "./auth.js";
 import { list } from "./list.js";

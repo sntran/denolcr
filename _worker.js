@@ -1,4 +1,4 @@
-import * as backends from "./backend/main.js";
+import { load } from "./backend/main.js";
 // Sets the global `fetch` that reads the paths of remotes.
 import "./mod.js";
 
@@ -23,10 +23,10 @@ import "./mod.js";
  * @param {string} [params.path]
  * @returns {Promise<Response}
  */
-function remote(request, env, params) {
+async function remote(request, env, params) {
   let { remote, path = "/" } = params;
 
-  const backend = backends[remote];
+  const backend = await load(remote);
   if (!backend) {
     return new Response("Remote not found.", { status: 404 });
   }

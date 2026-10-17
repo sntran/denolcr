@@ -11,13 +11,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
 
-import { remote } from "../../lib/testing/remote.js";
-import { listen } from "../../lib/testing/server.js";
+import { remote } from "@rfetch/testing/remote";
+import { listen } from "@rfetch/testing/server";
 // Sets the global `fetch` that reads the paths of remotes.
 import "../../mod.js";
-import chunker from "../chunker/main.js";
-import crypt from "../crypt/main.js";
-import memory from "../memory/main.js";
+import chunker from "@rfetch/chunker";
+import crypt from "@rfetch/crypt";
+import memory from "@rfetch/memory";
 import http from "./main.js";
 
 const RCLONE = process.env.RCLONE || "rclone";

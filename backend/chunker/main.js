@@ -101,17 +101,17 @@
  * metadata enabled.
  */
 import { createHash } from "node:crypto";
-import { readListing, renderListing } from "../../lib/listing.js";
-import { mimeType } from "../../lib/mime.js";
-import { decodePath, encodePath } from "../../lib/path.js";
+import { readListing, renderListing } from "@rfetch/lib/listing";
+import { mimeType } from "@rfetch/lib/mime";
+import { decodePath, encodePath } from "@rfetch/lib/path";
 import {
   notSatisfiable,
   parseRange,
   partialHeaders,
   sliceStream,
-} from "../../lib/range.js";
-import { parseSize } from "../../lib/size.js";
-import { sized } from "../../lib/streams/sized.js";
+} from "@rfetch/lib/range";
+import { parseSize } from "@rfetch/lib/size";
+import { sized } from "@rfetch/lib/sized";
 
 /** The largest metadata that rclone reads, and that it writes, in bytes. */
 const MAX_METADATA_SIZE = 1023;
@@ -403,9 +403,9 @@ async function listRemote(config, dir) {
  * chunks.
  * @typedef {Object} ChunkedFile
  * @property {string} name
- * @property {import("../../lib/listing.js").Entry | undefined} main The
+ * @property {import("@rfetch/lib/listing").Entry | undefined} main The
  *   file with the name on the remote: the file, or its metadata.
- * @property {import("../../lib/listing.js").Entry[] | null} chunks The data
+ * @property {import("@rfetch/lib/listing").Entry[] | null} chunks The data
  *   chunks in their order, or null for a file that is not composite.
  * @property {number} size
  * @property {string} modTime
@@ -416,14 +416,14 @@ async function listRemote(config, dir) {
  * `processEntries` of the chunker of rclone. A file with missing chunks is
  * not in the result.
  * @param {Config} config
- * @param {import("../../lib/listing.js").Entry[]} entries
+ * @param {import("@rfetch/lib/listing").Entry[]} entries
  * @param {(name: string) => Promise<Metadata | null>} metadataOf Reads the
  *   metadata of a file, for a composite file of a transaction.
  */
 async function group(config, entries, metadataOf) {
-  /** @type {Map<string, import("../../lib/listing.js").Entry>} */
+  /** @type {Map<string, import("@rfetch/lib/listing").Entry>} */
   const mains = new Map();
-  /** @type {Map<string, Map<string, import("../../lib/listing.js").Entry[]>>} */
+  /** @type {Map<string, Map<string, import("@rfetch/lib/listing").Entry[]>>} */
   const chunks = new Map();
   const folders = [];
 

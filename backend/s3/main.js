@@ -37,24 +37,18 @@
  * credentials in `env`, not in a URL.
  */
 import { createHash } from "node:crypto";
-import { renderListing } from "../../lib/listing.js";
-import { mimeType } from "../../lib/mime.js";
-import { decodePath } from "../../lib/path.js";
+import { renderListing } from "@rfetch/lib/listing";
+import { mimeType } from "@rfetch/lib/mime";
+import { decodePath } from "@rfetch/lib/path";
 import {
   notSatisfiable,
   parseRange,
   partialHeaders,
   sliceStream,
-} from "../../lib/range.js";
-import { parseSize } from "../../lib/size.js";
-import { sized } from "../../lib/streams/sized.js";
-import {
-  childrenOf,
-  escapeXML,
-  isXMLText,
-  parseXML,
-  textOf,
-} from "./xml.js";
+} from "@rfetch/lib/range";
+import { parseSize } from "@rfetch/lib/size";
+import { sized } from "@rfetch/lib/sized";
+import { childrenOf, escapeXML, isXMLText, parseXML, textOf } from "./xml.js";
 import { EMPTY_PAYLOAD, sign, UNSIGNED_PAYLOAD, uriEncode } from "./sigv4.js";
 
 export const options = {
@@ -490,7 +484,7 @@ async function getFolder(config, bucket, prefix, method, query) {
 /**
  * The buckets, as folders.
  * @param {Config} config
- * @returns {Promise<import("../../lib/listing.js").Entry[]>}
+ * @returns {Promise<import("@rfetch/lib/listing").Entry[]>}
  */
 async function listBuckets(config) {
   const response = await check(await send(config, "GET", "", ""));
@@ -510,11 +504,11 @@ async function listBuckets(config) {
  * @param {Config} config
  * @param {string} bucket
  * @param {string} prefix "" for the root of the bucket.
- * @returns {Promise<import("../../lib/listing.js").Entry[] | null>} null when
+ * @returns {Promise<import("@rfetch/lib/listing").Entry[] | null>} null when
  *   the folder does not exist.
  */
 async function listFolder(config, bucket, prefix) {
-  /** @type {import("../../lib/listing.js").Entry[]} */
+  /** @type {import("@rfetch/lib/listing").Entry[]} */
   const entries = [];
   let found = false;
   let token = "";

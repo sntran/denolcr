@@ -9,8 +9,12 @@ Choose a name. The docs here will use `remote` as an example.
 Note that in rfetch terminology a file system backend is called a remote or an
 fs.
 
-- Make the folder "backend/remote" with the files "main.js" and "main_test.js"
-  for the new backend. The tests use the test runner of Node.js (`node:test`).
+- Make the folder "backend/remote" with the files "package.json", "main.js" and
+  "main_test.js" for the new backend. The tests use the test runner of Node.js
+  (`node:test`).
+- Add the backend to `backends` in `backend/main.js`, as
+  `remote: () => import("@rfetch/remote")`, and to the `dependencies` of the
+  root "package.json". rfetch loads a backend at its first use.
 - Implements a `fetch` default export function that handles "GET", "PUT" and
   "DELETE".
 - Uses `backend/local/main.js` as reference, or the boilerplate below:
@@ -82,6 +86,42 @@ To count or change the requests to the remote in a test, replace the global
 `fetch` with `t.mock.method(globalThis, "fetch", …)`. The test runner puts the
 original `fetch` back at the end of the test.
 
+## Workspaces
+
+Each backend is an npm workspace with the name `@rfetch/NAME`, and can be a
+Worker of its own: "main.js" is the entry of the Worker. The "package.json" of a
+new backend is:
+
+```json
+{
+  "name": "@rfetch/remote",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": { ".": "./main.js" },
+  "scripts": { "test": "node --test" },
+  "dependencies": { "@rfetch/lib": "^0.1.0" },
+  "devDependencies": { "@rfetch/testing": "^0.1.0" }
+}
+```
+
+Then run `npm install`: npm links the workspace into `node_modules`.
+
+A backend imports only:
+
+- the modules `node:` of Node.js,
+- the packages of its "package.json", for example `@rfetch/lib/listing`,
+- the files in its folder.
+
+The tests and the benches of a backend can also import its `devDependencies`,
+and `../../mod.js` for the global `fetch`. The test `backend/main_test.js` makes
+sure of this rule.
+
+The code that two or more backends use is in the package `@rfetch/lib`, in
+`packages/lib`: `format`, `html`, `listing`, `mime`, `obscure`, `path`, `range`,
+`size` and `sized`. The code that only one backend uses is in the folder of that
+backend, for example `backend/s3/xml.js`. The shared tests are in the package
+`@rfetch/testing`, in `packages/testing`.
+
 ## Architecture
 
 - `GET /folder/`: displays HTML page with folder content.
@@ -102,12 +142,12 @@ The answers:
   `Content-Range` and the `Content-Length` of the range, as RFC 9110. A range
   with no byte of the file gives 416. A request with more ranges, or with a
   range that is not correct, gets all the file. Use `parseRange` of
-  `lib/range.js`.
+  `@rfetch/lib/range`.
 
-The path of a request has percent-encoding. Use `decodePath` of `lib/path.js` to
-get the path with no percent-encoding. It gives `null` for a path that is not
-safe, for example `/..%2Fsecret.txt`, which becomes `/../secret.txt` after the
-decoding. For `null`, give 400.
+The path of a request has percent-encoding. Use `decodePath` of
+`@rfetch/lib/path` to get the path with no percent-encoding. It gives `null` for
+a path that is not safe, for example `/..%2Fsecret.txt`, which becomes
+`/../secret.txt` after the decoding. For `null`, give 400.
 
 For displaying folder content, any HTML can be used, but the listing itself
 should be in a `<table>`, whose each rows are for each file or folder inside.
@@ -118,23 +158,23 @@ modification time.
 
 - The `href` is the name with percent-encoding (`encodeURIComponent`), with a
   `/` at the end for a folder.
-- The text of the link is the name with `escapeHTML` of `lib/html.js`. Do not
-  put a name in the HTML with no escape: a file with the name `<script>.txt`
+- The text of the link is the name with `escapeHTML` of `@rfetch/lib/html`. Do
+  not put a name in the HTML with no escape: a file with the name `<script>.txt`
   must not add a script to the page.
 - `<data value>` is the size in bytes, for a file only.
 - `<time datetime>` is the time in ISO 8601.
 
-`renderListing` of `lib/listing.js` writes such a list from the entries of a
-folder, and `readListing` reads it.
+`renderListing` of `@rfetch/lib/listing` writes such a list from the entries of
+a folder, and `readListing` reads it.
 
 ## Tests of a backend
 
-Each backend must pass the shared tests of `lib/testing/suite.js`. These tests
+Each backend must pass the shared tests of `@rfetch/testing/suite`. These tests
 are as the tests `fstests` of rclone, for the contract above. The file
 "main_test.js" of the backend calls the suite one time:
 
 ```js
-import { backendSuite } from "../../lib/testing/suite.js";
+import { backendSuite } from "@rfetch/testing/suite";
 import backend from "./main.js";
 
 backendSuite("remote", backend);
@@ -180,13 +220,13 @@ For example, the tests of the local backend make sure that a path cannot go out
 of the root folder.
 
 Run all the tests with `npm test`, or the tests of one backend with
-`node --test backend/remote`.
+`npm test -w @rfetch/remote`.
 
 Some tests compare rfetch with rclone, for example the tests of `lib/ini.js` and
 the files `rclone_test.js` of the backends. They run when `rclone` is in the
 `PATH`, or when the variable `RCLONE` is the path of rclone. Else they are
-skipped. The tests of `backend/http/list.js` compare it with the `encoding/csv` package
-of Go, when `go` is in the `PATH` or when the variable `GO` is its path.
+skipped. The tests of `backend/http/list.js` compare it with the `encoding/csv`
+package of Go, when `go` is in the `PATH` or when the variable `GO` is its path.
 
 The tests of `s3` use `rclone serve s3`, a server of the S3 API on a local
 folder. They also run on a real service when the variables `S3_TEST_ENDPOINT`

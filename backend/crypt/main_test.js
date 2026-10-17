@@ -5,10 +5,10 @@ import process from "node:process";
 import assert from "node:assert/strict";
 import fc from "fast-check";
 
-import { backendSuite } from "../../lib/testing/suite.js";
-import { remote } from "../../lib/testing/remote.js";
+import { backendSuite } from "@rfetch/testing/suite";
+import { remote } from "@rfetch/testing/remote";
 import { fetch } from "../../mod.js";
-import { mimeType } from "../../lib/mime.js";
+import { mimeType } from "@rfetch/lib/mime";
 import { decode, default as crypt, deriveKey, encode } from "./main.js";
 
 // The password "123456" and the salt, obscured.

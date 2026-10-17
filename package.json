@@ -10,6 +10,10 @@
   },
   "main": "mod.js",
   "type": "module",
+  "workspaces": [
+    "packages/*",
+    "backend/*"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sntran/rfetch.git"
@@ -27,12 +31,17 @@
   },
   "homepage": "https://github.com/sntran/rfetch#readme",
   "dependencies": {
-    "@noble/ciphers": "^0.5.3",
-    "@noble/hashes": "^1.4.0",
+    "@rfetch/alias": "^0.1.0",
+    "@rfetch/chunker": "^0.1.0",
+    "@rfetch/crypt": "^0.1.0",
+    "@rfetch/drive": "^0.1.0",
+    "@rfetch/http": "^0.1.0",
+    "@rfetch/lib": "^0.1.0",
+    "@rfetch/local": "^0.1.0",
+    "@rfetch/memory": "^0.1.0",
+    "@rfetch/s3": "^0.1.0",
     "@sntran/html-rewriter": "^0.2.0",
-    "@sntran/serve": "^0.0.1",
-    "base32-decode": "^1.0.0",
-    "base32-encode": "^2.0.0"
+    "@sntran/serve": "^0.0.1"
   },
   "devDependencies": {
     "fast-check": "^3.19.0"

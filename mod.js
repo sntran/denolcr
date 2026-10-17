@@ -1,5 +1,5 @@
 import { env } from "node:process";
-import * as backends from "./backend/main.js";
+import { load } from "./backend/main.js";
 import * as commands from "./cmd/main.js";
 import { parse } from "./lib/fspath.js";
 
@@ -222,10 +222,10 @@ export async function fetch(input, init = {}) {
     init.duplex = "half"; // Must set this for stream body.
   }
 
-  /**
-   * @type {import("./backend/main.js").Backend}
-   */
-  const backend = backends[type];
+  const backend = await load(type);
+  if (!backend) {
+    throw new Error(`Backend ${type} not found.`);
+  }
 
   const url = new URL(`${pathname}?${params}`, import.meta.url || `file:`);
   // Creates a new request with the initial init.

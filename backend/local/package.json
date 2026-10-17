@@ -1,0 +1,28 @@
+{
+  "name": "@rfetch/local",
+  "version": "0.1.0",
+  "description": "The local backend of rfetch: the files of the local disk.",
+  "type": "module",
+  "exports": {
+    ".": "./main.js"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22.2.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sntran/rfetch.git",
+    "directory": "backend/local"
+  },
+  "author": "Trần Nguyễn Sơn",
+  "license": "ISC",
+  "dependencies": {
+    "@rfetch/lib": "^0.1.0"
+  },
+  "devDependencies": {
+    "@rfetch/testing": "^0.1.0"
+  }
+}

@@ -1,4 +1,4 @@
-import { readListing } from "../listing.js";
+import { readListing } from "@rfetch/lib/listing";
 
 /** The origin of the URLs of the requests. A backend reads only the path. */
 const ORIGIN = "http://rfetch.test";
