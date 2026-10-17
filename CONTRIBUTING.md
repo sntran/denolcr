@@ -158,13 +158,18 @@ and deletes it at the end. It tests:
 - `PUT` over a file, `DELETE` of a file, and `DELETE` of a folder with all that
   is in it.
 
-Two other options are for some backends only:
+Other options are for some backends only:
 
 - `skipName`: the suite skips the names that match this regular expression. Use
   it only for a limit that the backend has in rclone too. For example, rclone
   cannot read the name of a chunk with a line break.
 - `writer`: for a read only backend, for example `http`, the `PUT` and `DELETE`
   requests go to this backend, and the backend under test reads the files.
+- `parent`: the folder of the folder of the tests, `/` by default. For example,
+  the tests of `s3` are in the bucket `/rfetch/`.
+- `emptyFolders`: `false` for a backend that cannot have an empty folder, as
+  `CanHaveEmptyDirectories` of rclone. For example, `s3` with no folder markers.
+  Then the suite accepts 404 for a folder with no file.
 
 Put the tests for what only one backend does in the same file, after the suite.
 For example, the tests of the local backend make sure that a path cannot go out
