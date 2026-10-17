@@ -104,6 +104,12 @@ import { createHash } from "node:crypto";
 import { readListing, renderListing } from "../../lib/listing.js";
 import { mimeType } from "../../lib/mime.js";
 import { decodePath, encodePath } from "../../lib/path.js";
+import {
+  notSatisfiable,
+  parseRange,
+  partialHeaders,
+  sliceStream,
+} from "../../lib/range.js";
 import { parseSize } from "../../lib/size.js";
 import { sized } from "../../lib/streams/sized.js";
 
@@ -215,7 +221,7 @@ async function chunker(request, env = {}) {
     switch (method) {
       case "GET":
       case "HEAD":
-        return await getFile(config, dir, name, method);
+        return await getFile(config, dir, name, method, request);
       case "PUT":
         return await putFile(config, dir, name, request, pathname);
       case "DELETE":
@@ -666,20 +672,26 @@ async function findFile(config, dir, name) {
  * @param {string} dir
  * @param {string} name
  * @param {string} method
+ * @param {Request} request Its `Range` gives a range of the file.
  */
-async function getFile(config, dir, name, method) {
+async function getFile(config, dir, name, method, request) {
   const { file } = await findFile(config, dir, name);
   if (!file) {
     return new Response(null, { status: 404 });
   }
+  const header = method === "GET" ? request.headers.get("Range") : null;
   if (!file.chunks) {
-    // A file of the remote.
-    return await send(config, dir + name, { method });
+    // A file of the remote, with the range of the request.
+    return await send(config, dir + name, {
+      method,
+      headers: header === null ? {} : { Range: header },
+    });
   }
 
   const headers = new Headers({
     "Content-Type": mimeType(name),
     "Content-Length": `${file.size}`,
+    "Accept-Ranges": "bytes",
   });
   if (file.modTime) {
     headers.set("Last-Modified", new Date(file.modTime).toUTCString());
@@ -687,19 +699,53 @@ async function getFile(config, dir, name, method) {
   if (method === "HEAD") {
     return new Response(null, { headers });
   }
-  const paths = file.chunks.map((chunk) => dir + chunk.Name);
-  return new Response(sized(concatenate(config, paths), file.size), {
+
+  let range;
+  try {
+    range = parseRange(header, file.size);
+  } catch {
+    return notSatisfiable(file.size);
+  }
+  const { start, end } = range ?? { start: 0, end: file.size - 1 };
+  // The chunks in the range, with the part of each chunk in the range.
+  /** @type {Array<{ path: string, from: number, to: number, size: number }>} */
+  const parts = [];
+  let offset = 0;
+  for (const chunk of file.chunks) {
+    const first = offset;
+    const last = offset + chunk.Size - 1;
+    offset += chunk.Size;
+    if (last < start || first > end) continue;
+    parts.push({
+      path: dir + chunk.Name,
+      from: Math.max(start, first) - first,
+      to: Math.min(end, last) - first,
+      size: chunk.Size,
+    });
+  }
+  if (range) {
+    for (
+      const [name, value] of Object.entries(partialHeaders(range, file.size))
+    ) {
+      headers.set(name, value);
+    }
+  }
+  const length = file.size === 0 ? 0 : end - start + 1;
+  return new Response(sized(concatenate(config, parts), length), {
+    status: range ? 206 : 200,
     headers,
   });
 }
 
 /**
- * Gives the data of files of the remote, one after the other.
+ * Gives the data of files of the remote, one after the other: from the byte
+ * `from` to the byte `to` of each file. A part of a file is a range of the
+ * request. When the remote sends all the file, only the part goes out.
  * @param {Config} config
- * @param {string[]} paths
+ * @param {Array<{ path: string, from: number, to: number, size: number }>} parts
  * @returns {ReadableStream<Uint8Array>}
  */
-function concatenate(config, paths) {
+function concatenate(config, parts) {
   let index = 0;
   /** @type {ReadableStreamDefaultReader<Uint8Array> | null} */
   let reader = null;
@@ -707,15 +753,23 @@ function concatenate(config, paths) {
     async pull(controller) {
       while (true) {
         if (!reader) {
-          if (index === paths.length) {
+          if (index === parts.length) {
             controller.close();
             return;
           }
-          const response = await send(config, paths[index++]);
+          const { path, from, to, size } = parts[index++];
+          const whole = from === 0 && to === size - 1;
+          const response = await send(config, path, {
+            headers: whole ? {} : { Range: `bytes=${from}-${to}` },
+          });
           if (!response.ok || !response.body) {
             throw new Error(`chunker: chunk ${index} gave ${response.status}`);
           }
-          reader = response.body.getReader();
+          let body = response.body;
+          if (!whole && response.status !== 206) {
+            body = sliceStream(body, from, to - from + 1);
+          }
+          reader = body.getReader();
         }
         const { done, value } = await reader.read();
         if (done) {

@@ -47,7 +47,13 @@ export const options = {
 const SECRETS = ["headers"];
 
 /** The headers of a file that go to the client. */
-const FILE_HEADERS = ["Content-Type", "Content-Length", "Last-Modified"];
+const FILE_HEADERS = [
+  "Content-Type",
+  "Content-Length",
+  "Last-Modified",
+  "Accept-Ranges",
+  "Content-Range",
+];
 
 /** The status codes of a redirect. */
 const REDIRECTS = [301, 302, 303, 307, 308];
@@ -110,7 +116,7 @@ async function http(request) {
   const target = new URL(encodePath(path).slice(1), base);
   try {
     if (!path.endsWith("/")) {
-      return await getFile(target, method, headers, path);
+      return await getFile(target, method, headers, path, request);
     }
     const noHead = searchParams.get("no_head") === "true";
     const query = new URLSearchParams(searchParams);
@@ -145,18 +151,31 @@ function parseHeaders(text) {
 }
 
 /**
- * Gets a file, or only its headers for HEAD.
+ * Gets a file, or only its headers for HEAD. The server gets the `Range` of
+ * the request, and the client gets the answer 206 or 416 of the server.
  * @param {URL} url
  * @param {string} method
  * @param {Headers} headers
  * @param {string} path
+ * @param {Request} request
  * @returns {Promise<Response>}
  */
-async function getFile(url, method, headers, path) {
-  const response = await send(url, method, headers);
+async function getFile(url, method, headers, path, request) {
+  const range = request.headers.get("Range");
+  const response = await send(
+    url,
+    method,
+    headers,
+    method === "GET" && range !== null ? { Range: range } : {},
+  );
   if (!response.ok) {
     await response.body?.cancel();
-    return new Response(null, { status: response.status });
+    const result = new Headers();
+    const contentRange = response.headers.get("Content-Range");
+    if (response.status === 416 && contentRange) {
+      result.set("Content-Range", contentRange);
+    }
+    return new Response(null, { status: response.status, headers: result });
   }
 
   const result = new Headers();
@@ -172,7 +191,10 @@ async function getFile(url, method, headers, path) {
     await response.body?.cancel();
     return new Response(null, { headers: result });
   }
-  return new Response(response.body, { headers: result });
+  return new Response(response.body, {
+    status: response.status,
+    headers: result,
+  });
 }
 
 /**
@@ -351,18 +373,23 @@ function isEncoded(response) {
  * too, as that host chose them.
  * @param {URL} url
  * @param {string} method GET or HEAD.
- * @param {Headers} headers
+ * @param {Headers} headers The headers of the headers option.
+ * @param {Record<string, string>} [others] Other headers, for example
+ *   `Range`, which go to each server.
  * @returns {Promise<Response>}
  * @throws {HTTPError} When the server does not answer, or when a redirect is
  *   not permitted.
  */
-async function send(url, method, headers) {
+async function send(url, method, headers, others = {}) {
   const names = [...headers.keys()];
   const init = {
     method,
     headers: new Headers(headers),
     redirect: names.length > 0 ? "manual" : "follow",
   };
+  for (const [name, value] of Object.entries(others)) {
+    init.headers.set(name, value);
+  }
   // The size of the file is the size of the body that the client gets.
   if (!init.headers.has("Accept-Encoding")) {
     init.headers.set("Accept-Encoding", "identity");

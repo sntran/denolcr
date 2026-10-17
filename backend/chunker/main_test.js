@@ -185,4 +185,55 @@ describe("chunker", () => {
     assert.equal((await custom.list(""))[0].Size, 2049);
     await custom.delete("a.bin");
   });
+
+  test("reads only the chunks of a range", async () => {
+    /** The chunk and the `Range` of each GET of a chunk. */
+    const reads = [];
+    const counted = remote(backend, {
+      params: { remote: root, chunk_size: "1k" },
+      env: {
+        REMOTE: {
+          fetch(input, init = {}) {
+            const name = decodeURIComponent(
+              input.slice(input.lastIndexOf("/") + 1),
+            );
+            if (/_chunk\.\d+$/.test(name) && (init.method ?? "GET") === "GET") {
+              reads.push([name, new Headers(init.headers).get("Range")]);
+            }
+            return fetch(input, init);
+          },
+        },
+      },
+    });
+    const data = content(3000);
+    await counted.put("range.bin", data);
+
+    for (
+      const [header, start, end, expected] of [
+        // In the second chunk only.
+        ["bytes=1500-1600", 1500, 1600, [["002", "bytes=476-576"]]],
+        // The end of the first chunk and all the second chunk.
+        ["bytes=1000-2047", 1000, 2047, [["001", "bytes=1000-1023"], [
+          "002",
+          null,
+        ]]],
+        ["bytes=-1", 2999, 2999, [["003", "bytes=951-951"]]],
+      ]
+    ) {
+      reads.length = 0;
+      const response = await counted.get("range.bin", { Range: header });
+      assert.equal(response.status, 206, header);
+      assert.deepEqual(
+        new Uint8Array(await response.arrayBuffer()),
+        data.subarray(start, end + 1),
+        header,
+      );
+      assert.deepEqual(
+        reads,
+        expected.map(([n, range]) => [`range.bin.rclone_chunk.${n}`, range]),
+        header,
+      );
+    }
+    await counted.delete("range.bin");
+  });
 });

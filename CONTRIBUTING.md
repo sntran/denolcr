@@ -92,8 +92,13 @@ The answers:
 
 - `PUT` gives 201 with the path in `Content-Location`. `DELETE` gives 204.
 - A file or a folder that does not exist gives 404.
-- `GET` of a file gives the headers `Content-Type`, `Content-Length` and
-  `Last-Modified`.
+- `GET` of a file gives the headers `Content-Type`, `Content-Length`,
+  `Last-Modified` and `Accept-Ranges: bytes`.
+- `GET` with `Range: bytes=START-END` gives 206 with the bytes of the range,
+  `Content-Range` and the `Content-Length` of the range, as RFC 9110. A range
+  with no byte of the file gives 416. A request with more ranges, or with a
+  range that is not correct, gets all the file. Use `parseRange` of
+  `lib/range.js`.
 
 The path of a request has percent-encoding. Use `decodePath` of `lib/path.js` to
 get the path with no percent-encoding. It gives `null` for a path that is not
@@ -148,6 +153,8 @@ and deletes it at the end. It tests:
 - The list of each folder: the name, the type, the size and the time of each
   file.
 - `GET` and `HEAD` of a file: the bytes, and the headers.
+- Ranges of a file: at the start, at the end, at the ends of blocks of 64 KiB,
+  416, and ranges that the backend does not read.
 - `PUT` over a file, `DELETE` of a file, and `DELETE` of a folder with all that
   is in it.
 

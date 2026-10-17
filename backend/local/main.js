@@ -4,6 +4,7 @@ import { formatBytes } from "../../lib/format.js";
 import { escapeHTML } from "../../lib/html.js";
 import { mimeType } from "../../lib/mime.js";
 import { decodePath } from "../../lib/path.js";
+import { notSatisfiable, parseRange, partialHeaders } from "../../lib/range.js";
 
 /**
  * Serves a local remote: the files and the folders in the current folder.
@@ -123,19 +124,43 @@ async function local(request) {
     } else {
       headers.append("Content-Type", mimeType(path));
       headers.append("Content-Length", stats.size.toString());
+      headers.set("Accept-Ranges", "bytes");
 
       if (method === "GET") {
+        let range;
+        try {
+          range = parseRange(request.headers.get("Range"), stats.size);
+        } catch {
+          return notSatisfiable(stats.size);
+        }
+        if (range) {
+          status = 206;
+          for (
+            const [name, value] of Object.entries(
+              partialHeaders(range, stats.size),
+            )
+          ) {
+            headers.set(name, value);
+          }
+        }
+        // The position of the next byte, and the number of bytes to read.
+        let position = range?.start ?? 0;
+        let remaining = range ? range.end - range.start + 1 : stats.size;
         const file = await open(absolutePath);
 
         body = new ReadableStream({
           async pull(controller) {
-            const chunk = new Uint8Array(64 * 1024);
-            const { bytesRead } = await file.read(chunk, 0);
+            const chunk = new Uint8Array(Math.min(64 * 1024, remaining));
+            const { bytesRead } = remaining > 0
+              ? await file.read(chunk, 0, chunk.length, position)
+              : { bytesRead: 0 };
             if (bytesRead === 0) {
               controller.close();
               await file.close();
               return;
             }
+            position += bytesRead;
+            remaining -= bytesRead;
             controller.enqueue(chunk.subarray(0, bytesRead));
           },
           async cancel() {

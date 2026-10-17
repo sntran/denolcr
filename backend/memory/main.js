@@ -10,6 +10,7 @@
 import { renderListing } from "../../lib/listing.js";
 import { mimeType } from "../../lib/mime.js";
 import { decodePath } from "../../lib/path.js";
+import { notSatisfiable, parseRange, partialHeaders } from "../../lib/range.js";
 
 /**
  * The files and the folders, by their path with no percent-encoding. The path
@@ -47,9 +48,27 @@ async function memory(request) {
       headers.set("Content-Type", file.type || mimeType(path));
       headers.set("Content-Length", `${file.size}`);
       headers.set("Last-Modified", new Date(file.lastModified).toUTCString());
+      headers.set("Accept-Ranges", "bytes");
       // A Blob has a size, thus a Worker sends its Content-Length.
       if (method === "GET") {
+        let range;
+        try {
+          range = parseRange(request.headers.get("Range"), file.size);
+        } catch {
+          return notSatisfiable(file.size);
+        }
         body = file;
+        if (range) {
+          status = 206;
+          for (
+            const [name, value] of Object.entries(
+              partialHeaders(range, file.size),
+            )
+          ) {
+            headers.set(name, value);
+          }
+          body = file.slice(range.start, range.end + 1);
+        }
       }
     } else {
       headers.set("Content-Type", "text/html;charset=utf-8");
