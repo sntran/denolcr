@@ -20,11 +20,6 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  RCLONE_VERSION: 1.75.1
-  RCLONE_SHA256: 982b5aa772841168f8e380f139e9e787b2a105403e32b94da8676a0e1c0a13ab
-  DENO_VERSION: 2.9.6
-
 jobs:
   test:
     runs-on: ubuntu-24.04
@@ -47,21 +42,37 @@ jobs:
           go-version: stable
           cache: false
 
+      # rclone reads each variable RCLONE_NAME as the flag --name. Thus the
+      # version is not in a variable RCLONE_VERSION of the job: rclone reads
+      # it as the flag --version, and fails.
       - name: Install rclone
+        env:
+          VERSION: 1.75.1
+          SHA256: 982b5aa772841168f8e380f139e9e787b2a105403e32b94da8676a0e1c0a13ab
         run: |
           mkdir -p "$HOME/bin" "$RUNNER_TEMP/rclone"
           cd "$RUNNER_TEMP/rclone"
-          zip="rclone-v$RCLONE_VERSION-linux-amd64.zip"
-          curl -fsSLO "https://downloads.rclone.org/v$RCLONE_VERSION/$zip"
-          echo "$RCLONE_SHA256  $zip" | sha256sum -c -
+          zip="rclone-v$VERSION-linux-amd64.zip"
+          curl -fsSLO "https://downloads.rclone.org/v$VERSION/$zip"
+          echo "$SHA256  $zip" | sha256sum -c -
           unzip -q "$zip"
-          install -m 755 "rclone-v$RCLONE_VERSION-linux-amd64/rclone" "$HOME/bin/rclone"
+          install -m 755 "rclone-v$VERSION-linux-amd64/rclone" "$HOME/bin/rclone"
+          "$HOME/bin/rclone" version
           echo "$HOME/bin" >> "$GITHUB_PATH"
           echo "RCLONE=$HOME/bin/rclone" >> "$GITHUB_ENV"
 
       - run: npm ci
 
-      - run: npm test
+      # A test against rclone or Go skips when the tool is not installed.
+      # Here the tools are installed, thus such a skip is an error.
+      - name: npm test
+        shell: bash
+        run: |
+          npm test 2>&1 | tee "$RUNNER_TEMP/test.log"
+          if grep -E "(rclone|Go) is not installed" "$RUNNER_TEMP/test.log"; then
+            echo "::error::A test skipped because a tool is not installed."
+            exit 1
+          fi
 
   format:
     runs-on: ubuntu-24.04
@@ -71,6 +82,6 @@ jobs:
 
       - uses: denoland/setup-deno@v2
         with:
-          deno-version: ${{ env.DENO_VERSION }}
+          deno-version: 2.9.6
 
       - run: deno fmt --check
