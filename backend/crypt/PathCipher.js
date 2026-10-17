@@ -65,6 +65,8 @@ export default function PathCipher({ nameKey, nameTweak } = {}) {
    * @returns {string}
    */
   function decryptName(name) {
+    // An empty segment of a path stays empty, as in rclone.
+    if (name === "") return "";
     const rawCipherText = new Uint8Array(
       decodeBase32(name.toUpperCase(), "RFC4648-HEX"),
     );
