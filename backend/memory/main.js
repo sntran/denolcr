@@ -48,8 +48,9 @@ async function memory(request) {
       headers.set("Content-Type", file.type || mimeType(path));
       headers.set("Content-Length", `${file.size}`);
       headers.set("Last-Modified", new Date(file.lastModified).toUTCString());
+      // A Blob has a size, thus a Worker sends its Content-Length.
       if (method === "GET") {
-        body = file.stream();
+        body = file;
       }
     } else {
       headers.set("Content-Type", "text/html;charset=utf-8");

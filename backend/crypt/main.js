@@ -95,11 +95,19 @@
 
 import { scryptAsync as scrypt } from "@noble/hashes/scrypt";
 import { HTMLRewriter } from "@sntran/html-rewriter";
+import { formatBytes } from "../../lib/format.js";
 import { mimeType } from "../../lib/mime.js";
+import { decodePath } from "../../lib/path.js";
+import { sized } from "../../lib/streams/sized.js";
 import { fetch } from "../../mod.js";
 import { reveal } from "../../cmd/obscure/main.js";
 import PathCipher from "./PathCipher.js";
-import { DecryptionStream, EncryptionStream } from "./secretbox.js";
+import {
+  decryptedSize,
+  DecryptionStream,
+  encryptedSize,
+  EncryptionStream,
+} from "./secretbox.js";
 
 const encoder = new TextEncoder();
 
@@ -134,118 +142,223 @@ const SECRETBOX_OPTIONS = {
 };
 
 /**
+ * The options that are secret. They are not in the links of a list, which a
+ * browser can keep in its history and send to other sites.
+ */
+const SECRETS = ["password", "password2"];
+
+/**
  * Serves a crypted remote.
  * @param {Request} request
  * @returns {Promise<Response>}
  */
 async function crypt(request) {
-  let { pathname, searchParams } = new URL(request.url);
+  const { method } = request;
+  const { pathname, searchParams } = new URL(request.url);
 
-  let remote = searchParams.get("remote");
+  const path = decodePath(pathname);
+  if (path === null) {
+    return new Response(null, { status: 400 });
+  }
+
+  const remote = searchParams.get("remote")?.replace(/\/$/, "");
   if (!remote) {
     return new Response("Missing remote", { status: 400 });
   }
-
-  remote = remote.replace(/\/$/, "");
-
-  const password = searchParams.get("password");
-  const salt = searchParams.get("password2");
-
-  const key = await deriveKey(password, salt);
-
-  const pathCipher = PathCipher({
-    nameKey: key.subarray(32, 64),
-    nameTweak: key.subarray(64),
-  });
-
-  const isDirectory = pathname.endsWith("/");
-  pathname = decodeURIComponent(pathname);
-  const encryptedPathname = pathCipher.encrypt(pathname);
-
-  const url = remote.replace(/\/$/, "") + encryptedPathname;
-
-  // Encrypts upload body if any.
-  if (request.body) {
-    request = new Request(request, {
-      body: request.body.pipeThrough(
-        new EncryptionStream(key.subarray(0, 32), SECRETBOX_OPTIONS),
-      ),
-    });
+  if (!searchParams.get("password")) {
+    return new Response("Missing password", { status: 400 });
   }
 
-  // Delegates to the underlying remote.
-  const requestHeaders = new Headers(request.headers);
-  // Encrypted data on underlying remote won't respond to range.
-  requestHeaders.delete("Range");
-  request = new Request(request, {
-    headers: requestHeaders,
-  });
-
-  let response = await fetch(url, request);
-  let { status, statusText, headers, body } = response;
-  headers = new Headers(headers);
-
-  const mimetype = mimeType(pathname);
-  if (mimetype) {
-    headers.set("Content-Type", mimetype);
+  let cipher;
+  try {
+    cipher = await cipherOf(
+      searchParams.get("password"),
+      searchParams.get("password2") ?? "",
+    );
+  } catch {
+    return new Response("The password is not obscured", { status: 400 });
   }
 
-  if (body) {
-    let contentLength = Number(headers.get("Content-Length"));
-    if (contentLength) { // Adjusts the content length.
-      contentLength = DecryptionStream.size(contentLength, SECRETBOX_OPTIONS);
-      headers.set("Content-Length", `${contentLength}`);
+  const isDirectory = path.endsWith("/");
+  const target = remote + cipher.names.encrypt(path);
+
+  // The data on the remote is encrypted, thus a range of the data is not a
+  // range of the file.
+  const headers = new Headers(request.headers);
+  headers.delete("Range");
+
+  if (method === "GET" || method === "HEAD") {
+    const response = await fetch(target, { method, headers });
+    if (!response.ok) {
+      return response;
     }
-
     if (isDirectory) {
-      const rewriter = new HTMLRewriter();
-      rewriter.on("tr a[href]", {
-        element(element) {
-          let href = element.getAttribute("href");
-          let type = element.getAttribute("type");
-
-          const { pathname } = new URL(href, "file:");
-          let basename = pathname.slice(1);
-          if (pathname != "/") {
-            basename = pathCipher.decrypt(basename);
-            href = `${basename}?${searchParams}`;
-            element.setAttribute("href", href);
-
-            // Replaces inner text with original name.
-            element.setInnerContent(basename);
-          }
-
-          if (type) {
-            type = mimeType(basename);
-            element.setAttribute("type", type);
-          }
-        },
-      });
-      rewriter.on(`tr data[value]`, {
-        element(element) {
-          const encryptedSize = Number(element.getAttribute("value"));
-          const originalSize = DecryptionStream.size(
-            encryptedSize,
-            SECRETBOX_OPTIONS,
-          );
-          element.setAttribute("value", `${originalSize}`);
-        },
-      });
-
-      response = rewriter.transform(response);
-      body = response.body;
-    } else {
-      body = body.pipeThrough(
-        new DecryptionStream(key.subarray(0, 32), SECRETBOX_OPTIONS),
-      );
+      return listing(response, cipher, searchParams);
     }
+
+    const result = new Headers({ "Content-Type": mimeType(path) });
+    const size = sizeOf(response.headers.get("Content-Length"));
+    if (size >= 0) {
+      result.set("Content-Length", `${size}`);
+    }
+    const lastModified = response.headers.get("Last-Modified");
+    if (lastModified) {
+      result.set("Last-Modified", lastModified);
+    }
+
+    let body = null;
+    if (method === "GET" && response.body) {
+      body = response.body.pipeThrough(
+        new DecryptionStream(cipher.dataKey, SECRETBOX_OPTIONS),
+      );
+      if (size >= 0) body = sized(body, size);
+    } else {
+      await response.body?.cancel();
+    }
+    return new Response(body, { status: response.status, headers: result });
   }
 
-  return new Response(body, {
-    status,
-    statusText,
+  if (method === "PUT") {
+    // The remote does not get the type of the file: the type tells about
+    // the content.
+    headers.delete("Content-Type");
+    /** @type {RequestInit} */
+    const init = { method, headers };
+    if (!isDirectory) {
+      const length = request.headers.get("Content-Length");
+      headers.delete("Content-Length");
+      if (length !== null && /^\d+$/.test(length)) {
+        headers.set(
+          "Content-Length",
+          `${encryptedSize(Number(length), SECRETBOX_OPTIONS)}`,
+        );
+      }
+      const body = request.body ?? ReadableStream.from([]);
+      init.body = body.pipeThrough(
+        new EncryptionStream(cipher.dataKey, SECRETBOX_OPTIONS),
+      );
+      init.duplex = "half";
+    }
+
+    const response = await fetch(target, init);
+    await response.body?.cancel();
+    const result = new Headers();
+    if (response.ok) {
+      result.set("Content-Location", pathname);
+    }
+    return new Response(null, { status: response.status, headers: result });
+  }
+
+  if (method === "DELETE") {
+    const response = await fetch(target, { method, headers });
+    await response.body?.cancel();
+    return new Response(null, { status: response.status });
+  }
+
+  return new Response(null, {
+    status: 405,
+    headers: { Allow: "GET, HEAD, PUT, DELETE" },
+  });
+}
+
+/**
+ * Gives the list of a folder with the names, the sizes and the types of the
+ * files, from the list of the encrypted folder on the remote.
+ *
+ * Each link gets the query of the request with no secret option, and no
+ * option of the remote. A name that does not decrypt is not a link, as
+ * rclone skips such a name.
+ * @param {Response} response The list of the encrypted folder.
+ * @param {{ names: import("./PathCipher.js").PathCipher }} cipher
+ * @param {URLSearchParams} searchParams
+ * @returns {Response}
+ */
+function listing(response, { names }, searchParams) {
+  const query = new URLSearchParams(searchParams);
+  for (const name of SECRETS) query.delete(name);
+  const suffix = query.size ? `?${query}` : "";
+
+  // The links of the list are relative to the encrypted folder.
+  const base = new URL("http://remote/folder/");
+
+  /** True when the link of the current row is a file that decrypts. */
+  let isFile = false;
+
+  const rewriter = new HTMLRewriter()
+    .on("tr", {
+      element() {
+        isFile = false;
+      },
+    })
+    .on("tr a[href]", {
+      element(element) {
+        const href = new URL(element.getAttribute("href"), base);
+        if (href.origin !== base.origin) {
+          element.removeAttribute("href");
+          return;
+        }
+        if (!href.pathname.startsWith(base.pathname)) {
+          // The parent folder.
+          element.setAttribute("href", `../${suffix}`);
+          return;
+        }
+
+        const rest = href.pathname.slice(base.pathname.length);
+        const isDirectory = rest.endsWith("/");
+        let name;
+        try {
+          const encrypted = decodeURIComponent(
+            isDirectory ? rest.slice(0, -1) : rest,
+          );
+          if (encrypted === "" || encrypted.includes("/")) throw encrypted;
+          name = names.decryptName(encrypted);
+        } catch {
+          element.removeAttribute("href");
+          element.removeAttribute("type");
+          return;
+        }
+
+        isFile = !isDirectory;
+        element.setAttribute(
+          "href",
+          `${encodeURIComponent(name)}${isDirectory ? "/" : ""}${suffix}`,
+        );
+        element.setAttribute("type", isDirectory ? "" : mimeType(name));
+        // The text of an element is HTML-escaped.
+        element.setInnerContent(isDirectory ? `${name}/` : name);
+      },
+    })
+    .on("tr data[value]", {
+      element(element) {
+        const size = isFile ? sizeOf(element.getAttribute("value")) : -1;
+        element.setAttribute("value", `${size}`);
+        element.setInnerContent(
+          size >= 0 ? formatBytes(size, { locale: true }) : "—",
+        );
+      },
+    });
+
+  const headers = new Headers(response.headers);
+  headers.delete("Content-Length");
+  return new Response(rewriter.transform(response).body, {
+    status: response.status,
     headers,
   });
+}
+
+/**
+ * The size of a file from the size of its encrypted data, or -1 for no size
+ * or a size that no encrypted data has.
+ * @param {string | null} value
+ * @returns {number}
+ */
+function sizeOf(value) {
+  if (value === null || !/^\d+$/.test(value)) return -1;
+  try {
+    return decryptedSize(Number(value), SECRETBOX_OPTIONS);
+  } catch {
+    return -1;
+  }
 }
 
 /**
@@ -273,15 +386,8 @@ async function crypt(request) {
  * @param {...string} args
  */
 export async function encode(options, ...args) {
-  const key = await deriveKey(options.password, options.password2);
-  const pathCipher = PathCipher({
-    nameKey: key.slice(32, 64),
-    nameTweak: key.slice(64),
-  });
-  const encoded = args.map((path) =>
-    (path ? pathCipher.encrypt(path) : "") + "\n"
-  );
-
+  const { names } = await cipherOf(options.password, options.password2 ?? "");
+  const encoded = args.map((path) => (path ? names.encrypt(path) : "") + "\n");
   return new Response(encoded.join(""));
 }
 
@@ -311,33 +417,81 @@ export async function encode(options, ...args) {
  * @param {...string} args
  */
 export async function decode(options, ...args) {
-  const key = await deriveKey(options.password, options.password2);
-  const pathCipher = PathCipher({
-    nameKey: key.slice(32, 64),
-    nameTweak: key.slice(64),
-  });
-
-  const decoded = args.map((arg) =>
-    (arg ? pathCipher.decrypt(arg) : "") + "\n"
-  );
+  const { names } = await cipherOf(options.password, options.password2 ?? "");
+  const decoded = args.map((arg) => (arg ? names.decrypt(arg) : "") + "\n");
   return new Response(decoded.join(""));
 }
 
 /**
- * @param {string} encPass
- * @param {string} encSalt
+ * Makes the keys from a password and a salt, as `Cipher.Key` of rclone: 32
+ * bytes for the data, 32 bytes for the names, and 16 bytes of tweak for the
+ * names. An empty password gives keys of zero bytes.
+ * @param {string | Uint8Array} password The password, not obscured.
+ * @param {string | Uint8Array} [salt] The salt, not obscured. An empty salt
+ *   is the salt of rclone.
  * @returns {Promise<Uint8Array>}
  */
-async function deriveKey(encPass, encSalt) {
-  const password = await reveal(encPass)
-    .then((response) => response.arrayBuffer())
-    .then((buf) => new Uint8Array(buf));
-  const decryptedSalt = await reveal(encSalt)
-    .then((response) => response.arrayBuffer())
-    .then((buf) => new Uint8Array(buf));
-  const salt = decryptedSalt.length ? decryptedSalt : DEFAULT_SALT;
+export async function deriveKey(password, salt = "") {
+  const bytes = (text) =>
+    typeof text === "string" ? encoder.encode(text) : text;
+  if (bytes(password).length === 0) {
+    return new Uint8Array(dkLen);
+  }
+  const saltBytes = bytes(salt).length ? bytes(salt) : DEFAULT_SALT;
+  return await scrypt(bytes(password), saltBytes, { N, r, p, dkLen });
+}
 
-  return scrypt(password, salt, { N, r, p, dkLen });
+/**
+ * The ciphers of the last passwords. scrypt takes much time, thus each
+ * request does not make the keys again.
+ * @type {Map<string, Promise<{ dataKey: Uint8Array, names: import("./PathCipher.js").PathCipher }>>}
+ */
+const ciphers = new Map();
+const MAX_CIPHERS = 16;
+
+/**
+ * Gives the key of the data and the cipher of the names for an obscured
+ * password and an obscured salt.
+ * @param {string} password
+ * @param {string} salt "" for the salt of rclone.
+ * @throws {Error} When the password or the salt is not obscured.
+ */
+function cipherOf(password, salt) {
+  const id = JSON.stringify([password, salt]);
+  let cipher = ciphers.get(id);
+  if (cipher) {
+    // The last used cipher goes to the end.
+    ciphers.delete(id);
+  } else {
+    cipher = (async () => {
+      const key = await deriveKey(
+        await revealBytes(password),
+        salt ? await revealBytes(salt) : "",
+      );
+      return {
+        dataKey: key.subarray(0, 32),
+        names: PathCipher({
+          nameKey: key.subarray(32, 64),
+          nameTweak: key.subarray(64),
+        }),
+      };
+    })();
+    cipher.catch(() => ciphers.delete(id));
+  }
+  ciphers.set(id, cipher);
+  if (ciphers.size > MAX_CIPHERS) {
+    ciphers.delete(ciphers.keys().next().value);
+  }
+  return cipher;
+}
+
+/**
+ * @param {string} obscured
+ * @returns {Promise<Uint8Array>}
+ */
+async function revealBytes(obscured) {
+  const response = await reveal(obscured);
+  return new Uint8Array(await response.arrayBuffer());
 }
 
 export default {

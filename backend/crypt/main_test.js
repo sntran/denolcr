@@ -1,33 +1,29 @@
-import { test } from "node:test";
+import { describe, test } from "node:test";
 import { readFile } from "node:fs/promises";
-import { Buffer } from "node:buffer";
 import { join } from "node:path";
-import { mimeType } from "../../lib/mime.js";
+import process from "node:process";
 import assert from "node:assert/strict";
 import fc from "fast-check";
 
-import { decode, default as crypt, encode } from "./main.js";
+import { backendSuite } from "../../lib/testing/suite.js";
+import { remote } from "../../lib/testing/remote.js";
+import { mimeType } from "../../lib/mime.js";
+import { decode, default as crypt, deriveKey, encode } from "./main.js";
 
-/**
- * Tells if the two arrays have the same bytes.
- * @param {Uint8Array} a
- * @param {Uint8Array} b
- * @returns {boolean}
- */
-const sameBytes = (a, b) => Buffer.compare(a, b) === 0;
-
+// The password "123456" and the salt, obscured.
 const PASSWORD = "UmyLSdRHfew6aual28-ggx78qHqSfQ";
 const SALT = "Cj3gLa5PVwc2aot0QpKiOZ3YEzs3Sw";
 
+// The tests read the fixtures from the current folder. Each test file runs in
+// its own process.
 const fixtures = new URL(join(".", "fixtures"), import.meta.url).pathname;
+process.chdir(fixtures);
 
 const CRYPT = {
   "hello.txt": "7656ki2d7s0mgv9ci91hnq77k8",
   "rclone.png": "mtnq34s46g5ntbnut5ftn4r2dc",
   "1MB.bin": "k6ki5t8t5e5h3qoq78mpd29pns",
 };
-
-const MAGIC = new TextEncoder().encode("RCLONE\x00\x00");
 
 /**
  * @param {Response | Promise<Response>} response
@@ -38,6 +34,48 @@ async function getText(response) {
   const text = await response.text();
   return text.replace(/\n$/, "");
 }
+
+test("makes the keys of rclone (TestKey)", async () => {
+  const hex = (bytes) => Buffer.from(bytes).toString("hex");
+  for (
+    const [password, salt, dataKey, nameKey, nameTweak] of [
+      [
+        "potato",
+        "",
+        "7455c71ab17c865b8471f47b79acb07eb31d5678b80c7e2eaf4fc8066a9ee468",
+        "765da27ab15d77f95796711f7b93ad63bbb484072e7180a8d17a9bbec14270d0",
+        "c18d5932f55b2828c5e1e87215520310",
+      ],
+      [
+        "Potato",
+        "",
+        "aeea6ad347df75b963ce12f57623e946d42ed8bf3e928b39243794133e5ef75e",
+        "54f7026e8afc560a86636aab2c9c5162e51a122351836eaf50420f981c860a19",
+        "f8c1b6272d529b4a8fdaeb424a28ddf3",
+      ],
+      [
+        "potato",
+        "sausage",
+        "8e9b6b99f8690467a071f9cb92d0aa787f8ff178bec96f999fd5206e644a1b50",
+        "3ea95ef681782dc9d9955d225bfd442c6f5d6897b029015c6f462e2a9dae2ce3",
+        "f17fd7141d65274f363fc2a04dd2148a",
+      ],
+      [
+        "potato",
+        "Sausage",
+        "da818c67ef110fc8d5c8624b7fe29e3535b08d798489accba0ff0272031a5e64",
+        "02817e7bea99815ad02db96448b028277c20b4d4a468ad4e5c290f79efeedb3b",
+        "9ab50b3dcb605955a54de6b6470323e2",
+      ],
+      ["", "", "00".repeat(32), "00".repeat(32), "00".repeat(16)],
+    ]
+  ) {
+    const key = await deriveKey(password, salt);
+    assert.equal(hex(key.subarray(0, 32)), dataKey, password);
+    assert.equal(hex(key.subarray(32, 64)), nameKey, password);
+    assert.equal(hex(key.subarray(64)), nameTweak, password);
+  }
+});
 
 test("decode", async () => {
   const options = {
@@ -68,6 +106,7 @@ test("encode", async () => {
   // encode them all at once.
   fc.assert(
     fc.property(fc.string(), (plaintext) => {
+      fc.pre(!plaintext.includes("\n"));
       plaintexts.push(plaintext);
     }),
   );
@@ -79,99 +118,81 @@ test("encode", async () => {
   assert.deepEqual(decoded, plaintexts.join("\n"));
 });
 
-test("GET", async (t) => {
-  const remote = join(fixtures, "crypt");
-  let request, response;
-
-  await t.test("should return original file", async () => {
-    for await (const originalFilename of Object.keys(CRYPT)) {
-      const originalFile = await readFile(
-        join(fixtures, "local", originalFilename),
-      );
-      const url = new URL(`/${originalFilename}`, "file:");
-      url.searchParams.set("remote", remote);
-      url.searchParams.set("password", PASSWORD);
-      url.searchParams.set("password2", SALT);
-
-      request = new Request(url);
-      response = await crypt.fetch(request);
-
-      const decryptedFile = new Uint8Array(await response.arrayBuffer());
-      assert(sameBytes(decryptedFile, originalFile));
-    }
+test("GET of the fixtures", async () => {
+  const fs = remote(crypt, {
+    params: { remote: "crypt", password: PASSWORD, password2: SALT },
   });
-
-  await t.test("should return original file info in headers", async () => {
-    for await (const originalFilename of Object.keys(CRYPT)) {
-      const originalFile = await readFile(
-        join(fixtures, "local", originalFilename),
-      );
-      const url = new URL(`/${originalFilename}`, "file:");
-      url.searchParams.set("remote", remote);
-      url.searchParams.set("password", PASSWORD);
-      url.searchParams.set("password2", SALT);
-
-      request = new Request(url);
-      response = await crypt.fetch(request);
-
-      const size = Number(response.headers.get("Content-Length"));
-      assert.deepEqual(size, originalFile.byteLength);
-
-      const type = response.headers.get("Content-Type");
-      assert.deepEqual(type, mimeType(originalFilename));
-
-      response.body?.cancel();
-    }
-  });
+  for (const name of Object.keys(CRYPT)) {
+    const original = await readFile(join("local", name));
+    const response = await fs.get(name);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("Content-Type"), mimeType(name));
+    assert.equal(
+      response.headers.get("Content-Length"),
+      `${original.byteLength}`,
+    );
+    assert.deepEqual(
+      new Uint8Array(await response.arrayBuffer()),
+      new Uint8Array(original),
+    );
+  }
 });
 
-test("PUT", async () => {
-  const remote = ":memory:";
+const params = {
+  remote: ":memory:/crypt",
+  password: PASSWORD,
+  password2: SALT,
+};
 
-  for await (const originalFilename of Object.keys(CRYPT)) {
-    const originalFile = await readFile(
-      join(fixtures, "local", originalFilename),
-    );
+backendSuite("crypt", crypt, { params });
 
-    const encryptedFilename = CRYPT[originalFilename];
-    const url = new URL(`/${originalFilename}`, "file:");
-    url.searchParams.set("remote", remote);
-    url.searchParams.set("password", PASSWORD);
-    url.searchParams.set("password2", SALT);
+describe("crypt", () => {
+  const fs = remote(crypt, { params });
 
-    let request, response;
+  test("puts no password in the links of a list", async () => {
+    await fs.put("secret/a b.txt", new TextEncoder().encode("a"));
+    for (const path of ["", "secret/"]) {
+      const html = await fs.get(path).then((response) => response.text());
+      assert.ok(html.includes(` href="a%20b.txt?`) || path === "");
+      assert.ok(!html.includes(PASSWORD), "no password");
+      assert.ok(!html.includes(SALT), "no salt");
+      assert.ok(html.includes("remote="), "the other options stay");
+    }
+    await fs.delete("secret/");
+  });
 
-    // Asserts file does not exist in the original remote.
-    response = await fetch(join(remote, originalFilename));
-    assert.deepEqual(response.status, 404);
-
-    response = await fetch(join(remote, encryptedFilename));
-    assert.deepEqual(response.status, 404);
-
-    // Uploads the file to the crypt remote.
-    request = new Request(url, {
+  test("lists no file with a name that does not decrypt", async () => {
+    // A file that is not encrypted, next to the encrypted files.
+    await globalThis.fetch(":memory:/crypt/plain.txt", {
       method: "PUT",
-      body: originalFile,
+      body: "plain",
     });
-    response = await crypt.fetch(request);
+    await fs.put("encrypted.txt", new TextEncoder().encode("e"));
+    const names = (await fs.list("")).map(({ Name }) => Name);
+    assert.ok(names.includes("encrypted.txt"));
+    assert.ok(!names.includes("plain.txt"));
+    assert.equal(names.length, 1);
+    await fs.delete("encrypted.txt");
+    await globalThis.fetch(":memory:/crypt/plain.txt", { method: "DELETE" });
+  });
 
-    // Asserts original file does not exist in the original remote.
-    response = await fetch(join(remote, originalFilename));
-    assert.deepEqual(response.status, 404);
+  test("gives 400 for a password that is not obscured", async () => {
+    const bad = remote(crypt, { params: { ...params, password: "!!" } });
+    const response = await bad.get("");
+    assert.equal(response.status, 400);
+    assert.ok(!(await response.text()).includes("!!"));
+  });
 
-    // Asserts encrypted file exists in the original remote.
-    response = await fetch(join(remote, encryptedFilename));
-    assert.deepEqual(response.status, 200);
-    const encryptedBuffer = new Uint8Array(await response.arrayBuffer());
-    assert(!sameBytes(encryptedBuffer, originalFile));
-
-    const magic = encryptedBuffer.subarray(0, 8);
-    assert.deepEqual(magic, MAGIC, "should have magic header");
-
-    // Gets the new file from the crypt remote.
-    request = new Request(url);
-    response = await crypt.fetch(request);
-    const decryptedFile = new Uint8Array(await response.arrayBuffer());
-    assert(sameBytes(decryptedFile, originalFile));
-  }
+  test("gives an error of the stream for data that is not encrypted", async () => {
+    const encrypted = await getText(
+      encode({ password: PASSWORD, password2: SALT }, "plain2.txt"),
+    );
+    // The name is encrypted, but the data is not.
+    await globalThis.fetch(`:memory:/crypt/${encrypted}`, {
+      method: "PUT",
+      body: "not encrypted data, longer than a header of 32 bytes",
+    });
+    const response = await fs.get("plain2.txt");
+    await assert.rejects(response.arrayBuffer(), /bad magic/);
+  });
 });
