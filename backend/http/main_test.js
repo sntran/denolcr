@@ -19,6 +19,7 @@ after(() => server.close());
 
 // The suite writes to the memory backend, and reads through the server.
 backendSuite("http", backend, {
+  type: "http",
   params: { url: `${server.url}` },
   writer: memory,
 });

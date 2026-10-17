@@ -39,6 +39,7 @@
 import { createHash } from "node:crypto";
 import { renderListing } from "@rfetch/lib/listing";
 import { mimeType } from "@rfetch/lib/mime";
+import { optionsOf } from "@rfetch/lib/options";
 import { decodePath } from "@rfetch/lib/path";
 import {
   notSatisfiable,
@@ -119,7 +120,7 @@ async function s3(request, env = {}) {
 
   let config;
   try {
-    config = configOf(searchParams, env);
+    config = configOf(request, env);
   } catch (error) {
     return new Response(error.message, { status: 400 });
   }
@@ -179,18 +180,15 @@ async function s3(request, env = {}) {
 
 /**
  * Reads the options of a request, as `NewFs` of the s3 backend of rclone.
- * @param {URLSearchParams} searchParams
+ * @param {Request} request
  * @param {Record<string, unknown>} env
  * @returns {Config}
  * @throws {Error} When an option is not correct.
  */
-function configOf(searchParams, env) {
+function configOf(request, env) {
+  const values = optionsOf(request, "s3", env);
   /** @param {string} name */
-  const get = (name) => {
-    const value = searchParams.get(name) ??
-      env[`RCLONE_S3_${name.toUpperCase()}`];
-    return typeof value === "string" ? value : options.default[name] ?? "";
-  };
+  const get = (name) => values.get(name) ?? options.default[name] ?? "";
   const region = get("region") || "us-east-1";
   let endpoint = get("endpoint") ||
     `https://s3.${region}.amazonaws.com`;

@@ -11,11 +11,13 @@ import backend from "./main.js";
 const CHUNK = "64k";
 
 backendSuite("chunker", backend, {
+  type: "chunker",
   params: { remote: ":memory:/chunker", chunk_size: CHUNK },
 });
 // Without metadata, a name is always in chunks. rclone does not read the
 // name of a chunk with "\n": "." of Go does not match it.
 backendSuite("chunker meta_format=none", backend, {
+  type: "chunker",
   params: {
     remote: ":memory:/none",
     chunk_size: CHUNK,
@@ -25,6 +27,7 @@ backendSuite("chunker meta_format=none", backend, {
   skipName: /\n/,
 });
 backendSuite("chunker transactions=norename", backend, {
+  type: "chunker",
   params: {
     remote: ":memory:/norename",
     chunk_size: CHUNK,

@@ -35,7 +35,10 @@ test("local path", async () => {
   }
 });
 
-backendSuite("alias", backend, { params: { remote: ":memory:/alias" } });
+backendSuite("alias", backend, {
+  type: "alias",
+  params: { remote: ":memory:/alias" },
+});
 
 test("the links of a list are in the alias", async () => {
   const fs = remote(backend, { params: { remote: ":memory:/links" } });

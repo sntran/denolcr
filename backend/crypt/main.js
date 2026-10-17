@@ -97,6 +97,7 @@ import { scryptAsync as scrypt } from "@noble/hashes/scrypt";
 import { HTMLRewriter } from "@sntran/html-rewriter";
 import { formatBytes } from "@rfetch/lib/format";
 import { mimeType } from "@rfetch/lib/mime";
+import { optionsOf, remoteHeaders } from "@rfetch/lib/options";
 import { decodePath } from "@rfetch/lib/path";
 import {
   notSatisfiable,
@@ -157,9 +158,11 @@ const SECRETS = ["password", "password2"];
  * Serves a crypted remote. The requests to the remote under crypt go to the
  * global `fetch`.
  * @param {Request} request
+ * @param {Record<string, unknown>} [env] The options in the variables
+ *   `RCLONE_CRYPT_*`.
  * @returns {Promise<Response>}
  */
-async function crypt(request) {
+async function crypt(request, env = {}) {
   const { method } = request;
   const { pathname, searchParams } = new URL(request.url);
 
@@ -168,19 +171,20 @@ async function crypt(request) {
     return new Response(null, { status: 400 });
   }
 
-  const remote = searchParams.get("remote")?.replace(/\/$/, "");
+  const options = optionsOf(request, "crypt", env);
+  const remote = options.get("remote")?.replace(/\/$/, "");
   if (!remote) {
     return new Response("Missing remote", { status: 400 });
   }
-  if (!searchParams.get("password")) {
+  if (!options.get("password")) {
     return new Response("Missing password", { status: 400 });
   }
 
   let cipher;
   try {
     cipher = await cipherOf(
-      searchParams.get("password"),
-      searchParams.get("password2") ?? "",
+      options.get("password"),
+      options.get("password2") ?? "",
     );
   } catch {
     return new Response("The password is not obscured", { status: 400 });
@@ -191,7 +195,7 @@ async function crypt(request) {
 
   // The data on the remote is encrypted, thus a range of the data is not a
   // range of the file.
-  const headers = new Headers(request.headers);
+  const headers = remoteHeaders(request.headers, "crypt", remote);
   headers.delete("Range");
 
   const range = request.headers.get("Range");

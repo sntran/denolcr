@@ -23,9 +23,15 @@ if (hasRclone) {
   const params = { ...KEYS, endpoint: server.endpoint, region: "us-east-1" };
 
   // S3 has no empty folders with no markers, as rclone.
-  backendSuite("s3", s3, { params, parent: "/rfetch/", emptyFolders: false });
+  backendSuite("s3", s3, {
+    type: "s3",
+    params,
+    parent: "/rfetch/",
+    emptyFolders: false,
+  });
   // Files in parts: upload_cutoff of 100 KiB, and parts of 5 MiB.
   backendSuite("s3 in parts", s3, {
+    type: "s3",
     params: { ...params, upload_cutoff: "100k" },
     parent: "/rfetch/",
     emptyFolders: false,
@@ -182,8 +188,15 @@ if (S3_TEST_ENDPOINT && S3_TEST_BUCKET) {
     region: S3_TEST_REGION ?? "auto",
   };
   const parent = `/${S3_TEST_BUCKET}/`;
-  backendSuite("s3 service", s3, { params, env, parent, emptyFolders: false });
+  backendSuite("s3 service", s3, {
+    type: "s3",
+    params,
+    env,
+    parent,
+    emptyFolders: false,
+  });
   backendSuite("s3 service with folder markers", s3, {
+    type: "s3",
     params: { ...params, directory_markers: "true" },
     env,
     parent,

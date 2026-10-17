@@ -28,6 +28,7 @@ import { HTMLRewriter } from "@sntran/html-rewriter";
 import { parseList } from "./list.js";
 import { childOf, renderListing } from "@rfetch/lib/listing";
 import { mimeType } from "@rfetch/lib/mime";
+import { optionsOf } from "@rfetch/lib/options";
 import { decodePath, encodePath } from "@rfetch/lib/path";
 
 export const options = {
@@ -76,15 +77,18 @@ class HTTPError extends Error {
 /**
  * Serves a HTTP remote. It is read only, as the http backend of rclone.
  * @param {Request} request
+ * @param {Record<string, unknown>} [env] The options in the variables
+ *   `RCLONE_HTTP_*`.
  * @returns {Promise<Response>}
  */
-async function http(request) {
+async function http(request, env = {}) {
   const { method } = request;
   const { pathname, searchParams } = new URL(request.url);
+  const options = optionsOf(request, "http", env);
 
   let base;
   try {
-    base = new URL(searchParams.get("url") ?? "");
+    base = new URL(options.get("url") ?? "");
   } catch {
     return new Response("The url option is not a URL", { status: 400 });
   }
@@ -106,7 +110,7 @@ async function http(request) {
 
   let headers;
   try {
-    headers = parseHeaders(searchParams.get("headers") ?? "");
+    headers = parseHeaders(options.get("headers") ?? "");
   } catch (error) {
     return new Response(`The headers option is not correct: ${error.message}`, {
       status: 400,
@@ -118,7 +122,7 @@ async function http(request) {
     if (!path.endsWith("/")) {
       return await getFile(target, method, headers, path, request);
     }
-    const noHead = searchParams.get("no_head") === "true";
+    const noHead = options.get("no_head") === "true";
     const query = new URLSearchParams(searchParams);
     for (const name of SECRETS) query.delete(name);
     return await getFolder(target, method, headers, noHead, `${query}`);

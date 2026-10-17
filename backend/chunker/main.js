@@ -103,6 +103,7 @@
 import { createHash } from "node:crypto";
 import { readListing, renderListing } from "@rfetch/lib/listing";
 import { mimeType } from "@rfetch/lib/mime";
+import { isOption, optionsOf, remoteHeaders } from "@rfetch/lib/options";
 import { decodePath, encodePath } from "@rfetch/lib/path";
 import {
   notSatisfiable,
@@ -169,22 +170,26 @@ export const options = {
  * @property {boolean} noRename True for the transactions "norename".
  * @property {boolean} failHard
  * @property {ReturnType<typeof nameFormat>} names
+ * @property {Headers} forward The options of the request for the remote,
+ *   for example `RCLONE_CONFIG_NAME_KEY`.
  */
 
 /**
  * Sends the requests to the remote under the chunker with the global
  * `fetch`.
  * @param {Request} request
+ * @param {Record<string, unknown>} [env] The options in the variables
+ *   `RCLONE_CHUNKER_*`.
  * @returns {Promise<Response>}
  */
-async function chunker(request) {
+async function chunker(request, env = {}) {
   const { method } = request;
   const { pathname, searchParams } = new URL(request.url);
 
   /** @type {Config} */
   let config;
   try {
-    config = configOf(searchParams);
+    config = configOf(request, env);
   } catch (error) {
     return new Response(error.message, { status: 400 });
   }
@@ -204,7 +209,7 @@ async function chunker(request) {
     // A folder is a folder of the remote.
     const response = await send(config, path, {
       method,
-      headers: request.headers,
+      headers: remoteHeaders(request.headers, "chunker", config.remote),
     });
     await response.body?.cancel();
     const headers = new Headers();
@@ -245,13 +250,15 @@ class ChunkerError extends Error {
 
 /**
  * Reads the options, as `NewFs` of the chunker of rclone.
- * @param {URLSearchParams} searchParams
+ * @param {Request} request
+ * @param {Record<string, unknown>} env
  * @returns {Config}
  */
-function configOf(searchParams) {
-  const get = (name) => searchParams.get(name) ?? options.default[name];
+function configOf(request, env) {
+  const values = optionsOf(request, "chunker", env);
+  const get = (name) => values.get(name) ?? options.default[name];
 
-  const remote = searchParams.get("remote")?.replace(/\/$/, "");
+  const remote = values.get("remote")?.replace(/\/$/, "");
   if (!remote) throw new Error("Missing remote");
 
   const chunkSize = parseSize(`${get("chunk_size")}`);
@@ -306,6 +313,10 @@ function configOf(searchParams) {
     noRename,
     failHard: get("fail_hard") === "true",
     names: nameFormat(get("name_format"), startFrom),
+    forward: new Headers(
+      [...remoteHeaders(request.headers, "chunker", remote)]
+        .filter(([name]) => isOption(name)),
+    ),
   };
 }
 
@@ -908,8 +919,12 @@ async function deleteFile(config, dir, name) {
  * @param {RequestInit} [init]
  * @returns {Promise<Response>}
  */
-function send(config, path, init) {
-  return fetch(config.remote + encodePath(path), init);
+function send(config, path, init = {}) {
+  const headers = new Headers(init.headers);
+  for (const [name, value] of config.forward) {
+    if (!headers.has(name)) headers.set(name, value);
+  }
+  return fetch(config.remote + encodePath(path), { ...init, headers });
 }
 
 /**

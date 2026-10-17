@@ -145,7 +145,7 @@ const params = {
   password2: SALT,
 };
 
-backendSuite("crypt", crypt, { params });
+backendSuite("crypt", crypt, { type: "crypt", params });
 
 describe("crypt", () => {
   const fs = remote(crypt, { params });

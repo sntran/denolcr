@@ -1,4 +1,5 @@
 import { formatBytes } from "@rfetch/lib/format";
+import { optionsOf, remoteHeaders } from "@rfetch/lib/options";
 
 import { auth } from "./auth.js";
 import { list } from "./list.js";
@@ -15,11 +16,36 @@ const FILE_HEADERS = new Headers({
 });
 
 /**
+ * The options that are secret. They are not in the links of a list.
+ */
+const SECRETS = ["token", "client_secret", "service_account_credentials"];
+
+/**
  * Serves a Google Drive remote.
  * @param {Request} request
+ * @param {Record<string, unknown>} [env] The options in the variables
+ *   `RCLONE_DRIVE_*`.
  * @returns {Promise<Response>}
  */
-async function drive(request) {
+async function drive(request, env = {}) {
+  // The links of a list keep the query of the request, with no secret.
+  const links = new URL(request.url).searchParams;
+  for (const name of SECRETS) links.delete(name);
+  // The parts of the backend read the options in the query. The options of
+  // rclone do not go to Google.
+  const target = new URL(request.url);
+  target.search = `${optionsOf(request, "drive", env)}`;
+  request = new Request(target, {
+    method: request.method,
+    headers: remoteHeaders(
+      request.headers,
+      "drive",
+      "https://www.googleapis.com/",
+    ),
+    body: request.body,
+    duplex: "half",
+  });
+
   //#region Auth
   const response = await auth(request);
   if (!response.ok) {
@@ -45,7 +71,7 @@ async function drive(request) {
   let status = 200, body = null;
 
   const { method, url } = request;
-  let { pathname, searchParams } = new URL(url);
+  let { pathname } = new URL(url);
 
   pathname = decodeURIComponent(pathname);
   const isDirectory = pathname.endsWith("/");
@@ -98,7 +124,7 @@ async function drive(request) {
             <tbody>
               <tr>
                 <td>📁</td>
-                <td><a href="../?${searchParams}">Go up</a></td>
+                <td><a href="../?${links}">Go up</a></td>
                 <td>—</td>
                 <td>—</td>
               </tr>
@@ -115,7 +141,7 @@ async function drive(request) {
                 <td>${isDirectory ? "📁" : "📄"}</td>
                 <td>
                   <a
-                    href="${filePath}?${searchParams}"
+                    href="${filePath}?${links}"
                     type="${mimeType}"
                   >${name}</a>
                 </td>

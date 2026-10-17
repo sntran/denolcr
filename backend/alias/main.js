@@ -20,18 +20,22 @@
  */
 
 import { relink } from "@rfetch/lib/listing";
+import { optionsOf, remoteHeaders } from "@rfetch/lib/options";
 import { decodePath, encodePath } from "@rfetch/lib/path";
 
 /**
  * Sends the requests to the remote of the alias with the global `fetch`.
  * @param {Request} request
+ * @param {Record<string, unknown>} [env] The options in the variables
+ *   `RCLONE_ALIAS_*`.
  * @returns {Promise<Response>}
  */
-async function alias(request) {
+async function alias(request, env = {}) {
   const { method } = request;
   const { pathname, searchParams } = new URL(request.url);
 
-  const remote = searchParams.get("remote")?.replace(/\/$/, "");
+  const remote = optionsOf(request, "alias", env).get("remote")
+    ?.replace(/\/$/, "");
   if (!remote) {
     return new Response("Missing remote", { status: 400 });
   }
@@ -42,7 +46,10 @@ async function alias(request) {
 
   // Delegates to the underlying remote.
   /** @type {RequestInit} */
-  const init = { method, headers: request.headers };
+  const init = {
+    method,
+    headers: remoteHeaders(request.headers, "alias", remote),
+  };
   if (request.body) {
     init.body = request.body;
     init.duplex = "half";
