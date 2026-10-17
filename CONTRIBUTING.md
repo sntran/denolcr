@@ -138,6 +138,6 @@ of the root folder.
 Run all the tests with `npm test`, or the tests of one backend with
 `node --test backend/remote`.
 
-Some tests compare rfetch with rclone, for example the tests of
-`lib/ini.js`. They run when `rclone` is in the `PATH`, or when the variable
-`RCLONE` is the path of rclone. Else they are skipped.
+Some tests compare rfetch with rclone, for example the tests of `lib/ini.js`.
+They run when `rclone` is in the `PATH`, or when the variable `RCLONE` is the
+path of rclone. Else they are skipped.
