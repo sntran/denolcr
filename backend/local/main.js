@@ -1,29 +1,42 @@
 import process from "node:process";
-import { join } from "node:path";
+import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import { formatBytes } from "../../lib/format.js";
+import { escapeHTML } from "../../lib/html.js";
 import { mimeType } from "../../lib/mime.js";
+import { decodePath } from "../../lib/path.js";
 
 /**
- * Serves a local remote
+ * Serves a local remote: the files and the folders in the current folder.
  * @param {Request} request
  * @returns {Promise<Response>}
  */
 async function local(request) {
   const { method, url } = request;
   const { pathname, searchParams } = new URL(url);
-  const absolutePath = join(process.cwd?.() || ".", pathname);
+  const root = process.cwd?.() || ".";
+  const path = decodePath(pathname);
+  const absolutePath = path === null ? null : join(root, path);
+
+  // A path must not go out of the root, also on Windows, where `\` is a
+  // separator too.
+  if (absolutePath === null || isOutside(root, absolutePath)) {
+    return new Response(null, { status: 400 });
+  }
 
   // Have to use dynamic import here because `fs/promises` is not available in
   // Worker environments.
   const { mkdir, open, readdir, rm, stat } = await import("node:fs/promises");
 
-  let stats;
+  /** @type {import("node:fs").Stats | null} */
+  const stats = await stat(absolutePath).catch(() => null);
 
   const headers = new Headers();
   let status = 200, body = null;
 
   if (method === "HEAD" || method === "GET") {
-    stats = await stat(absolutePath);
+    if (!stats) {
+      return new Response(null, { status: 404 });
+    }
 
     if (stats.isDirectory()) {
       /**
@@ -33,6 +46,8 @@ async function local(request) {
       files.sort((a, b) => a.name.localeCompare(b.name));
 
       if (method === "GET") {
+        const query = escapeHTML(`${searchParams}`);
+
         body = new ReadableStream({
           async start(controller) {
             controller.enqueue(`
@@ -58,38 +73,34 @@ async function local(request) {
               <tbody>
                 <tr>
                   <td>📁</td>
-                  <td><a href="../?${searchParams}">Go up</a></td>
+                  <td><a href="../?${query}">Go up</a></td>
                   <td>—</td>
                   <td>—</td>
                 </tr>
               `);
 
-            for await (const file of files) {
+            for (const file of files) {
               const name = file.name;
-              let filePath = file.name;
               const isDirectory = file.isDirectory();
-              if (isDirectory) {
-                filePath += "/";
-              }
+              const href = `${encodeURIComponent(name)}${
+                isDirectory ? "/" : ""
+              }`;
 
-              const { size, mtime } = await stat(
-                join(absolutePath, filePath),
-              );
+              const { size, mtime } = await stat(join(absolutePath, name));
 
               controller.enqueue(`<tr>
                 <td>${isDirectory ? "📁" : "📄"}</td>
                 <td>
                   <a
-                    href="${filePath}?${searchParams}"
-                    type=""
-                  >${name}</a>
+                    href="${href}?${query}"
+                    type="${isDirectory ? "" : escapeHTML(mimeType(name))}"
+                  >${escapeHTML(name)}</a>
                 </td>
-                <td>
-                  <data
+                <td>${
+                isDirectory ? "—" : `<data
                     value="${size}"
-                  >${
-                size ? formatBytes(Number(size), { locale: true }) : "—"
-              }</data>
+                  >${formatBytes(Number(size), { locale: true })}</data>`
+              }
                 </td>
                 <td>${
                 mtime
@@ -98,8 +109,6 @@ async function local(request) {
                   >${mtime.toLocaleString()}</time>`
                   : "-"
               }
-                </td>
-
                 </td>
               </tr>`);
             }
@@ -112,7 +121,7 @@ async function local(request) {
 
       headers.set("Content-Type", "text/html;charset=utf-8");
     } else {
-      headers.append("Content-Type", mimeType(pathname));
+      headers.append("Content-Type", mimeType(path));
       headers.append("Content-Length", stats.size.toString());
 
       if (method === "GET") {
@@ -122,14 +131,15 @@ async function local(request) {
           async pull(controller) {
             const chunk = new Uint8Array(64 * 1024);
             const { bytesRead } = await file.read(chunk, 0);
-            controller.enqueue(chunk.slice(0, bytesRead));
             if (bytesRead === 0) {
               controller.close();
-              file.close();
+              await file.close();
+              return;
             }
+            controller.enqueue(chunk.subarray(0, bytesRead));
           },
-          cancel() {
-            file.close();
+          async cancel() {
+            await file.close();
           },
         });
       }
@@ -137,40 +147,55 @@ async function local(request) {
 
     const mtime = stats.mtime?.toUTCString();
     if (mtime) headers.append("Last-Modified", mtime);
-  }
-
-  /** `PUT` upserts a file at `pathname`. */
-  if (method === "PUT") {
+  } else if (method === "PUT") {
     // Folder ending with trailing slash.
-    if (pathname.endsWith("/")) {
+    if (path.endsWith("/")) {
       await mkdir(absolutePath, { recursive: true });
     } else {
+      await mkdir(dirname(absolutePath), { recursive: true });
       const file = await open(absolutePath, "w");
-      await request.body.pipeTo(
-        new WritableStream({
-          async write(chunk) {
-            await file.write(chunk);
-          },
-          async close() {
-            await file.close();
-          },
-        }),
-      );
+      try {
+        for await (const chunk of request.body ?? []) {
+          await file.write(chunk);
+        }
+      } finally {
+        await file.close();
+      }
     }
 
     status = 201;
     headers.append("Content-Location", pathname);
-  }
+  } else if (method === "DELETE") {
+    if (!stats) {
+      return new Response(null, { status: 404 });
+    }
+    // The root is the current folder, which must stay.
+    if (path === "/") {
+      return new Response(null, { status: 403 });
+    }
 
-  if (method === "DELETE") {
     await rm(absolutePath, { recursive: true });
     status = 204;
+  } else {
+    status = 405;
+    headers.set("Allow", "GET, HEAD, PUT, DELETE");
   }
 
   return new Response(body, {
     status,
     headers,
   });
+}
+
+/**
+ * Tells if a path is out of the root folder.
+ * @param {string} root
+ * @param {string} path
+ * @returns {boolean}
+ */
+function isOutside(root, path) {
+  const rest = relative(root, path);
+  return rest === ".." || rest.startsWith(`..${sep}`) || isAbsolute(rest);
 }
 
 export default {
