@@ -24,7 +24,7 @@
  * To get only one file, use [copyurl](../../cmd/copyurl/main.js).
  */
 
-import { parseList } from "./list.js";
+import { parseList } from "@rfetch/lib/list";
 import { childOf, renderListing } from "@rfetch/lib/listing";
 import { mimeType } from "@rfetch/lib/mime";
 import { optionsOf } from "@rfetch/lib/options";

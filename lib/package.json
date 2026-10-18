@@ -8,6 +8,7 @@
     "./fspath": "./fspath.js",
     "./html": "./html.js",
     "./ini": "./ini.js",
+    "./list": "./list.js",
     "./listing": "./listing.js",
     "./mime": "./mime.js",
     "./obscure": "./obscure.js",

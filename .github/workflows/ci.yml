@@ -38,7 +38,7 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
 
-      # Go runs the tests of backend/http/list.js against encoding/csv.
+      # Go runs the tests of lib/list.js against encoding/csv.
       - uses: actions/setup-go@v5
         with:
           go-version: stable
