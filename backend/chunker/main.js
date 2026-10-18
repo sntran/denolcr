@@ -171,7 +171,7 @@ export const options = {
  * @property {boolean} failHard
  * @property {ReturnType<typeof nameFormat>} names
  * @property {Headers} forward The options of the request for the remote,
- *   for example `RCLONE_CONFIG_NAME_KEY`.
+ *   for example `RFETCH_CONFIG_NAME_KEY`.
  */
 
 /**
@@ -179,7 +179,7 @@ export const options = {
  * `fetch`.
  * @param {Request} request
  * @param {Record<string, unknown>} [env] The options in the variables
- *   `RCLONE_CHUNKER_*`.
+ *   `RFETCH_CHUNKER_*` or `RCLONE_CHUNKER_*`.
  * @returns {Promise<Response>}
  */
 async function chunker(request, env = {}) {

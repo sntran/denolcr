@@ -27,7 +27,7 @@ import { decodePath, encodePath } from "@rfetch/lib/path";
  * Sends the requests to the remote of the alias with the global `fetch`.
  * @param {Request} request
  * @param {Record<string, unknown>} [env] The options in the variables
- *   `RCLONE_ALIAS_*`.
+ *   `RFETCH_ALIAS_*` or `RCLONE_ALIAS_*`.
  * @returns {Promise<Response>}
  */
 async function alias(request, env = {}) {

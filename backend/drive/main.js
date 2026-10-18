@@ -24,7 +24,7 @@ const SECRETS = ["token", "client_secret", "service_account_credentials"];
  * Serves a Google Drive remote.
  * @param {Request} request
  * @param {Record<string, unknown>} [env] The options in the variables
- *   `RCLONE_DRIVE_*`.
+ *   `RFETCH_DRIVE_*` or `RCLONE_DRIVE_*`.
  * @returns {Promise<Response>}
  */
 async function drive(request, env = {}) {

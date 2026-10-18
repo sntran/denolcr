@@ -92,27 +92,30 @@ A backend reads its options with `optionsOf(request, "remote", env)` of
 `@rfetch/lib/options`, in this order:
 
 1. a field of the query, for example `?password=…`;
-2. the header `RCLONE_REMOTE_NAME` of the request, for example
-   `RCLONE_CRYPT_PASSWORD`;
-3. the variable `RCLONE_REMOTE_NAME` of `env`.
+2. the header `RFETCH_REMOTE_NAME` of the request, for example
+   `RFETCH_CRYPT_PASSWORD`;
+3. the variable `RFETCH_REMOTE_NAME` of `env`.
 
-These are the names of the variables of rclone. Thus a client can give a secret
-in a header, and a Worker can give it in `env`: then the secret is not in a URL.
-A backend makes the links of a list from the query of the request only, with no
-secret option. Thus an option of a header or of `env` is never in a link.
+The prefix `RCLONE_` of rclone also works, for compatibility, for example
+`RCLONE_CRYPT_PASSWORD`. In each place, `RFETCH_` takes the place of `RCLONE_`.
+Thus a client can give a secret in a header, and a Worker can give it in `env`:
+then the secret is not in a URL. A backend makes the links of a list from the
+query of the request only, with no secret option. Thus an option of a header or
+of `env` is never in a link.
 
 A backend on top of another remote sends the headers
 `remoteHeaders(request.headers, "remote", remote)` to that remote. The other
-options of the request go on, for example a remote `RCLONE_CONFIG_NAME_TYPE`
+options of the request go on, for example a remote `RFETCH_CONFIG_NAME_TYPE`
 that only the headers tell. The options of the backend itself do not go. When
 the remote is a URL, no option goes: a secret must not go out to a server.
 
-The `fetch` of `mod.js` reads the headers `RCLONE_*` of a request as the
-variables of rclone, in the place of the variables of the process. A remote can
-come only from variables: `RCLONE_CONFIG_NAME_TYPE` and its options, as in
+The `fetch` of `mod.js` reads the headers `RFETCH_*` and `RCLONE_*` of a request
+as the variables, in the place of the variables of the process. A remote can
+come only from variables: `RFETCH_CONFIG_NAME_TYPE` and its options, as in
 rclone. The backend gets the options of the path, the connection string and the
-flags, in its query, and all the other options in `env`. The headers `RCLONE_*`
-never go out to a URL.
+flags, in its query, and all the other options in `env`, as
+`RFETCH_REMOTE_NAME`. The headers `RFETCH_*` and `RCLONE_*` never go out to a
+URL.
 
 ## Workspaces
 
@@ -242,8 +245,9 @@ Other options are for some backends only:
   `CanHaveEmptyDirectories` of rclone. For example, `s3` with no folder markers.
   Then the suite accepts 404 for a folder with no file.
 - `type`: the type of the backend in rclone, for example `crypt`. With it, the
-  suite also gives the `params` in the headers `RCLONE_TYPE_NAME` and in `env`,
-  and makes sure that no link of a list has a query.
+  suite also gives the `params` in the headers `RFETCH_TYPE_NAME` and in the
+  variables `RCLONE_TYPE_NAME` of `env`, and makes sure that no link of a list
+  has a query.
 
 Put the tests for what only one backend does in the same file, after the suite.
 For example, the tests of the local backend make sure that a path cannot go out
@@ -261,9 +265,10 @@ package of Go, when `go` is in the `PATH` or when the variable `GO` is its path.
 The tests of `s3` use `rclone serve s3`, a server of the S3 API on a local
 folder. They also run on a real service when the variables `S3_TEST_ENDPOINT`
 and `S3_TEST_BUCKET` are set, with the region in `S3_TEST_REGION` (`auto` by
-default). Put the credentials in `RCLONE_S3_ACCESS_KEY_ID` and
-`RCLONE_S3_SECRET_ACCESS_KEY`. Use a bucket only for the tests: the tests make
-folders in it and delete them.
+default). Put the credentials in `RFETCH_S3_ACCESS_KEY_ID` and
+`RFETCH_S3_SECRET_ACCESS_KEY`, or in the variables of rclone with the prefix
+`RCLONE_`. Use a bucket only for the tests: the tests make folders in it and
+delete them.
 
 ## Continuous integration
 

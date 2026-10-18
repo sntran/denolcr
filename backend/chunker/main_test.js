@@ -232,9 +232,9 @@ test("chunker on a named remote of the headers", async () => {
   // goes to the remote `vault`, which only the headers tell.
   const client = remote(backend, {
     headers: {
-      RCLONE_CHUNKER_REMOTE: "vault:chunker-headers",
-      RCLONE_CHUNKER_CHUNK_SIZE: "1k",
-      RCLONE_CONFIG_VAULT_TYPE: "memory",
+      RFETCH_CHUNKER_REMOTE: "vault:chunker-headers",
+      RFETCH_CHUNKER_CHUNK_SIZE: "1k",
+      RFETCH_CONFIG_VAULT_TYPE: "memory",
     },
   });
   const data = content(2500);

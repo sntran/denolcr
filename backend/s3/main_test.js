@@ -175,13 +175,17 @@ test("puts the markers of the parent folders, as rclone", async () => {
 });
 
 // A run on a real service, for example Cloudflare R2, when S3_TEST_ENDPOINT
-// and S3_TEST_BUCKET are set. The credentials are in RCLONE_S3_ACCESS_KEY_ID
-// and RCLONE_S3_SECRET_ACCESS_KEY, thus they are not in a URL.
+// and S3_TEST_BUCKET are set. The credentials are in RFETCH_S3_ACCESS_KEY_ID
+// and RFETCH_S3_SECRET_ACCESS_KEY, or in the variables of rclone with the
+// prefix RCLONE_, thus they are not in a URL.
 const { S3_TEST_ENDPOINT, S3_TEST_BUCKET, S3_TEST_REGION } = process.env;
 if (S3_TEST_ENDPOINT && S3_TEST_BUCKET) {
+  /** @param {string} name */
+  const variable = (name) =>
+    process.env[`RFETCH_S3_${name}`] ?? process.env[`RCLONE_S3_${name}`];
   const env = {
-    RCLONE_S3_ACCESS_KEY_ID: process.env.RCLONE_S3_ACCESS_KEY_ID,
-    RCLONE_S3_SECRET_ACCESS_KEY: process.env.RCLONE_S3_SECRET_ACCESS_KEY,
+    RFETCH_S3_ACCESS_KEY_ID: variable("ACCESS_KEY_ID"),
+    RFETCH_S3_SECRET_ACCESS_KEY: variable("SECRET_ACCESS_KEY"),
   };
   const params = {
     endpoint: S3_TEST_ENDPOINT,

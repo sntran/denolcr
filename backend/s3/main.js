@@ -32,9 +32,10 @@
  *   no marker. A marker is an empty object with the name of the folder and
  *   a `/`, thus a folder can be empty.
  *
- * Each option can also come from `env`, with the name of the variable of
- * rclone, for example `RCLONE_S3_SECRET_ACCESS_KEY`. In a Worker, put the
- * credentials in `env`, not in a URL.
+ * Each option can also come from a header or from `env`, with the name of
+ * the variable of rfetch, for example `RFETCH_S3_SECRET_ACCESS_KEY`, or of
+ * rclone, `RCLONE_S3_SECRET_ACCESS_KEY`. Put the credentials in a header or
+ * in `env`, not in a URL.
  */
 import { createHash } from "node:crypto";
 import { renderListing } from "@rfetch/lib/listing";
@@ -111,7 +112,7 @@ class S3Error extends Error {
  * Serves an S3 remote.
  * @param {Request} request
  * @param {Record<string, unknown>} [env] The options from the variables
- *   `RCLONE_S3_*`.
+ *   `RFETCH_S3_*` or `RCLONE_S3_*`.
  * @returns {Promise<Response>}
  */
 async function s3(request, env = {}) {

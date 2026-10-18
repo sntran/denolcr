@@ -315,7 +315,8 @@ describe("crypt with its options in headers", () => {
       const client = remote(crypt, {
         headers: {
           ...headers,
-          RCLONE_CRYPT_REMOTE: new URL("/crypt-url/", server.url).href,
+          RFETCH_CRYPT_REMOTE: new URL("/crypt-url/", server.url).href,
+          RFETCH_CONFIG_OTHER_TYPE: "memory",
         },
       });
       assert.equal(
@@ -326,7 +327,7 @@ describe("crypt with its options in headers", () => {
       assert.ok(seen.length > 0);
       for (const headers of [...sent, ...seen]) {
         assert.deepEqual(
-          [...headers.keys()].filter((name) => name.startsWith("rclone_")),
+          [...headers.keys()].filter((name) => /^r(clone|fetch)_/.test(name)),
           [],
         );
       }

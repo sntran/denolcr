@@ -12,7 +12,7 @@ import { config, fetch } from "./mod.js";
  * `TRACE`: the options of the config file and of the variables are not in
  * the query, thus they are never in a link.
  * @param {string} body
- * @param {string} name For example `RCLONE_ALIAS_REMOTE`.
+ * @param {string} name For example `RFETCH_ALIAS_REMOTE`.
  */
 function variableOf(body, name) {
   const line = body.split("\r").find((line) => line.startsWith(`${name}: `));
@@ -115,7 +115,7 @@ test("fetch", async (t) => {
 
         assert.deepEqual(pathname, "/");
         assert(!searchParams.has("remote"), "the config is not in the query");
-        assert.deepEqual(variableOf(body, "RCLONE_ALIAS_REMOTE"), `source:`);
+        assert.deepEqual(variableOf(body, "RFETCH_ALIAS_REMOTE"), `source:`);
       });
 
       await t.test(
@@ -131,8 +131,8 @@ test("fetch", async (t) => {
           const { searchParams } = new URL(url, "file:");
 
           assert(!searchParams.has("skip_links"), "not in the query");
-          assert.deepEqual(variableOf(body, "RCLONE_ALIAS_REMOTE"), `source:`);
-          assert.deepEqual(variableOf(body, "RCLONE_ALIAS_SKIP_LINKS"), `true`);
+          assert.deepEqual(variableOf(body, "RFETCH_ALIAS_REMOTE"), `source:`);
+          assert.deepEqual(variableOf(body, "RFETCH_ALIAS_SKIP_LINKS"), `true`);
         },
       );
 
@@ -149,7 +149,7 @@ test("fetch", async (t) => {
           const { searchParams } = new URL(url, "file:");
 
           assert(!searchParams.has("remote"), "not in the query");
-          assert.deepEqual(variableOf(body, "RCLONE_ALIAS_REMOTE"), `/tmp/1`);
+          assert.deepEqual(variableOf(body, "RFETCH_ALIAS_REMOTE"), `/tmp/1`);
           assert(
             !searchParams.has("alias_remote"),
             "should not have param prefixed with backend type",
@@ -170,7 +170,7 @@ test("fetch", async (t) => {
           const { searchParams } = new URL(url, "file:");
 
           assert(!searchParams.has("remote"), "not in the query");
-          assert.deepEqual(variableOf(body, "RCLONE_ALIAS_REMOTE"), `/tmp/2`);
+          assert.deepEqual(variableOf(body, "RFETCH_ALIAS_REMOTE"), `/tmp/2`);
           assert(
             !searchParams.has("config_target_remote"),
             "should not have param prefixed with remote name",
@@ -275,10 +275,40 @@ test("options in the headers of a request", async (t) => {
         headers: { RCLONE_CONFIG_PLACE_REMOTE: "/tmp/header" },
       });
       const body = await response.text();
-      assert.equal(variableOf(body, "RCLONE_ALIAS_REMOTE"), "/tmp/header");
+      assert.equal(variableOf(body, "RFETCH_ALIAS_REMOTE"), "/tmp/header");
     } finally {
       delete process.env.RCLONE_CONFIG_PLACE_TYPE;
       delete process.env.RCLONE_CONFIG_PLACE_REMOTE;
+    }
+  });
+
+  await t.test("RFETCH_ takes the place of RCLONE_", async () => {
+    process.env.RCLONE_CONFIG_BOTH_TYPE = "alias";
+    process.env.RCLONE_CONFIG_BOTH_REMOTE = "/tmp/rclone-env";
+    process.env.RFETCH_CONFIG_BOTH_REMOTE = "/tmp/rfetch-env";
+    try {
+      /** @param {HeadersInit} headers */
+      const remoteOf = async (headers) => {
+        const response = await fetch("both:", { method: "TRACE", headers });
+        return variableOf(await response.text(), "RFETCH_ALIAS_REMOTE");
+      };
+      assert.equal(await remoteOf({}), "/tmp/rfetch-env");
+      // A header takes the place of a variable of the process.
+      assert.equal(
+        await remoteOf({ RCLONE_CONFIG_BOTH_REMOTE: "/tmp/rclone-header" }),
+        "/tmp/rclone-header",
+      );
+      assert.equal(
+        await remoteOf({
+          RCLONE_CONFIG_BOTH_REMOTE: "/tmp/rclone-header",
+          RFETCH_CONFIG_BOTH_REMOTE: "/tmp/rfetch-header",
+        }),
+        "/tmp/rfetch-header",
+      );
+    } finally {
+      delete process.env.RCLONE_CONFIG_BOTH_TYPE;
+      delete process.env.RCLONE_CONFIG_BOTH_REMOTE;
+      delete process.env.RFETCH_CONFIG_BOTH_REMOTE;
     }
   });
 
@@ -320,6 +350,8 @@ test("options in the headers of a request", async (t) => {
       const headers = {
         RCLONE_S3_SECRET_ACCESS_KEY: "secret",
         RCLONE_CONFIG_R2_TYPE: "s3",
+        RFETCH_S3_SECRET_ACCESS_KEY: "secret",
+        RFETCH_CONFIG_R2_TYPE: "s3",
         "X-Other": "other",
       };
       await (await fetch(`${server.url}`, { headers })).text();
@@ -329,7 +361,7 @@ test("options in the headers of a request", async (t) => {
       for (const headers of seen) {
         assert.equal(headers.get("x-other"), "other");
         assert.deepEqual(
-          [...headers.keys()].filter((name) => name.startsWith("rclone_")),
+          [...headers.keys()].filter((name) => /^r(clone|fetch)_/.test(name)),
           [],
         );
       }

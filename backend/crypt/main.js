@@ -159,7 +159,7 @@ const SECRETS = ["password", "password2"];
  * global `fetch`.
  * @param {Request} request
  * @param {Record<string, unknown>} [env] The options in the variables
- *   `RCLONE_CRYPT_*`.
+ *   `RFETCH_CRYPT_*` or `RCLONE_CRYPT_*`.
  * @returns {Promise<Response>}
  */
 async function crypt(request, env = {}) {

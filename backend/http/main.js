@@ -78,7 +78,7 @@ class HTTPError extends Error {
  * Serves a HTTP remote. It is read only, as the http backend of rclone.
  * @param {Request} request
  * @param {Record<string, unknown>} [env] The options in the variables
- *   `RCLONE_HTTP_*`.
+ *   `RFETCH_HTTP_*` or `RCLONE_HTTP_*`.
  * @returns {Promise<Response>}
  */
 async function http(request, env = {}) {

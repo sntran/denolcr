@@ -2,7 +2,7 @@ import { env } from "node:process";
 import { backends, load } from "./backend/main.js";
 import * as commands from "./cmd/main.js";
 import { parse } from "@rfetch/lib/fspath";
-import { isOption } from "@rfetch/lib/options";
+import { isOption, PREFIXES } from "@rfetch/lib/options";
 
 export * from "./cmd/main.js";
 
@@ -83,35 +83,40 @@ const globalFetch = globalThis.fetch;
  *
  * - Parameters in connection strings, e.g. `myRemote,skip_links:`
  * - Flag values as supplied on the command line, e.g. `--skip-links`
- * - Remote specific environment vars, e.g. `RCLONE_CONFIG_MYREMOTE_SKIP_LINKS`
- * - Backend-specific environment vars, e.g. `RCLONE_LOCAL_SKIP_LINKS`
- * - Backend generic environment vars, e.g. `RCLONE_SKIP_LINKS`
+ * - Remote specific environment vars, e.g. `RFETCH_CONFIG_MYREMOTE_SKIP_LINKS`
+ * - Backend-specific environment vars, e.g. `RFETCH_LOCAL_SKIP_LINKS`
+ * - Backend generic environment vars, e.g. `RFETCH_SKIP_LINKS`
  * - Config file, e.g. `skip_links = true`.
  * - Default values, e.g. `false` - these can't be changed.
  *
  * So if both `--skip-links` is supplied on the command line and an environment
- * variable `RCLONE_LOCAL_SKIP_LINKS` is set, the command line flag will take
+ * variable `RFETCH_LOCAL_SKIP_LINKS` is set, the command line flag will take
  * preference.
  *
+ * Each variable can also have the prefix `RCLONE_` of rclone, for
+ * compatibility, for example `RCLONE_LOCAL_SKIP_LINKS`. In each place,
+ * `RFETCH_` takes the place of `RCLONE_`.
+ *
  * A header of the request with the name of a variable, for example
- * `RCLONE_CONFIG_MYREMOTE_SKIP_LINKS`, takes the place of the variable of the
+ * `RFETCH_CONFIG_MYREMOTE_SKIP_LINKS`, takes the place of the variable of the
  * environment. A remote can come only from variables, as in rclone:
- * `RCLONE_CONFIG_MYREMOTE_TYPE` and its options. Thus a request can give
+ * `RFETCH_CONFIG_MYREMOTE_TYPE` and its options. Thus a request can give
  * all its configuration, with no config file.
  *
  * The backend gets the options of the path, the connection string and the
  * flags, in the query of its request. It gets the other options in `env`,
  * the second argument of its `fetch`, with the names of the variables of
- * rclone, for example `RCLONE_LOCAL_SKIP_LINKS`. A backend makes the links of
+ * rfetch, for example `RFETCH_LOCAL_SKIP_LINKS`. A backend makes the links of
  * a list from the query only, thus an option of `env` is never in a link.
  *
- * The headers `RCLONE_*` are only for the backends of rfetch: they never go
+ * The headers `RFETCH_*` and `RCLONE_*` are only for the backends of rfetch:
+ * they never go
  * out to a URL.
  *
  * For non backend configuration the order is as follows:
  *
  * - Flag values as supplied on the command line, e.g. `--stats 5s`.
- * - Environment vars, e.g. `RCLONE_STATS=5s`.
+ * - Environment vars, e.g. `RFETCH_STATS=5s`.
  * - Default values, e.g. `1m` - these can't be changed.
  *
  * ## Other environment variables
@@ -133,12 +138,24 @@ export async function fetch(input, init = {}) {
   const parsed = parse(input);
 
   const headers = new Headers(init.headers);
-  // The variables of rclone: the environment of the process, then the
-  // headers of the request, which take their place.
+  // The variables, by their names with no prefix, for example
+  // `CONFIG_R2_TYPE`: the environment of the process, then the headers of
+  // the request, which take their place. In each place, `RFETCH_` takes the
+  // place of `RCLONE_`.
   /** @type {Record<string, string>} */
-  const variables = { ...env };
-  for (const [key, value] of headers) {
-    if (isOption(key)) variables[key.toUpperCase()] = value;
+  const variables = {};
+  const places = [
+    Object.entries(env),
+    [...headers].map(([key, value]) => [key.toUpperCase(), value]),
+  ];
+  for (const entries of places) {
+    for (const prefix of ["RCLONE_", "RFETCH_"]) {
+      for (const [key, value] of entries) {
+        if (key.startsWith(prefix) && typeof value === "string") {
+          variables[key.slice(prefix.length)] = value;
+        }
+      }
+    }
   }
 
   let { name } = parsed;
@@ -155,7 +172,7 @@ export async function fetch(input, init = {}) {
     name = "";
   } else {
     // A remote of the config file, or of the variables, as rclone.
-    const type = variables[`RCLONE_CONFIG_${name.toUpperCase()}_TYPE`];
+    const type = variables[`CONFIG_${name.toUpperCase()}_TYPE`];
     const response = await commands.config("show", name, undefined, {
       headers: { "Accept": "application/json" },
     }).catch(() => null);
@@ -176,28 +193,27 @@ export async function fetch(input, init = {}) {
   // config file, then the variables.
   const options = new Map(Object.entries(config));
 
-  // Backend generic variables, for example `RCLONE_SKIP_LINKS`. A variable
+  // Backend generic variables, for example `RFETCH_SKIP_LINKS`. A variable
   // of a remote or of a backend is not generic: it is not an option of each
   // backend.
   const specific = ["CONFIG", ...Object.keys(backends)]
-    .map((prefix) => `RCLONE_${prefix.toUpperCase()}_`);
+    .map((prefix) => `${prefix.toUpperCase()}_`);
   for (const [key, value] of Object.entries(variables)) {
-    if (!key.startsWith("RCLONE_")) continue;
     if (specific.some((prefix) => key.startsWith(prefix))) continue;
-    options.set(key.slice("RCLONE_".length).toLowerCase(), value);
+    options.set(key.toLowerCase(), value);
   }
 
-  // Backend-specific variables, for example `RCLONE_LOCAL_SKIP_LINKS`.
-  let prefix = `RCLONE_${type.toUpperCase()}_`;
+  // Backend-specific variables, for example `RFETCH_LOCAL_SKIP_LINKS`.
+  let prefix = `${type.toUpperCase()}_`;
   for (const [key, value] of Object.entries(variables)) {
     if (key.startsWith(prefix)) {
       options.set(key.slice(prefix.length).toLowerCase(), value);
     }
   }
 
-  // Remote specific variables, for example `RCLONE_CONFIG_MYREMOTE_SKIP_LINKS`.
+  // Remote specific variables, for example `RFETCH_CONFIG_MYREMOTE_SKIP_LINKS`.
   if (name) {
-    prefix = `RCLONE_CONFIG_${name.toUpperCase()}_`;
+    prefix = `CONFIG_${name.toUpperCase()}_`;
     for (const [key, value] of Object.entries(variables)) {
       if (key.startsWith(prefix) && key !== `${prefix}TYPE`) {
         options.set(key.slice(prefix.length).toLowerCase(), value);
@@ -225,12 +241,12 @@ export async function fetch(input, init = {}) {
   /** @type {Record<string, string>} */
   const optionsEnv = {};
   for (const [key, value] of options) {
-    optionsEnv[`RCLONE_${type.toUpperCase()}_${key.toUpperCase()}`] = value;
+    optionsEnv[`RFETCH_${type.toUpperCase()}_${key.toUpperCase()}`] = value;
   }
   // The headers of this backend are in its options now.
-  const own = `rclone_${type.toLowerCase()}_`;
+  const own = PREFIXES.map((start) => `${start}${type.toLowerCase()}_`);
   for (const key of [...headers.keys()]) {
-    if (key.startsWith(own)) headers.delete(key);
+    if (own.some((start) => key.startsWith(start))) headers.delete(key);
   }
 
   if (init.method === "TRACE") {
