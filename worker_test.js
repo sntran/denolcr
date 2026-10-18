@@ -146,6 +146,7 @@ test("has no local backend: a client reads no file of the runtime", async () => 
     const [path, headers] of [
       ["/:local:/etc/hostname", {}],
       ["/:alias:hostname", { RFETCH_ALIAS_REMOTE: "/etc/" }],
+      ["/:combine:x/hostname", { RFETCH_COMBINE_UPSTREAMS: "x=/etc" }],
       ["/disk:etc/hostname", { RFETCH_CONFIG_DISK_TYPE: "local" }],
     ]
   ) {

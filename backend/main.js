@@ -24,6 +24,7 @@
 export const backends = {
   alias: () => import("@rfetch/alias"),
   chunker: () => import("@rfetch/chunker"),
+  combine: () => import("@rfetch/combine"),
   crypt: () => import("@rfetch/crypt"),
   drive: () => import("@rfetch/drive"),
   http: () => import("@rfetch/http"),
