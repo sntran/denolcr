@@ -40,25 +40,23 @@ export class EncryptionStream extends TransformStream {
     // Generates initial nonce from OS's crypto strong random number generator.
     const nonce = randomBytes(NONCE_SIZE);
     /** The data that is not a full block yet. */
-    let pending = new Uint8Array(0);
+    const pending = new Pending();
 
     super({
       start(controller) {
         controller.enqueue(concat(magic, nonce));
       },
       transform(chunk, controller) {
-        const data = pending.length ? concat(pending, chunk) : chunk;
+        pending.push(chunk);
+        if (pending.size < blockSize) return;
+        const data = pending.take();
         const size = data.length - data.length % blockSize;
-        if (size > 0) {
-          controller.enqueue(
-            seal(key, nonce, data.subarray(0, size), blockSize),
-          );
-        }
-        pending = data.slice(size);
+        controller.enqueue(seal(key, nonce, data.subarray(0, size), blockSize));
+        pending.push(data.subarray(size));
       },
       flush(controller) {
-        if (pending.length > 0) {
-          controller.enqueue(seal(key, nonce, pending, blockSize));
+        if (pending.size > 0) {
+          controller.enqueue(seal(key, nonce, pending.take(), blockSize));
         }
       },
     });
@@ -87,17 +85,15 @@ export class DecryptionStream extends TransformStream {
       ? add(options.nonce.slice(), options.block ?? 0)
       : null;
     /** The data that is not a full header or block yet. */
-    let pending = new Uint8Array(0);
+    const pending = new Pending();
 
     super({
       transform(chunk, controller) {
-        const data = pending.length ? concat(pending, chunk) : chunk;
+        pending.push(chunk);
+        if (pending.size < (nonce ? blockLength : headerSize)) return;
+        const data = pending.take();
         let offset = 0;
         if (!nonce) {
-          if (data.length < headerSize) {
-            pending = data.slice();
-            return;
-          }
           if (magic.some((byte, index) => data[index] !== byte)) {
             throw new Error(Errors.BAD_MAGIC);
           }
@@ -110,17 +106,17 @@ export class DecryptionStream extends TransformStream {
           const boxes = data.subarray(offset, offset + size);
           controller.enqueue(open(key, nonce, boxes, blockSize));
         }
-        pending = data.slice(offset + size);
+        pending.push(data.subarray(offset + size));
       },
       flush(controller) {
         if (!nonce) {
           throw new Error(Errors.TOO_SHORT);
         }
-        if (pending.length > 0) {
-          if (pending.length <= TAG_SIZE) {
+        if (pending.size > 0) {
+          if (pending.size <= TAG_SIZE) {
             throw new Error(Errors.BAD_HEADER);
           }
-          controller.enqueue(open(key, nonce, pending, blockSize));
+          controller.enqueue(open(key, nonce, pending.take(), blockSize));
         }
       },
     });
@@ -276,6 +272,45 @@ function open(key, nonce, boxes, blockSize) {
  */
 function randomBytes(length) {
   return crypto.getRandomValues(new Uint8Array(length));
+}
+
+/**
+ * The bytes of the chunks that are not a full block yet. The chunks join
+ * only when a full block is there: a join for each chunk copies the bytes
+ * again and again, and a request body in a Worker comes in chunks of a few
+ * KiB.
+ */
+class Pending {
+  /** @type {Uint8Array[]} */
+  #chunks = [];
+  size = 0;
+
+  /** @param {Uint8Array} chunk */
+  push(chunk) {
+    if (chunk.length === 0) return;
+    this.#chunks.push(chunk);
+    this.size += chunk.length;
+  }
+
+  /**
+   * Gives all the bytes in one array, and keeps no bytes.
+   * @returns {Uint8Array}
+   */
+  take() {
+    const chunks = this.#chunks;
+    let result = chunks[0] ?? new Uint8Array(0);
+    if (chunks.length > 1) {
+      result = new Uint8Array(this.size);
+      let offset = 0;
+      for (const chunk of chunks) {
+        result.set(chunk, offset);
+        offset += chunk.length;
+      }
+    }
+    this.#chunks = [];
+    this.size = 0;
+    return result;
+  }
 }
 
 /**
