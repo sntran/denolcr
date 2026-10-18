@@ -145,7 +145,7 @@ export async function fetch(input, init = {}) {
   /** @type {Record<string, string>} */
   const variables = {};
   const places = [
-    Object.entries(env),
+    variablesOf(env),
     [...headers].map(([key, value]) => [key.toUpperCase(), value]),
   ];
   for (const entries of places) {
@@ -287,6 +287,26 @@ export async function fetch(input, init = {}) {
     }),
     optionsEnv,
   );
+}
+
+/**
+ * Gives the variables `RFETCH_*` and `RCLONE_*` of the environment of the
+ * process. It reads only the names, then the values of these variables:
+ * Node.js reads each value of `process.env` from the system, which takes
+ * much time.
+ * @param {Record<string, string | undefined>} variables
+ * @returns {[string, string][]}
+ */
+function variablesOf(variables) {
+  /** @type {[string, string][]} */
+  const entries = [];
+  for (const key of Object.keys(variables)) {
+    if (key.startsWith("RFETCH_") || key.startsWith("RCLONE_")) {
+      const value = variables[key];
+      if (typeof value === "string") entries.push([key, value]);
+    }
+  }
+  return entries;
 }
 
 /**
