@@ -319,11 +319,13 @@ in Node.js and in workerd, the runtime of Cloudflare Workers:
   times of workerd change much from one run to the next: run it three times, and
   use the median.
 
-- `node bench/rclone.js` runs the same commands with rfetch and with rclone,
-  which must be in the PATH or in the variable `RCLONE`: cat, rcat and
-  `lsjson --recursive` on local files, crypt and chunker. First it makes sure
-  that the two tools give the same data and the same lists. The time is the time
-  of the whole process, with the start of Node.js or of rclone.
+- `node bench/rclone.js [RUNTIME...]` runs the same commands with rfetch and
+  with rclone, which must be in the PATH or in the variable `RCLONE`: cat, rcat
+  and `lsjson --recursive` on local files, crypt and chunker. Each RUNTIME is a
+  program of Node.js, Deno or Bun that runs rfetch, for example
+  `node bench/rclone.js node deno bun`. First it makes sure that each runtime
+  gives the same data and the same lists as rclone. The time is the time of the
+  whole process, with the start of the runtime or of rclone.
 
 Measure before and after a change for speed, and write the two times in the
 message of the commit.

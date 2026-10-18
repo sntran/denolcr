@@ -1,15 +1,18 @@
 /**
  * Compares the commands of rfetch with the commands of rclone:
- * `node bench/rclone.js`. rclone must be in the PATH, or in the variable
- * RCLONE.
+ * `node bench/rclone.js [RUNTIME...]`. rclone must be in the PATH, or in the
+ * variable RCLONE.
+ *
+ * Each RUNTIME runs rfetch: a program of Node.js, Deno or Bun, for example
+ * `node bench/rclone.js node deno bun /opt/node26/bin/node`. With no
+ * RUNTIME, the Node.js of this script runs rfetch.
  *
  * Each case runs the same command of each tool as a new process, with the
  * same remotes in the variables RCLONE_CONFIG_*, on the same files in a
- * temporary folder, which is the current folder of each process: the local
- * backend of rfetch reads only the files in its current folder. The time is
- * the time of the whole process, as a user
- * sees it: the start of Node.js or of rclone is in it. The first case, a
- * list of an empty folder, shows the time of the start.
+ * temporary folder, which is the current folder of each process. The time is
+ * the time of the whole process, as a user sees it: the start of the runtime
+ * or of rclone is in it. The first case, a list of an empty folder, shows the
+ * time of the start.
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
@@ -23,7 +26,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const RCLONE = process.env.RCLONE || "rclone";
@@ -50,11 +53,41 @@ const env = {
   RCLONE_CONFIG_CHUNKS_CHUNK_SIZE: "8M",
 };
 
-/** The command of a tool, as a program and its arguments. */
-const tools = {
-  rfetch: (args) => [process.execPath, [RFETCH, ...args]],
-  rclone: (args) => [RCLONE, args],
-};
+/**
+ * The command of a runtime that runs rfetch, as a program and its arguments.
+ * @param {string} program
+ * @returns {(args: string[]) => [string, string[]]}
+ */
+function runtime(program) {
+  if (basename(program).startsWith("deno")) {
+    return (args) => [program, ["run", "-A", RFETCH, ...args]];
+  }
+  return (args) => [program, [RFETCH, ...args]];
+}
+
+/** The name of a runtime, with its version, for example `node 22.22.0`. */
+function nameOf(program) {
+  const version = execFileSync(program, ["--version"], { encoding: "utf8" })
+    .match(/\d+\.\d+\.\d+/)?.[0];
+  const kind = basename(program).startsWith("deno")
+    ? "deno"
+    : basename(program).startsWith("bun")
+    ? "bun"
+    : "node";
+  return `${kind} ${version}`;
+}
+
+/**
+ * The command of each tool, as a program and its arguments: the runtimes of
+ * rfetch, then rclone.
+ * @type {Record<string, (args: string[]) => [string, string[]]>}
+ */
+const tools = {};
+const runtimes = process.argv.slice(2);
+for (const program of runtimes.length ? runtimes : [process.execPath]) {
+  tools[`rfetch on ${nameOf(program)}`] = runtime(program);
+}
+tools.rclone = (args) => [RCLONE, args];
 
 /**
  * Runs a command of a tool, and gives its time and the hash of its output.
@@ -84,11 +117,10 @@ function run(tool, args, input) {
 }
 
 /**
- * The lines of `lsjson` with no times, in order, for a compare. The size of
- * a folder is not in a line: rclone gives the size of a local folder, and
- * rfetch gives -1.
+ * The lines of `lsjson`, in order, for a compare. The size of a folder is not
+ * in a line: rclone gives the size of a local folder, and rfetch gives -1.
  */
-function paths(tool, args) {
+function lines(tool, args) {
   run(tool, args);
   return JSON.parse(readFileSync(join(root, "output"), "utf8"))
     .map(({ Path, Size, IsDir }) => `${Path} ${IsDir ? "folder" : Size}`)
@@ -124,7 +156,10 @@ const cases = {
     "tree",
   ],
   "crypt: cat 64 MiB": () => ["cat", "secret:big.bin"],
-  "crypt: rcat 64 MiB": (tool) => [["rcat", `secret:${tool}/put.bin`], big],
+  "crypt: rcat 64 MiB": (tool) => [
+    ["rcat", `secret:${tool.replaceAll(" ", "-")}/put.bin`],
+    big,
+  ],
   "crypt: lsjson --recursive, 1000 files": () => [
     "lsjson",
     "--recursive",
@@ -132,13 +167,13 @@ const cases = {
   ],
   "chunker: cat 64 MiB in chunks of 8 MiB": () => ["cat", "chunks:big.bin"],
   "chunker: rcat 64 MiB in chunks of 8 MiB": (tool) => [
-    ["rcat", `chunks:${tool}/put.bin`],
+    ["rcat", `chunks:${tool.replaceAll(" ", "-")}/put.bin`],
     big,
   ],
 };
 
 try {
-  // The two tools give the same data and the same lists.
+  // Each tool gives the same data and the same lists as rclone.
   const hash = createHash("sha256").update(readFileSync(big)).digest("hex");
   for (const tool of Object.keys(tools)) {
     for (const location of ["secret:big.bin", "chunks:big.bin"]) {
@@ -146,41 +181,42 @@ try {
         throw new Error(`${tool} cat ${location}: not the same data`);
       }
     }
+    const folder = tool.replaceAll(" ", "-");
     for (const location of ["secret", "chunks"]) {
-      run(tool, ["rcat", `${location}:${tool}/check.bin`], big);
+      run(tool, ["rcat", `${location}:${folder}/check.bin`], big);
       if (
-        run("rclone", ["cat", `${location}:${tool}/check.bin`]).hash !== hash
+        run("rclone", ["cat", `${location}:${folder}/check.bin`]).hash !== hash
       ) {
         throw new Error(`${tool} rcat ${location}: rclone reads other data`);
       }
     }
-  }
-  for (const location of ["tree", "secret:tree"]) {
-    const args = ["lsjson", "--recursive", location];
-    if (`${paths("rfetch", args)}` !== `${paths("rclone", args)}`) {
-      throw new Error(`lsjson ${location}: not the same list`);
+    for (const location of ["tree", "secret:tree"]) {
+      const args = ["lsjson", "--recursive", location];
+      const [ours, theirs] = [lines(tool, args), lines("rclone", args)];
+      if (`${ours}` !== `${theirs}`) {
+        const line = ours.find((line, index) => line !== theirs[index]);
+        throw new Error(
+          `${tool} lsjson ${location}: not the same list, at "${line}"`,
+        );
+      }
     }
   }
 
-  console.log(
-    `rfetch (Node.js ${process.versions.node}) and rclone, median of ${RUNS} runs`,
-  );
+  console.log(`The median of ${RUNS} runs, in ms:\n`);
+  const names = Object.keys(tools);
+  console.log(`| Case | ${names.join(" | ")} |`);
+  console.log(`|---|${names.map(() => "---:").join("|")}|`);
   for (const [name, make] of Object.entries(cases)) {
-    const times = {};
-    for (const tool of Object.keys(tools)) {
+    const times = [];
+    for (const tool of names) {
       const made = make(tool);
       const [args, input] = Array.isArray(made[0]) ? made : [made];
       run(tool, args, input);
       const list = [];
       for (let i = 0; i < RUNS; i++) list.push(run(tool, args, input).time);
-      times[tool] = list.sort((a, b) => a - b)[Math.floor(RUNS / 2)];
+      times.push(list.sort((a, b) => a - b)[Math.floor(RUNS / 2)]);
     }
-    const ratio = (times.rfetch / times.rclone).toFixed(1);
-    console.log(
-      `  ${name}: rfetch ${times.rfetch.toFixed(0)} ms, rclone ${
-        times.rclone.toFixed(0)
-      } ms (${ratio}x)`,
-    );
+    console.log(`| ${name} | ${times.map((t) => t.toFixed(0)).join(" | ")} |`);
   }
 } finally {
   rmSync(root, { recursive: true, force: true });
