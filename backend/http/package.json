@@ -20,8 +20,7 @@
   "author": "Trần Nguyễn Sơn",
   "license": "ISC",
   "dependencies": {
-    "@rfetch/lib": "^0.1.0",
-    "@sntran/html-rewriter": "^0.2.0"
+    "@rfetch/lib": "^0.1.0"
   },
   "devDependencies": {
     "@rfetch/chunker": "^0.1.0",

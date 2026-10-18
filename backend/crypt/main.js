@@ -94,7 +94,6 @@
  */
 
 import { scrypt } from "node:crypto";
-import { HTMLRewriter } from "@sntran/html-rewriter";
 import { formatBytes } from "@rfetch/lib/format";
 import { mimeType } from "@rfetch/lib/mime";
 import { optionsOf, remoteHeaders } from "@rfetch/lib/options";
@@ -107,6 +106,7 @@ import {
 } from "@rfetch/lib/range";
 import { sized } from "@rfetch/lib/sized";
 import { reveal } from "@rfetch/lib/obscure";
+import { htmlRewriter } from "@rfetch/lib/rewriter";
 import PathCipher from "./PathCipher.js";
 import {
   decryptedSize,
@@ -211,7 +211,7 @@ async function crypt(request, env = {}) {
       return response;
     }
     if (isDirectory) {
-      return listing(response, cipher, searchParams);
+      return await listing(response, cipher, searchParams);
     }
 
     const result = new Headers({
@@ -419,9 +419,9 @@ async function getRange(target, headers, cipher, path, header) {
  * @param {Response} response The list of the encrypted folder.
  * @param {{ names: import("./PathCipher.js").PathCipher }} cipher
  * @param {URLSearchParams} searchParams
- * @returns {Response}
+ * @returns {Promise<Response>}
  */
-function listing(response, { names }, searchParams) {
+async function listing(response, { names }, searchParams) {
   const query = new URLSearchParams(searchParams);
   for (const name of SECRETS) query.delete(name);
   const suffix = query.size ? `?${query}` : "";
@@ -432,7 +432,7 @@ function listing(response, { names }, searchParams) {
   /** True when the link of the current row is a file that decrypts. */
   let isFile = false;
 
-  const rewriter = new HTMLRewriter()
+  const rewriter = (await htmlRewriter())
     .on("tr", {
       element() {
         isFile = false;

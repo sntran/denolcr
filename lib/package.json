@@ -15,6 +15,7 @@
     "./path": "./path.js",
     "./progress": "./progress.js",
     "./range": "./range.js",
+    "./rewriter": "./rewriter.js",
     "./size": "./size.js",
     "./sized": "./sized.js",
     "./time": "./time.js",

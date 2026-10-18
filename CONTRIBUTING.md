@@ -197,6 +197,12 @@ modification time.
 `renderListing` of `@rfetch/lib/listing` writes such a list from the entries of
 a folder, and `readListing` reads it.
 
+To read or change a list with HTMLRewriter, use `htmlRewriter` of
+`@rfetch/lib/rewriter`, not `@sntran/html-rewriter`. It loads HTMLRewriter at
+its first use, because a command that reads no list does not need it. In
+Node.js, it gives the HTML to HTMLRewriter in chunks of at most 8 KiB: else a
+list in one large chunk takes a quadratic time. `lib/rewriter.js` tells why.
+
 ## Commands
 
 Each command is a function of a module in `cmd`, for example `cat` of

@@ -24,11 +24,11 @@
  * To get only one file, use [copyurl](../../cmd/copyurl/main.js).
  */
 
-import { HTMLRewriter } from "@sntran/html-rewriter";
 import { parseList } from "./list.js";
 import { childOf, renderListing } from "@rfetch/lib/listing";
 import { mimeType } from "@rfetch/lib/mime";
 import { optionsOf } from "@rfetch/lib/options";
+import { htmlRewriter } from "@rfetch/lib/rewriter";
 import { decodePath, encodePath } from "@rfetch/lib/path";
 
 export const options = {
@@ -257,7 +257,8 @@ async function readIndex(response, base) {
   /** @type {import("@rfetch/lib/listing").Entry | null} */
   let current = null;
 
-  await new HTMLRewriter()
+  const rewriter = await htmlRewriter();
+  await rewriter
     .on("tr", {
       element(element) {
         inRow = true;
