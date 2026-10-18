@@ -1,4 +1,5 @@
 import { isTrue } from "@rfetch/lib/options";
+import { toListTime } from "@rfetch/lib/time";
 import { lsjson } from "../lsjson/main.js";
 
 const FORMATS = {
@@ -115,61 +116,82 @@ const FORMATS = {
  * @param {string} [flags.separator=";"] - Separator for the listing.
  * @returns {Promise<Response>}
  */
-export async function lsf(location, flags = {}) {
-  const { format = "p", separator = ";" } = flags;
+export function lsf(location, flags = {}) {
+  const format = flags.format ?? "p";
   const csv = isTrue(flags.csv);
+  // As rclone, the separator of CSV is "," when the flag does not tell it.
+  const separator = flags.separator ?? (csv ? "," : ";");
   const dirSlash = flags.dir_slash === undefined || isTrue(flags.dir_slash);
   const dirsOnly = isTrue(flags.dirs_only);
   const filesOnly = isTrue(flags.files_only);
+  // CSV has a separator of one character.
+  const comma = [...separator][0] ?? ",";
 
+  return listLines(location, flags, (item) => {
+    if (dirsOnly && !item.IsDir) return;
+    if (filesOnly && item.IsDir) return;
+    const values = [...format].map((letter) => {
+      if (letter === "p") {
+        return item.IsDir && dirSlash ? `${item.Path}/` : item.Path;
+      }
+      if (letter === "t") return toListTime(item.ModTime);
+      const value = item[FORMATS[letter]] ?? "";
+      return typeof value === "object" ? JSON.stringify(value) : `${value}`;
+    });
+    if (!csv) return values.join(separator);
+    return values.map((value) => quoted(value, comma)).join(comma);
+  });
+}
+
+/**
+ * Puts a value of CSV in quotes when it must have them, as `csv.Writer` of
+ * Go: when it has the comma, a quote, a line break, or a space at the
+ * start. A quote in the value becomes two quotes.
+ * @param {string} value
+ * @param {string} comma
+ * @returns {string}
+ */
+function quoted(value, comma) {
+  const needs = value === "\\." || value.includes(comma) ||
+    /["\r\n]/.test(value) || SPACE.test(value);
+  return needs ? `"${value.replaceAll('"', '""')}"` : value;
+}
+
+/** A space at the start of a text, as `unicode.IsSpace` of Go. */
+const SPACE =
+  /^[\t\n\v\f\r \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]/;
+
+/**
+ * Lists a path as `lsjson`, with a line for each item, for the lists of
+ * text: `lsf`, `ls`, `lsl` and `lsd`.
+ * @param {string} location
+ * @param {Object} flags The flags of `lsjson`, for example `recursive`.
+ * @param {(item: import("../../mod.js").File) => string | undefined} line
+ *   Gives the line of an item, with no line break, or no line.
+ * @returns {Promise<Response>}
+ */
+export async function listLines(location, flags, line) {
   const response = await lsjson(location, flags);
-  let { ok, headers, body } = response;
+  if (!response.ok) return response;
 
-  if (!ok) {
-    return response;
-  }
-
-  headers = new Headers(response.headers);
+  const headers = new Headers(response.headers);
   headers.set("Content-Type", "text/plain");
 
-  body = body
+  const body = response.body
     .pipeThrough(new TextDecoderStream())
     .pipeThrough(
       new TransformStream({
         transform(chunk, controller) {
-          // `lsjson returns each item on a new line, and except the
-          // last line, all lines ends with a comma. We strip that
-          // trailing comma and any new lines.
+          // `lsjson` gives each item on a line, with a comma at the end of
+          // each line but the last.
           chunk = chunk.trim().replace(/,$/, "");
-
-          if (chunk.startsWith("{") && chunk.at(-1) === "}") {
-            /**
-             * @type {import("../../mod.js").File}
-             */
-            const item = JSON.parse(chunk);
-            if (dirsOnly && !item.IsDir) return;
-            if (filesOnly && item.IsDir) return;
-
-            if (item.IsDir && dirSlash) {
-              item.Path += "/";
-            }
-
-            chunk = [...format].map((f) => {
-              let value = item[FORMATS[f]];
-              if (csv && typeof value === "string" && value.includes(",")) {
-                value = `"${value}"`;
-              }
-              return value;
-            }).join(separator);
-
-            controller.enqueue(`${chunk}\n`);
-          }
+          if (!chunk.startsWith("{") || chunk.at(-1) !== "}") return;
+          const text = line(JSON.parse(chunk));
+          if (text !== undefined) controller.enqueue(`${text}\n`);
         },
       }),
     )
     .pipeThrough(new TextEncoderStream());
 
-  return new Response(body, {
-    headers,
-  });
+  return new Response(body, { headers });
 }

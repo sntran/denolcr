@@ -1,4 +1,6 @@
-import { lsf } from "../lsf/main.js";
+import { sizeField } from "@rfetch/lib/format";
+import { isTrue } from "@rfetch/lib/options";
+import { listLines } from "../lsf/main.js";
 /**
  * List the objects in the path with size and path.
  *
@@ -23,13 +25,14 @@ import { lsf } from "../lsf/main.js";
  * @returns {Promise<Response>}
  */
 export function ls(location, flags = {}) {
-  flags = {
-    recursive: true,
-    max_depth: "Infinity",
-    files_only: true,
-    format: "sp",
-    separator: "\t",
-    ...flags,
-  };
-  return lsf(location, flags);
+  const human = isTrue(flags.human_readable);
+  // As `rclone ls`: the size in 9 characters, then the path.
+  return listLines(
+    location,
+    { recursive: true, max_depth: "Infinity", ...flags },
+    (item) => {
+      if (item.IsDir) return;
+      return `${sizeField(item.Size, human, 9)} ${item.Path}`;
+    },
+  );
 }

@@ -1,4 +1,7 @@
-import { lsf } from "../lsf/main.js";
+import { sizeField } from "@rfetch/lib/format";
+import { isTrue } from "@rfetch/lib/options";
+import { toListTime } from "@rfetch/lib/time";
+import { listLines } from "../lsf/main.js";
 
 /**
  * List the objects in path with modification time, size and path.
@@ -24,13 +27,16 @@ import { lsf } from "../lsf/main.js";
  * @returns {Promise<Response>}
  */
 export function lsl(location, flags = {}) {
-  flags = {
-    recursive: true,
-    max_depth: "Infinity",
-    files_only: true,
-    format: "stp",
-    separator: "\t",
-    ...flags,
-  };
-  return lsf(location, flags);
+  const human = isTrue(flags.human_readable);
+  // As `rclone lsl`: the size in 9 characters, the local time to the
+  // nanosecond, then the path.
+  return listLines(
+    location,
+    { recursive: true, max_depth: "Infinity", ...flags },
+    (item) => {
+      if (item.IsDir) return;
+      const time = toListTime(item.ModTime, 9);
+      return `${sizeField(item.Size, human, 9)} ${time} ${item.Path}`;
+    },
+  );
 }

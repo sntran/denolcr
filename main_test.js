@@ -519,7 +519,7 @@ test("the command line", async (t) => {
       await mkdir(join(folder, "deep", "deeper"), { recursive: true });
       const lsd = await run(join(folder, "deep"), ["lsd", "."]);
       assert.equal(lsd.code, 0);
-      assert.match(lsd.stdout, /\tdeeper\/\n$/);
+      assert.match(lsd.stdout, /^ {10}-1 \S+ \S+ {8}-1 deeper\n$/);
       assert.equal(lsd.stdout.split("\n").length, 2);
       const lsjson = await run(join(folder, "deep"), ["lsjson", "."]);
       assert.equal(lsjson.code, 0);
