@@ -140,3 +140,17 @@ test("gives 400 or 404 for a remote that is not correct", async () => {
   assert.equal((await send("/:memory:/a?bad%20key=1")).status, 400);
   assert.equal((await send("/:memory%:/a")).status, 400);
 });
+
+test("has no local backend: a client reads no file of the runtime", async () => {
+  for (
+    const [path, headers] of [
+      ["/:local:/etc/hostname", {}],
+      ["/:alias:hostname", { RFETCH_ALIAS_REMOTE: "/etc/" }],
+      ["/disk:etc/hostname", { RFETCH_CONFIG_DISK_TYPE: "local" }],
+    ]
+  ) {
+    const response = await send(path, { headers });
+    assert.equal(response.status, 404, path);
+    assert.match(await response.text(), /Backend local not found/);
+  }
+});

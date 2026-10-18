@@ -19,7 +19,14 @@
 // The import also sets the global `fetch`, which reads the paths of remotes.
 import { fetch } from "./fetch.js";
 import { lsjson } from "./cmd/lsjson/main.js";
+import { backends } from "./backend/main.js";
 import { parse } from "@rfetch/lib/fspath";
+
+// The Worker has no files of its users, and a client tells all the options
+// of its request: the local backend is not a backend of the Worker. Else a
+// client could read the files of the runtime, for example with an alias to
+// `/`.
+delete backends.local;
 
 /**
  * Gives the location of a request for the rfetch fetch: the remote of the

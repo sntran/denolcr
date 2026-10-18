@@ -1,4 +1,5 @@
 import { serve as serveHTTP } from "@sntran/serve";
+import { isOption } from "@rfetch/lib/options";
 
 /**
  * Serve the remote over HTTP.
@@ -22,15 +23,20 @@ export function serve(fetch, flags = {}) {
     start(controller) {
       serveHTTP({
         fetch(request) {
+          // A client sets no option of the remote: its query and its
+          // headers RFETCH_* and RCLONE_* go away. Else a client could
+          // change the remote, for example `?remote=/etc/` for alias, or
+          // tell a new remote in the headers.
           const url = new URL(request.url);
-          Object.entries(backendFlags).forEach(([key, value]) => {
-            if (!url.searchParams.has(key)) {
-              url.searchParams.set(key, value);
-            }
-          });
-
-          request = new Request(url, request);
-          return fetch(request);
+          url.search = "";
+          for (const [key, value] of Object.entries(backendFlags)) {
+            url.searchParams.set(key, value);
+          }
+          const headers = new Headers(request.headers);
+          for (const key of [...headers.keys()]) {
+            if (isOption(key)) headers.delete(key);
+          }
+          return fetch(new Request(new Request(url, request), { headers }));
         },
         hostname,
         port: Number(port),
