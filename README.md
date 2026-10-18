@@ -70,3 +70,5 @@ bytes, with ranges. The prefix `RCLONE_` of rclone also works.
 - `npm test` to run the tests, with the test runner of Node.js.
 - `npm run bench` to compare some commands with `rclone`, which must be in the
   PATH.
+- `node bench/node.js` to measure the time of the backends. See
+  [CONTRIBUTING.md](CONTRIBUTING.md#benchmarks) for the benchmark in a Worker.

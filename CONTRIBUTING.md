@@ -270,6 +270,24 @@ default). Put the credentials in `RFETCH_S3_ACCESS_KEY_ID` and
 `RCLONE_`. Use a bucket only for the tests: the tests make folders in it and
 delete them.
 
+## Benchmarks
+
+The cases of `bench/cases.js` measure the time of the backends, of the code in
+`lib` and of the `fetch` of rfetch. The cases use only Web APIs, thus they run
+in Node.js and in workerd, the runtime of Cloudflare Workers:
+
+- `node bench/node.js` runs each case in a new process, as a command of rfetch
+  does. The time of a case can change much with the work before it in the same
+  process. `node bench/node.js NAME` runs only the case NAME.
+- `npx wrangler dev -c bench/wrangler.json`, then `curl http://localhost:8787/`,
+  runs all the cases in one request of a Worker. The clock of `wrangler dev`
+  moves during the work of a request, thus the times are times of the CPU. The
+  times of workerd change much from one run to the next: run it three times, and
+  use the median.
+
+Measure before and after a change for speed, and write the two times in the
+message of the commit.
+
 ## Continuous integration
 
 The workflow `.github/workflows/ci.yml` runs for each push and each pull
