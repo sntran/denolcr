@@ -3,7 +3,7 @@
  * module sets it as the global `fetch`. A command imports this module and
  * not mod.js: mod.js exports all the commands, which take much time to load.
  */
-import { env } from "node:process";
+import process, { env } from "node:process";
 import { backends, load } from "./backend/main.js";
 import { parse } from "@rfetch/lib/fspath";
 import { isOption, PREFIXES } from "@rfetch/lib/options";
@@ -199,8 +199,23 @@ export async function fetch(input, init = {}) {
     }
   }
 
+  // A local path, of the command line or of the code, is relative to the
+  // current folder, as in rclone: for example `file.txt`, `../file.txt` or
+  // `/tmp/file.txt`. Only such a path gives the root `/` to the local
+  // backend. The Worker gives no such path: a path with no remote is a file
+  // of its site.
+  let location = new URL(parsed.path, "file:");
+  /** @type {string | undefined} */
+  let root;
+  if (parsed.name === "") {
+    const { pathToFileURL } = await import("node:url");
+    const folder = pathToFileURL(process.cwd());
+    if (!folder.pathname.endsWith("/")) folder.pathname += "/";
+    location = new URL(parsed.path, folder);
+    root = "/";
+  }
   // `searchParams` may contain other flags not for the current backend.
-  const { pathname, searchParams } = new URL(parsed.path, "file:");
+  const { pathname, searchParams } = location;
 
   // The query of the backend: the flags prefixed with the backend type, then
   // the parameters in the connection string, which take their place.
@@ -221,6 +236,10 @@ export async function fetch(input, init = {}) {
   for (const [key, value] of options) {
     optionsEnv[`RFETCH_${type.toUpperCase()}_${key.toUpperCase()}`] = value;
   }
+  // The root of the local backend is not an option: a config file, a
+  // variable, a header or the query cannot set it.
+  delete optionsEnv.RFETCH_LOCAL_ROOT;
+  if (root !== undefined) optionsEnv.RFETCH_LOCAL_ROOT = root;
   // The headers of this backend are in its options now.
   const own = PREFIXES.map((start) => `${start}${type.toLowerCase()}_`);
   for (const key of [...headers.keys()]) {

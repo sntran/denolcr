@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import process from "node:process";
-import { unlink, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, stat, unlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { basename, join } from "node:path";
 import { serve } from "@sntran/serve";
 import assert from "node:assert/strict";
 
@@ -384,4 +386,60 @@ test("options in the headers of a request", async (t) => {
     const folders = Array.from({ length: 20 }, (_, i) => i % 2 ? "one" : "two");
     assert.deepEqual(await Promise.all(folders.map(get)), folders);
   });
+});
+
+test("local paths", async (t) => {
+  const outside = await mkdtemp(join(tmpdir(), "rfetch-outside-"));
+  await writeFile(join(outside, "secret.txt"), "outside");
+  const inside = await mkdtemp(join(tmpdir(), "rfetch-inside-"));
+  await writeFile(join(inside, "a.txt"), "inside");
+  const cwd = process.cwd();
+  process.chdir(inside);
+  try {
+    await t.test("a path is relative to the current folder", async () => {
+      assert.equal(await (await fetch("a.txt")).text(), "inside");
+      assert.equal(await (await fetch("./a.txt")).text(), "inside");
+    });
+
+    await t.test("an absolute path and ../ go out of the current folder", async () => {
+      const file = join(outside, "secret.txt");
+      assert.equal(await (await fetch(file)).text(), "outside");
+      const up = `../${basename(outside)}/secret.txt`;
+      assert.equal(await (await fetch(up)).text(), "outside");
+    });
+
+    await t.test("a header, a variable or a remote cannot set the root", async () => {
+      const path = `${outside}/secret.txt`;
+      let response = await fetch(`:local:${path}`, {
+        headers: { RFETCH_LOCAL_ROOT: "/" },
+      });
+      assert.equal(response.status, 404);
+      process.env.RFETCH_LOCAL_ROOT = "/";
+      try {
+        response = await fetch(`:local:${path}`);
+        assert.equal(response.status, 404);
+      } finally {
+        delete process.env.RFETCH_LOCAL_ROOT;
+      }
+      response = await fetch(`disk:${path}`, {
+        headers: {
+          RFETCH_CONFIG_DISK_TYPE: "local",
+          RFETCH_CONFIG_DISK_ROOT: "/",
+        },
+      });
+      assert.equal(response.status, 404);
+    });
+
+    await t.test("the current folder stays", async () => {
+      for (const path of ["./", ".", `${inside}/`, `../${basename(inside)}/`]) {
+        const response = await fetch(path, { method: "DELETE" });
+        assert.equal(response.status, 403, JSON.stringify(path));
+      }
+      assert.ok((await stat(join(inside, "a.txt"))).isFile());
+    });
+  } finally {
+    process.chdir(cwd);
+    await rm(outside, { recursive: true, force: true });
+    await rm(inside, { recursive: true, force: true });
+  }
 });

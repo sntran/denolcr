@@ -67,7 +67,7 @@ describe("lsjson and rclone lsjson", {
       { env: { PATH: process.env.PATH, HOME: folder } },
     );
     assert.equal(status, 0, `${stderr}`);
-    const actual = await lsjson("/tree/", { recursive: "true" })
+    const actual = await lsjson("tree/", { recursive: "true" })
       .then((response) => response.json());
     assert.deepEqual(normalize(actual), normalize(JSON.parse(stdout)));
   });

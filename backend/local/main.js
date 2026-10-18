@@ -1,5 +1,5 @@
 import process from "node:process";
-import { dirname, isAbsolute, join, relative, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { formatBytes } from "@rfetch/lib/format";
 import { escapeHTML } from "@rfetch/lib/html";
 import { mimeType } from "@rfetch/lib/mime";
@@ -7,14 +7,24 @@ import { decodePath } from "@rfetch/lib/path";
 import { notSatisfiable, parseRange, partialHeaders } from "@rfetch/lib/range";
 
 /**
- * Serves a local remote: the files and the folders in the current folder.
+ * Serves a local remote: the files and the folders in its root. The root is
+ * the current folder, or `RFETCH_LOCAL_ROOT` of `env`.
+ *
+ * The fetch of rfetch sets the root `/` only for a local path of the command
+ * line or of the code, for example `/tmp/file.txt`: an option, a header or
+ * the query cannot set it. Thus a request from a client of `rfetch serve`,
+ * which has no `env`, stays in the current folder.
  * @param {Request} request
+ * @param {Record<string, unknown>} [env]
  * @returns {Promise<Response>}
  */
-async function local(request) {
+async function local(request, env = {}) {
   const { method, url } = request;
   const { pathname, searchParams } = new URL(url);
-  const root = process.cwd?.() || ".";
+  const cwd = process.cwd?.() || ".";
+  const root = typeof env.RFETCH_LOCAL_ROOT === "string"
+    ? env.RFETCH_LOCAL_ROOT
+    : cwd;
   const path = decodePath(pathname);
   const absolutePath = path === null ? null : join(root, path);
 
@@ -207,8 +217,8 @@ async function local(request) {
     if (!stats) {
       return new Response(null, { status: 404 });
     }
-    // The root is the current folder, which must stay.
-    if (path === "/") {
+    // The root and the current folder must stay.
+    if (path === "/" || resolve(absolutePath) === resolve(cwd)) {
       return new Response(null, { status: 403 });
     }
 

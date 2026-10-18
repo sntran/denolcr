@@ -117,6 +117,13 @@ flags, in its query, and all the other options in `env`, as
 `RFETCH_REMOTE_NAME`. The headers `RFETCH_*` and `RCLONE_*` never go out to a
 URL.
 
+A local path, for example `file.txt`, `../file.txt` or `/tmp/file.txt`, is
+relative to the current folder, as in rclone. The `fetch` of `fetch.js` gives
+the absolute path to the local backend, with `RFETCH_LOCAL_ROOT: /` in `env`.
+`RFETCH_LOCAL_ROOT` is not an option: a config file, a variable, a header or the
+query cannot set it. Thus `:local:path` and a client of `rfetch serve` stay in
+the current folder.
+
 ## Workspaces
 
 Each backend is an npm workspace with the name `@rfetch/NAME`, and can be a
