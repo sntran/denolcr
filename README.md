@@ -23,6 +23,26 @@ These backends adapt or modify other storage providers
 - Chunker [:page_facing_up:](https://rclone.org/chunker/)
 - Crypt: encrypt files [:page_facing_up:](https://rclone.org/crypt/)
 
+## rfetch as a service
+
+`_worker.js` serves rfetch as a Worker of Cloudflare, at `rfetch.pages.dev`. It
+is stateless: it keeps no configuration and no secret. The path of a request is
+a remote and a path, as for the command, and the options come in the headers
+`RFETCH_*`:
+
+```sh
+curl -H "RFETCH_CONFIG_R2_TYPE: s3" \
+  -H "RFETCH_CONFIG_R2_ENDPOINT: https://ACCOUNT_ID.r2.cloudflarestorage.com" \
+  -H "RFETCH_CONFIG_R2_ACCESS_KEY_ID: …" \
+  -H "RFETCH_CONFIG_R2_SECRET_ACCESS_KEY: …" \
+  -H "Accept: application/json" \
+  https://rfetch.pages.dev/r2:bucket/folder/
+```
+
+With `Accept: application/json`, a `GET` gives the list of `rfetch lsjson`, and
+`Depth: N` lists N levels. Else a folder is an HTML page, and a file is its
+bytes, with ranges. The prefix `RCLONE_` of rclone also works.
+
 ## Commands
 
 - `backend`
