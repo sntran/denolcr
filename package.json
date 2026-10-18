@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "Fetching between remotes, using Web APIs.",
   "engines": {
+    "bun": ">=1.4.0",
     "node": ">=22.2.0"
   },
   "bin": {

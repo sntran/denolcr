@@ -62,13 +62,16 @@ bytes, with ranges. The prefix `RCLONE_` of rclone also works.
 
 ## Runtimes
 
-rfetch runs on Node.js 22.2 or later, on Deno and on Bun:
+rfetch runs on Node.js 22.2 or later, on Deno and on Bun 1.4 or later:
 
 ```sh
 node main.js COMMAND ...
 deno run -A main.js COMMAND ...
 bun main.js COMMAND ...
 ```
+
+Bun 1.3 cannot read the list of a local folder: its HTMLRewriter gives the error
+`Failed to pipe stream`.
 
 `node bench/rclone.js RUNTIME...` runs the same commands with rfetch on each
 runtime and with rclone, and first makes sure that they give the same data and
