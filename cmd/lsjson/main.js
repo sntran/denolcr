@@ -1,12 +1,13 @@
-import { basename } from "node:path";
-import { HTMLRewriter } from "@sntran/html-rewriter";
 import { parse } from "@rfetch/lib/fspath";
+import { readListing } from "@rfetch/lib/listing";
 import { toLocaleISOString } from "@rfetch/lib/time";
 
 import { fetch } from "../../mod.js";
 
 const encoder = new TextEncoder();
-const decoder = new TextDecoder();
+
+/** The URL of a folder: the links of its list are relative to it. */
+const FOLDER = new URL("http://remote/folder/");
 
 /**
  * List directories and objects in the path in JSON format.
@@ -75,7 +76,7 @@ export async function lsjson(location, flags = {}, init = {}) {
   }
   const params = new URLSearchParams(flags);
   const url = `${prefix}${folder}?${params}`;
-  let response = await fetch(url, init);
+  const response = await fetch(url, init);
 
   if (!response.ok) {
     return response;
@@ -86,192 +87,57 @@ export async function lsjson(location, flags = {}, init = {}) {
     maxDepth = 1;
   }
 
+  const listed = read(response, {
+    location,
+    depth: maxDepth,
+    flags,
+    init,
+    filename,
+  });
+  // The error comes when the stream gets to the folder.
+  listed.catch(() => {});
+  const items = walk(listed, "");
+
   /**
-   * A stream of JSON-encoded file objects, one per chunk/line.
-   * Each JSON stringified line is followed by a comma and a newline.
-   * Note: This stream does not wrap the output in an array.
-   * @type {ReadableStream}
+   * The JSON of the item before, with no comma: only the last item has no
+   * comma after it.
+   * @type {string | null}
    */
-  let body = new ReadableStream({
+  let previous = null;
+
+  /**
+   * A stream of JSON-encoded file objects, one per chunk and line, in an
+   * array.
+   * @type {ReadableStream<Uint8Array>}
+   */
+  const body = new ReadableStream({
     start(controller) {
-      /**
-       * @type {import("../../mod.js").File}
-       */
-      let item;
-      let transformed = Promise.resolve();
-      /**
-       * @type {Promise[]}
-       */
-      const promises = [];
-
-      const rewriter = new HTMLRewriter();
-      rewriter.on(`tbody`, {
-        element(element) {
-          element.onEndTag(() => {
-            Promise.all(promises).then(() => {
-              controller.close();
-            });
-          });
-        },
-      });
-      rewriter.on(`tbody tr`, {
-        element(element) {
-          // Start a new item.
-          item = {
-            Path: "",
-            Name: "",
-            Size: -1,
-            MimeType: "",
-            ModTime: "",
-            IsDir: true,
-          };
-
-          element.onEndTag(() => {
-            if (item) {
-              // We always enqueue the item with trailing comma.
-              // Another transform will remove the trailing comma.
-              const line = JSON.stringify(item) + ",\n";
-              controller.enqueue(encoder.encode(line));
-            }
-          });
-        },
-      });
-      // TODO: match only links relative to the current location
-      rewriter.on(`tr a[href]`, {
-        element(element) {
-          const href = element.getAttribute("href");
-          const { pathname } = new URL(href, "file:");
-
-          if (pathname === "/") {
-            item = null;
-            return;
+      controller.enqueue(encoder.encode("[\n"));
+    },
+    async pull(controller) {
+      for (;;) {
+        const { done, value } = await items.next();
+        if (done) {
+          if (previous !== null) {
+            controller.enqueue(encoder.encode(`${previous}\n`));
           }
-
-          // The link has percent-encoding, and the name has none.
-          const name = decodeURIComponent(basename(pathname));
-
-          // If listing a file, skip other files.
-          if (filename && name !== filename) {
-            item = null;
-            return;
-          }
-
-          item.Name = name;
-
-          /**
-           * The Path field will only show folders below the remote
-           * path being listed. If "remote:path" contains the file
-           * "subfolder/file.txt", the Path for "file.txt" will be
-           * "subfolder/file.txt", not "remote:path/subfolder/file.txt".
-           * When used without --recursive the Path will always be the
-           * same as Name.
-           */
-          item.Path = name;
-
-          const isDir = item.IsDir = pathname.endsWith("/");
-
-          const type = element.getAttribute("type");
-          if (type) {
-            item.MimeType = type;
-          }
-
-          if (isDir) {
-            item.MimeType = "inode/directory";
-            item.Size = -1;
-
-            // Recursively list subdirectories if --recursive
-            if (maxDepth > 1) {
-              // We don't want to block the current iteration, so we
-              // start a new promise for each subdirectory using IIFE.
-              // Inside, we await for the `done` promise to be resolved
-              // before enqueueing the next item.
-              const promise = (async () => {
-                // The name of the folder in the path has percent-encoding,
-                // else a "?" or a "#" in the name starts a query.
-                const child = `${location}${encodeURIComponent(name)}/`;
-                const response = await lsjson(child, {
-                  ...flags,
-                  max_depth: String(maxDepth - 1),
-                }, init);
-
-                await response.body?.pipeThrough(
-                  new TransformStream({
-                    async transform(chunk) {
-                      let line = decoder.decode(chunk).trim();
-
-                      // skips the `[` line.
-                      if (line === "[" || line === "]") {
-                        return;
-                      }
-
-                      const child = JSON.parse(line.replace(/,$/, ""));
-                      child.Path = `${name}/${child.Path}`;
-                      line = JSON.stringify(child);
-
-                      await transformed;
-                      controller.enqueue(encoder.encode(line + ",\n"));
-                    },
-                  }),
-                ).pipeTo(new WritableStream({}));
-              })();
-              promises.push(promise);
-            }
-          }
-        },
-      });
-      rewriter.on(`tr data[value]`, {
-        element(element) {
-          if (!item) return;
-          const value = element.getAttribute("value");
-          item.Size = Number(value);
-        },
-      });
-      rewriter.on(`tr time[datetime]`, {
-        element(element) {
-          if (!item) return;
-          const value = element.getAttribute("datetime");
-          if (value) {
-            item.ModTime = toLocaleISOString(value);
-          }
-        },
-      });
-
-      response = rewriter.transform(response);
-      transformed = response.body.pipeTo(new WritableStream());
+          controller.enqueue(encoder.encode("]\n"));
+          controller.close();
+          return;
+        }
+        const line = JSON.stringify(value);
+        if (previous !== null) {
+          controller.enqueue(encoder.encode(`${previous},\n`));
+          previous = line;
+          return;
+        }
+        previous = line;
+      }
+    },
+    async cancel() {
+      await items.return(undefined);
     },
   });
-
-  // Because the JSON objects always have trailing commas, we need to
-  // do a transform to remove the trailing comma from the last object.
-  /**
-   * @type {Uint8Array}
-   */
-  let previousChunk;
-  body = body.pipeThrough(
-    new TransformStream({
-      start(controller) {
-        controller.enqueue(encoder.encode("[\n"));
-      },
-      // Because we want to detect the last chunk, we need to delay the
-      // transform by one step, so we can handle it in `flush`.
-      transform(chunk, controller) {
-        if (previousChunk) {
-          controller.enqueue(previousChunk);
-        }
-        previousChunk = chunk;
-      },
-      flush(controller) {
-        if (previousChunk) {
-          const chunk = concat(
-            previousChunk.slice(0, -2),
-            encoder.encode("\n"),
-          );
-          controller.enqueue(chunk);
-        }
-        controller.enqueue(encoder.encode("]\n"));
-      },
-    }),
-  );
 
   return new Response(body, {
     headers: {
@@ -281,16 +147,107 @@ export async function lsjson(location, flags = {}, init = {}) {
 }
 
 /**
- * Concats two Uint8Arrays
- * @param {Uint8Array} a
- * @param {Uint8Array} b
- * @returns {Uint8Array}
+ * An item of the output of `lsjson`.
+ * @typedef {Object} Item
+ * @property {string} Path The path below the listed folder.
+ * @property {string} Name
+ * @property {number} Size
+ * @property {string} MimeType
+ * @property {string | undefined} ModTime
+ * @property {boolean} IsDir
  */
-function concat(a, b) {
-  const result = new Uint8Array(a.byteLength + b.byteLength);
-  result.set(a, 0);
-  result.set(b, a.byteLength);
+
+/**
+ * The list of a folder: its items, and the lists of its folders.
+ * @typedef {Object} Folder
+ * @property {Item[]} items
+ * @property {{ name: string, folder: Promise<Folder> }[]} folders
+ */
+
+/**
+ * @typedef {Object} Walk
+ * @property {string} location The location of the folder, with a `/` at the
+ *   end.
+ * @property {number} depth The levels to list: 1 is only this folder.
+ * @property {Object} flags
+ * @property {RequestInit} init
+ * @property {string} [filename] When set, only the file with this name.
+ */
+
+/**
+ * Reads the list of a folder. When `depth` is more than 1, it starts to read
+ * the lists of the folders in it at once, thus the requests go at the same
+ * time.
+ * @param {Response} response The list of the folder.
+ * @param {Walk} options
+ * @returns {Promise<Folder>}
+ */
+async function read(response, { location, depth, flags, init, filename }) {
+  const entries = await readListing(response, FOLDER);
+  /** @type {Folder} */
+  const result = { items: [], folders: [] };
+  for (const { Name, IsDir, Size, MimeType, ModTime } of entries) {
+    // If listing a file, skip other files.
+    if (filename && Name !== filename) continue;
+    result.items.push({
+      Path: Name,
+      Name,
+      Size,
+      MimeType: IsDir ? "inode/directory" : MimeType,
+      ModTime: ModTime ? toLocaleISOString(ModTime) : "",
+      IsDir,
+    });
+    if (IsDir && depth > 1) {
+      // The name of the folder in the path has percent-encoding, else a "?"
+      // or a "#" in the name starts a query.
+      const child = `${location}${encodeURIComponent(Name)}/`;
+      const folder = list(Name, {
+        location: child,
+        depth: depth - 1,
+        flags: { ...flags, max_depth: String(depth - 1) },
+        init,
+      });
+      // The error comes when the walk gets to this folder.
+      folder.catch(() => {});
+      result.folders.push({ name: Name, folder });
+    }
+  }
   return result;
+}
+
+/**
+ * Requests the list of a folder, and reads it.
+ * @param {string} name The name of the folder, for the error.
+ * @param {Walk} options
+ * @returns {Promise<Folder>}
+ */
+async function list(name, options) {
+  const params = new URLSearchParams(options.flags);
+  const response = await fetch(`${options.location}?${params}`, options.init);
+  if (!response.ok) {
+    await response.body?.cancel();
+    throw new Error(`Cannot list ${name}: ${response.status}`);
+  }
+  return read(response, options);
+}
+
+/**
+ * Gives the items of a folder, then the items of each folder in it. The
+ * `Path` of an item has the names of the folders above it, below the listed
+ * folder.
+ * @param {Promise<Folder>} folder
+ * @param {string} path The path of the folder, or "" for the listed folder.
+ * @returns {AsyncGenerator<Item>}
+ */
+async function* walk(folder, path) {
+  const { items, folders } = await folder;
+  for (const item of items) {
+    if (path) item.Path = `${path}/${item.Path}`;
+    yield item;
+  }
+  for (const { name, folder } of folders) {
+    yield* walk(folder, path ? `${path}/${name}` : name);
+  }
 }
 
 /**

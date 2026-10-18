@@ -1,5 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { listen } from "@rfetch/lib/testing/server";
+import memory from "@rfetch/memory";
 import { fetch } from "../../mod.js";
 import { lsjson } from "./main.js";
 
@@ -211,4 +213,23 @@ test("lsjson reads a connection string with a / in a value", async () => {
     `:crypt,remote=':memory:/lsjson/crypt',password=${password}:`;
   await putAll(location, HARD);
   assert.deepEqual(await walk(location), entries(HARD));
+});
+
+test("lsjson --recursive gives an error for a folder it cannot list", async () => {
+  // A server of the memory backend, with no list of the folder "bad".
+  const server = await listen((request) =>
+    new URL(request.url).pathname === "/lsjson-error/bad/"
+      ? new Response("no list", { status: 500 })
+      : memory.fetch(request)
+  );
+  try {
+    await putAll(":memory:/lsjson-error/", ["bad/a.txt", "good/b.txt"]);
+    const response = await lsjson(`:http,url='${server.url}lsjson-error/':`, {
+      recursive: "true",
+    });
+    assert.equal(response.status, 200);
+    await assert.rejects(response.text(), /Cannot list bad: 50\d/);
+  } finally {
+    await server.close();
+  }
 });
