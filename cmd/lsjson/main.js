@@ -53,16 +53,18 @@ const decoder = new TextDecoder();
  * @param {Object} [flags={}]
  * @param {number} [flags.max_depth=Infinity] - Maximum depth of recursion.
  * @param {boolean} [flags.recursive=false] - Recurse into the listing.
+ * @param {RequestInit} [init] The init of each request of the list, for
+ *   example the headers with the options `RFETCH_*`.
  * @returns {Promise<Response>}
  */
-export async function lsjson(location, flags = {}) {
+export async function lsjson(location, flags = {}, init = {}) {
   // Only the path in the remote has folders: a value of the connection
   // string can have a "/" too, for example `:crypt,remote='a/b':path`.
   const parsed = parse(location);
   const prefix = location.slice(0, location.length - parsed.path.length);
   const path = parsed.path;
   const isDirectory = path === "" || path.endsWith("/");
-  const init = { method: "GET" };
+  init = { ...init, method: "GET" };
   let folder = path;
   let filename;
   // If file, list the parent directory and keep only the file.
@@ -190,7 +192,7 @@ export async function lsjson(location, flags = {}) {
                 const response = await lsjson(child, {
                   ...flags,
                   max_depth: String(maxDepth - 1),
-                });
+                }, init);
 
                 await response.body?.pipeThrough(
                   new TransformStream({
