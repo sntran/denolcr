@@ -82,18 +82,28 @@ export async function lsjson(location, flags = {}, init = {}) {
     return response;
   }
 
+  /** @type {import("@rfetch/lib/listing").Entry[] | undefined} */
+  let entries;
+  if (!isDirectory) {
+    // A path with no "/" at the end is a folder when no file has the name,
+    // as in rclone: then the list is the list of the folder.
+    entries = await readListing(response, FOLDER);
+    const named = entries.filter(({ Name }) => Name === filename);
+    if (named.length > 0 && named.every(({ IsDir }) => IsDir)) {
+      return lsjson(`${location}/`, flags, init);
+    }
+  }
+
   let maxDepth = Number(flags.max_depth || (flags.recursive ? Infinity : 1));
   if (!isDirectory || !flags.recursive) {
     maxDepth = 1;
   }
 
-  const listed = read(response, {
-    location,
-    depth: maxDepth,
-    flags,
-    init,
-    filename,
-  });
+  /** @type {Walk} */
+  const options = { location, depth: maxDepth, flags, init, filename };
+  const listed = entries
+    ? Promise.resolve(folderOf(entries, options))
+    : readListing(response, FOLDER).then((list) => folderOf(list, options));
   // The error comes when the stream gets to the folder.
   listed.catch(() => {});
   const items = walk(listed, "");
@@ -175,15 +185,14 @@ export async function lsjson(location, flags = {}, init = {}) {
  */
 
 /**
- * Reads the list of a folder. When `depth` is more than 1, it starts to read
- * the lists of the folders in it at once, thus the requests go at the same
- * time.
- * @param {Response} response The list of the folder.
+ * Gives the folder of the entries of its list. When `depth` is more than 1,
+ * it starts to read the lists of the folders in it at once, thus the
+ * requests go at the same time.
+ * @param {import("@rfetch/lib/listing").Entry[]} entries
  * @param {Walk} options
- * @returns {Promise<Folder>}
+ * @returns {Folder}
  */
-async function read(response, { location, depth, flags, init, filename }) {
-  const entries = await readListing(response, FOLDER);
+function folderOf(entries, { location, depth, flags, init, filename }) {
   /** @type {Folder} */
   const result = { items: [], folders: [] };
   for (const { Name, IsDir, Size, MimeType, ModTime } of entries) {
@@ -228,7 +237,7 @@ async function list(name, options) {
     await response.body?.cancel();
     throw new Error(`Cannot list ${name}: ${response.status}`);
   }
-  return read(response, options);
+  return folderOf(await readListing(response, FOLDER), options);
 }
 
 /**

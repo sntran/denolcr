@@ -233,3 +233,18 @@ test("lsjson --recursive gives an error for a folder it cannot list", async () =
     await server.close();
   }
 });
+
+test("lsjson lists a folder with no / at the end, as rclone", async () => {
+  await putAll(":memory:/no-slash/", ["tree/a.txt", "tree/b/c.txt", "file"]);
+  assert.deepEqual(await walk(":memory:/no-slash/tree"), [
+    { Path: "a.txt", IsDir: false, Size: 10 },
+    { Path: "b", IsDir: true, Size: -1 },
+    { Path: "b/c.txt", IsDir: false, Size: 12 },
+  ]);
+  // A file of the name is a file, as for rclone.
+  const result = await lsjson(":memory:/no-slash/file")
+    .then((response) => response.json());
+  assert.deepEqual(result.map(({ Path, IsDir }) => ({ Path, IsDir })), [
+    { Path: "file", IsDir: false },
+  ]);
+});
