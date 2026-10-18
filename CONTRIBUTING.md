@@ -103,6 +103,12 @@ then the secret is not in a URL. A backend makes the links of a list from the
 query of the request only, with no secret option. Thus an option of a header or
 of `env` is never in a link.
 
+The module of a backend exports its options with their types, for example
+`export const options = { boolean: ["no_head"], string: ["url"] }`. An option in
+`default` and in no list is a `string`. The command line makes a flag of each
+option, for example `--http-no-head` and `--http-url URL`. An option that is not
+in `options` has no flag: its flag is an unknown flag.
+
 A backend on top of another remote sends the headers
 `remoteHeaders(request.headers, "remote", remote)` to that remote. The other
 options of the request go on, for example a remote `RFETCH_CONFIG_NAME_TYPE`
@@ -234,6 +240,17 @@ Each command is a function of a module in `cmd`, for example `cat` of
 commands takes much time. A command imports `fetch.js` and the modules of the
 other commands that it uses, not `mod.js`. The test `cmd/folders_test.js` makes
 sure that the two lists are the same.
+
+`parseFlags` of `cmd/flags.js` reads the flags of the command line, as rclone.
+Each flag has a type: a flag of type `boolean` takes no value, or a value after
+`=`, for example `--dir-slash=false`. A flag of type `string` takes the next
+argument, for example `--max-depth 2`, or a value after `=`. The `parseArgs` of
+Node.js knows the type only of the flags that it gets: it reads an unknown flag
+as a `boolean`, and the value of the flag as an argument of the command. Thus a
+new flag of a command goes in `FLAGS` of `cmd/flags.js`, and a new option of a
+backend goes in its `options`. An unknown flag is an error, as in rclone. A
+command reads a boolean flag with `isTrue` of `@rfetch/lib/options`: the flag
+can be `true` or the text `true` of a query.
 
 ## Tests of a backend
 

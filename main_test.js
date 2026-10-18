@@ -486,6 +486,48 @@ test("the command line", async (t) => {
       assert.match(stdout, /Available Commands:/);
     });
 
+    await t.test("reads the value of a flag after a space", async () => {
+      await mkdir(join(folder, "deep", "deeper"), { recursive: true });
+      await writeFile(join(folder, "deep", "deeper", "b.txt"), "b");
+      const { code, stdout } = await run(folder, [
+        "lsf",
+        "--max-depth",
+        "2",
+        "-R",
+        "--separator",
+        "|",
+        "--format",
+        "ps",
+        "deep",
+      ]);
+      assert.equal(code, 0);
+      assert.equal(stdout, "deeper/|-1\ndeeper/b.txt|1\n");
+    });
+
+    await t.test("gives the exit code 1 for an unknown flag, as rclone", async () => {
+      const { code, stdout, stderr } = await run(folder, [
+        "lsjson",
+        "--nosuch",
+        ".",
+      ]);
+      assert.equal(code, 1);
+      assert.equal(stdout, "");
+      assert.equal(stderr, "Error: unknown flag: --nosuch\n");
+    });
+
+    await t.test("lists one level with lsd, and . as a folder, as rclone", async () => {
+      await mkdir(join(folder, "deep", "deeper"), { recursive: true });
+      const lsd = await run(join(folder, "deep"), ["lsd", "."]);
+      assert.equal(lsd.code, 0);
+      assert.match(lsd.stdout, /\tdeeper\/\n$/);
+      assert.equal(lsd.stdout.split("\n").length, 2);
+      const lsjson = await run(join(folder, "deep"), ["lsjson", "."]);
+      assert.equal(lsjson.code, 0);
+      assert.deepEqual(JSON.parse(lsjson.stdout).map(({ Path }) => Path), [
+        "deeper",
+      ]);
+    });
+
     await t.test("stops with no error when the reader closes the pipe", async () => {
       await writeFile(
         join(folder, "big.bin"),

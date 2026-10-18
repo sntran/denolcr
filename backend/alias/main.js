@@ -24,6 +24,14 @@ import { optionsOf, remoteHeaders } from "@rfetch/lib/options";
 import { decodePath, encodePath } from "@rfetch/lib/path";
 
 /**
+ * The options of the backend, with their types, for example for the flag
+ * `--alias-remote` of the command line.
+ */
+export const options = {
+  string: ["remote"],
+};
+
+/**
  * Sends the requests to the remote of the alias with the global `fetch`.
  * @param {Request} request
  * @param {Record<string, unknown>} [env] The options in the variables

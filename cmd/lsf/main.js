@@ -1,3 +1,4 @@
+import { isTrue } from "@rfetch/lib/options";
 import { lsjson } from "../lsjson/main.js";
 
 const FORMATS = {
@@ -115,14 +116,11 @@ const FORMATS = {
  * @returns {Promise<Response>}
  */
 export async function lsf(location, flags = {}) {
-  const {
-    csv = false,
-    dir_slash: dirSlash = true,
-    dirs_only: dirsOnly = false,
-    files_only: filesOnly = false,
-    format = "p",
-    separator = ";",
-  } = flags;
+  const { format = "p", separator = ";" } = flags;
+  const csv = isTrue(flags.csv);
+  const dirSlash = flags.dir_slash === undefined || isTrue(flags.dir_slash);
+  const dirsOnly = isTrue(flags.dirs_only);
+  const filesOnly = isTrue(flags.files_only);
 
   const response = await lsjson(location, flags);
   let { ok, headers, body } = response;

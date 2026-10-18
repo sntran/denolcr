@@ -150,6 +150,14 @@ const SECRETBOX_OPTIONS = {
 };
 
 /**
+ * The options of the backend, with their types, for example for the flag
+ * `--crypt-password` of the command line.
+ */
+export const options = {
+  string: ["remote", "password", "password2"],
+};
+
+/**
  * The options that are secret. They are not in the links of a list, which a
  * browser can keep in its history and send to other sites.
  */

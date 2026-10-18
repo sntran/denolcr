@@ -1,5 +1,6 @@
 import { parse } from "@rfetch/lib/fspath";
 import { readListing } from "@rfetch/lib/listing";
+import { isTrue } from "@rfetch/lib/options";
 import { toLocaleISOString } from "@rfetch/lib/time";
 
 import { fetch } from "../../fetch.js";
@@ -59,6 +60,8 @@ const FOLDER = new URL("http://remote/folder/");
  * @returns {Promise<Response>}
  */
 export async function lsjson(location, flags = {}, init = {}) {
+  // A path that ends with `.` or `..` is a folder, as in rclone.
+  if (/(^|[:/])\.\.?$/.test(location)) location = `${location}/`;
   // Only the path in the remote has folders: a value of the connection
   // string can have a "/" too, for example `:crypt,remote='a/b':path`.
   const parsed = parse(location);
@@ -98,8 +101,9 @@ export async function lsjson(location, flags = {}, init = {}) {
     }
   }
 
-  let maxDepth = Number(flags.max_depth || (flags.recursive ? Infinity : 1));
-  if (!isDirectory || !flags.recursive) {
+  const recursive = isTrue(flags.recursive);
+  let maxDepth = Number(flags.max_depth || (recursive ? Infinity : 1));
+  if (!isDirectory || !recursive) {
     maxDepth = 1;
   }
 

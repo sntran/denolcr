@@ -12,9 +12,9 @@ import { lsf } from "../lsf/main.js";
  */
 export function lsd(location, flags = {}) {
   flags = {
-    dirs_only: "true",
+    dirs_only: true,
     format: "stp",
-    recursive: "false",
+    recursive: false,
     separator: "\t",
     ...flags,
   };

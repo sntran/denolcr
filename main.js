@@ -10,78 +10,38 @@
  * ./main.js copy source:/path/to/file destination:/path/to/file
  * ```
  */
-import process, { argv, env, stderr, stdout } from "node:process";
+import process, { argv, stderr, stdout } from "node:process";
 import { once } from "node:events";
-import { parseArgs } from "node:util";
 
 // The import sets the global `fetch`, which reads the paths of remotes.
 import "./fetch.js";
 
+import { backends } from "./backend/main.js";
+import { parseFlags } from "./cmd/flags.js";
 import { FOLDERS } from "./cmd/folders.js";
 
-/** Optional params for the subcommand. */
-const options = {
-  // The address of `serve`, for example `--addr :8080`.
-  "addr": {
-    type: "string",
-  },
-  "dry-run": {
-    type: "boolean",
-    default: env["RCLONE_DRY_RUN"] === "true",
-  },
-  "header": {
-    type: "string",
-    multiple: true,
-  },
-  "header-download": {
-    type: "string",
-    multiple: true,
-  },
-  "header-upload": {
-    type: "string",
-    multiple: true,
-  },
-  "human-readable": {
-    type: "boolean",
-  },
-  "progress": {
-    type: "boolean",
-    short: "P",
-    default: env["RCLONE_PROGRESS"] === "true",
-  },
-  "transfers": {
-    type: "string",
-    default: env["RCLONE_TRANSFERS"] || "4",
-  },
-};
-
-const {
-  values: flags,
-  positionals: [
-    subcommand = "help",
-    ...args
-  ],
-} = parseArgs({
-  args: argv.slice(2),
-  options,
-  strict: false,
-  allowPositionals: true,
-  allowNegative: true,
-  tokens: true,
-});
-
-for (const name of Object.keys(flags)) {
-  // Adds snake_case version of the flag.
-  flags[name.replace(/-/g, "_")] = flags[name];
-}
-
 (async () => {
+  /** @type {Awaited<ReturnType<typeof parseFlags>>} */
+  let parsed;
+  try {
+    parsed = await parseFlags(argv.slice(2), backends);
+  } catch (error) {
+    // As rclone: for example `Error: unknown flag: --nosuch`.
+    stderr.write(`Error: ${error.message}\n`);
+    process.exitCode = 1;
+    return;
+  }
+  const { flags, positionals: [subcommand = "help", ...positionals] } = parsed;
+
   let name = subcommand;
+  let args = positionals;
   if (!Object.hasOwn(FOLDERS, name)) {
     stderr.write(`Error: unknown command "${name}" for "rfetch"\n`);
     process.exitCode = 1;
-    name = "help";
+    [name, args] = ["help", []];
   }
+  // `rfetch COMMAND --help` shows the help.
+  if (flags.help) [name, args] = ["help", []];
   const module = await import(`./cmd/${FOLDERS[name]}/main.js`);
   /** TODO merge global flags into config */
   const response = await module[name](...args, flags);

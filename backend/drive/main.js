@@ -16,6 +16,26 @@ const FILE_HEADERS = new Headers({
 });
 
 /**
+ * The options of the backend, with their types, for example for the flag
+ * `--drive-client-id` of the command line.
+ */
+export const options = {
+  string: [
+    "chunk_size",
+    "client_id",
+    "client_secret",
+    "fields",
+    "root_folder_id",
+    "scope",
+    "service_account_credentials",
+    "service_account_file",
+    "team_drive",
+    "token",
+    "token_url",
+  ],
+};
+
+/**
  * The options that are secret. They are not in the links of a list.
  */
 const SECRETS = ["token", "client_secret", "service_account_credentials"];

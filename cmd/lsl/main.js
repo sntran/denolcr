@@ -25,9 +25,9 @@ import { lsf } from "../lsf/main.js";
  */
 export function lsl(location, flags = {}) {
   flags = {
-    recursive: "true",
+    recursive: true,
     max_depth: "Infinity",
-    files_only: "true",
+    files_only: true,
     format: "stp",
     separator: "\t",
     ...flags,
