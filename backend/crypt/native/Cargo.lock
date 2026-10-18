@@ -114,6 +114,8 @@ name = "secretbox"
 version = "0.1.0"
 dependencies = [
  "crypto_secretbox",
+ "poly1305",
+ "subtle",
 ]
 
 [[package]]

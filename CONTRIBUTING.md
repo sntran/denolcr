@@ -304,6 +304,10 @@ rclone. Node.js, WebCrypto and Workers have no Salsa20, and the module is about
 - The source is the Rust crate in `backend/crypt/native`.
   `backend/crypt/native/build.sh` builds the module, with the compiler of
   `rust-toolchain.toml` and the versions of `Cargo.lock`.
+- XSalsa20 is in `src/salsa.rs`: it computes 4 blocks of Salsa20 at a time with
+  the SIMD of WebAssembly. Poly1305 is the crate `poly1305`. `cargo test`
+  compares each box with the crate `crypto_secretbox`, on the machine of the
+  build, with the same code with no SIMD.
 - Node.js, Deno and Bun read the file (`wasm.js`). A Worker cannot compile a
   module at run time, thus wrangler compiles it at the build
   (`wasm.workerd.js`). The field `imports` of `backend/crypt/package.json`

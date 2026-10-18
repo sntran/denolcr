@@ -10,7 +10,13 @@ publish = false
 [lib]
 crate-type = ["cdylib"]
 
+# XSalsa20 is in src/salsa.rs.
 [dependencies]
+poly1305 = "=0.8.0"
+subtle = { version = "=2.6.1", default-features = false }
+
+# The tests compare each box with this crate.
+[dev-dependencies]
 crypto_secretbox = { version = "=0.1.1", default-features = false, features = ["salsa20"] }
 
 [profile.release]

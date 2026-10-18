@@ -4,8 +4,8 @@
 #   newer versions. The job installs rclone and Go, thus the tests that
 #   compare rfetch with rclone and with Go run too.
 # - deno fmt --check: the format of the files.
-# - wasm: the build of backend/crypt/secretbox.wasm from its source gives the
-#   same bytes as the file in the repository.
+# - wasm: the tests of the crate of backend/crypt/secretbox.wasm, and its
+#   build from its source gives the same bytes as the file in the repository.
 #
 # This workflow deploys nothing: the Pages project deploys the branches.
 name: CI
@@ -103,6 +103,10 @@ jobs:
           channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
           rustup toolchain install "$channel" --profile minimal \
             --target wasm32-unknown-unknown
+
+      # The tests compare each box with the crate crypto_secretbox, on the
+      # machine of the job.
+      - run: cargo test --locked
 
       - run: ./build.sh
 
