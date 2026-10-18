@@ -89,7 +89,11 @@ export async function lsjson(location, flags = {}, init = {}) {
     // as in rclone: then the list is the list of the folder.
     entries = await readListing(response, FOLDER);
     const named = entries.filter(({ Name }) => Name === filename);
-    if (named.length > 0 && named.every(({ IsDir }) => IsDir)) {
+    // As rclone, a path that names no file and no folder is not found.
+    if (named.length === 0) {
+      return new Response("directory not found", { status: 404 });
+    }
+    if (named.every(({ IsDir }) => IsDir)) {
       return lsjson(`${location}/`, flags, init);
     }
   }

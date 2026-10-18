@@ -248,3 +248,12 @@ test("lsjson lists a folder with no / at the end, as rclone", async () => {
     { Path: "file", IsDir: false },
   ]);
 });
+
+test("lsjson gives 404 for a path that is not found, as rclone", async () => {
+  await putAll(":memory:/not-found/", ["a.txt"]);
+  for (const path of ["nosuch", "nosuch.txt", "nosuch/"]) {
+    const response = await lsjson(`:memory:/not-found/${path}`);
+    assert.equal(response.status, 404, path);
+    await response.body?.cancel();
+  }
+});

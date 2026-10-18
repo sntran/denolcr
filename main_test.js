@@ -1,8 +1,11 @@
 import { test } from "node:test";
 import process from "node:process";
-import { mkdtemp, rm, stat, unlink, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
+import { mkdir, mkdtemp, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { serve } from "@sntran/serve";
 import assert from "node:assert/strict";
 
@@ -441,5 +444,77 @@ test("local paths", async (t) => {
     process.chdir(cwd);
     await rm(outside, { recursive: true, force: true });
     await rm(inside, { recursive: true, force: true });
+  }
+});
+
+const MAIN = fileURLToPath(new URL("./main.js", import.meta.url));
+
+/**
+ * Runs the command line in a folder.
+ * @param {string} cwd
+ * @param {string[]} args
+ */
+async function run(cwd, args) {
+  const child = spawn(process.execPath, [MAIN, ...args], { cwd });
+  let stdout = "";
+  let stderr = "";
+  child.stdout.on("data", (chunk) => stdout += chunk);
+  child.stderr.on("data", (chunk) => stderr += chunk);
+  const [code] = await once(child, "close");
+  return { code, stdout, stderr };
+}
+
+test("the command line", async (t) => {
+  const folder = await mkdtemp(join(tmpdir(), "rfetch-cli-"));
+  await writeFile(join(folder, "a.txt"), "a");
+  await mkdir(join(folder, "empty"));
+  try {
+    await t.test("gives the exit code 3 of rclone for a path that is not found", async () => {
+      for (
+        const args of [
+          ["lsjson", "nosuch"],
+          ["lsjson", "nosuch/"],
+          ["lsjson", "empty/nosuch.txt"],
+          ["cat", "nosuch.txt"],
+        ]
+      ) {
+        const { code, stdout, stderr } = await run(folder, args);
+        assert.equal(code, 3, args.join(" "));
+        assert.equal(stdout, "");
+        assert.match(stderr, /^Error: .*not found/);
+      }
+    });
+
+    await t.test("gives the exit code 0 for a path that is found", async () => {
+      const { code, stdout } = await run(folder, ["lsjson", "a.txt"]);
+      assert.equal(code, 0);
+      assert.equal(JSON.parse(stdout)[0].Name, "a.txt");
+    });
+
+    await t.test("gives the exit code 1 and the help for an unknown command", async () => {
+      const { code, stdout, stderr } = await run(folder, ["nosuch"]);
+      assert.equal(code, 1);
+      assert.match(stderr, /unknown command "nosuch"/);
+      assert.match(stdout, /Available Commands:/);
+    });
+
+    await t.test("stops with no error when the reader closes the pipe", async () => {
+      await writeFile(
+        join(folder, "big.bin"),
+        new Uint8Array(16 * 1024 * 1024),
+      );
+      const child = spawn(process.execPath, [MAIN, "cat", "big.bin"], {
+        cwd: folder,
+      });
+      let stderr = "";
+      child.stderr.on("data", (chunk) => stderr += chunk);
+      await once(child.stdout, "data");
+      child.stdout.destroy();
+      const [code] = await once(child, "close");
+      assert.equal(code, 0);
+      assert.equal(stderr, "");
+    });
+  } finally {
+    await rm(folder, { recursive: true, force: true });
   }
 });

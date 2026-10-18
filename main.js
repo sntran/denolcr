@@ -11,6 +11,7 @@
  * ```
  */
 import process, { argv, env, stderr, stdout } from "node:process";
+import { once } from "node:events";
 import { parseArgs } from "node:util";
 
 // The import sets the global `fetch`, which reads the paths of remotes.
@@ -80,9 +81,24 @@ for (const name of Object.keys(flags)) {
   const module = await import(`./cmd/${FOLDERS[name]}/main.js`);
   /** TODO merge global flags into config */
   const response = await module[name](...args, flags);
+  if (!response.ok) {
+    // As rclone: the exit code 3 is "directory not found", and 1 is an
+    // other error.
+    const text = (await response.text()).trim() || response.statusText ||
+      (response.status === 404 ? "not found" : `status ${response.status}`);
+    stderr.write(`Error: ${text}\n`);
+    process.exitCode = response.status === 404 ? 3 : 1;
+    return;
+  }
   if (response.body) {
+    // A reader that closes the pipe, for example `head`, stops the command.
+    stdout.on("error", (error) => {
+      if (error.code === "EPIPE") process.exit();
+      throw error;
+    });
     for await (const chunk of response.body) {
-      stdout.write(chunk);
+      // Waits when the pipe is full: else the output stays in memory.
+      if (!stdout.write(chunk)) await once(stdout, "drain");
     }
   }
 })();
