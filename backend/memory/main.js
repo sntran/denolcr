@@ -13,13 +13,26 @@ import { decodePath } from "@rfetch/lib/path";
 import { notSatisfiable, parseRange, partialHeaders } from "@rfetch/lib/range";
 
 /**
- * The files and the folders, by their path with no percent-encoding. The path
- * of a folder ends with `/`, and a folder has no value.
- * @type {Map<string, File | null>}
+ * A file: its bytes, its media type, and the time of its last change.
+ * @typedef {Object} File
+ * @property {Uint8Array} bytes
+ * @property {string} type
+ * @property {number} modified In milliseconds.
  */
-const cache = new Map();
-// Creates the root folder.
-cache.set("/", null);
+
+/**
+ * The files, by their path with no percent-encoding.
+ * @type {Map<string, File>}
+ */
+const files = new Map();
+
+/**
+ * The folders, by their path with no percent-encoding and with `/` at the
+ * end. The value is the names of the children: `name` for a file and
+ * `name/` for a folder. Thus a list reads only its folder.
+ * @type {Map<string, Set<string>>}
+ */
+const folders = new Map([["/", new Set()]]);
 
 /**
  * Serves a memory remote
@@ -39,76 +52,79 @@ async function memory(request) {
   let status = 200, body = null;
 
   if (method === "HEAD" || method === "GET") {
-    if (!cache.has(path)) {
-      return new Response(null, { status: 404 });
-    }
-
-    const file = cache.get(path);
+    const file = files.get(path);
     if (file) {
+      const { bytes } = file;
       headers.set("Content-Type", file.type || mimeType(path));
-      headers.set("Content-Length", `${file.size}`);
-      headers.set("Last-Modified", new Date(file.lastModified).toUTCString());
+      headers.set("Content-Length", `${bytes.length}`);
+      headers.set("Last-Modified", new Date(file.modified).toUTCString());
       headers.set("Accept-Ranges", "bytes");
-      // A Blob has a size, thus a Worker sends its Content-Length.
       if (method === "GET") {
         let range;
         try {
-          range = parseRange(request.headers.get("Range"), file.size);
+          range = parseRange(request.headers.get("Range"), bytes.length);
         } catch {
-          return notSatisfiable(file.size);
+          return notSatisfiable(bytes.length);
         }
-        body = file;
+        // The body is a copy of the bytes, with a length. A Worker reads a
+        // Blob in chunks of 4 KiB, which is slow.
+        body = bytes;
         if (range) {
           status = 206;
           for (
             const [name, value] of Object.entries(
-              partialHeaders(range, file.size),
+              partialHeaders(range, bytes.length),
             )
           ) {
             headers.set(name, value);
           }
-          body = file.slice(range.start, range.end + 1);
+          body = bytes.subarray(range.start, range.end + 1);
         }
       }
-    } else {
+    } else if (folders.has(path)) {
       headers.set("Content-Type", "text/html;charset=utf-8");
       if (method === "GET") {
         body = listing(path, searchParams);
       }
+    } else {
+      return new Response(null, { status: 404 });
     }
   } else if (method === "PUT") {
+    const slash = path.lastIndexOf("/") + 1;
     // Creates the parent folders, then the folder or the file.
-    const names = path.split("/").slice(1, -1);
-    let folder = "/";
-    for (const name of names) {
-      folder += `${name}/`;
-      cache.set(folder, null);
-    }
-
-    if (!path.endsWith("/")) {
-      const name = path.slice(path.lastIndexOf("/") + 1);
-      const file = new File([await request.arrayBuffer()], name, {
+    makeFolder(path.slice(0, slash));
+    if (slash < path.length) {
+      const name = path.slice(slash);
+      files.set(path, {
+        bytes: new Uint8Array(await request.arrayBuffer()),
         type: request.headers.get("Content-Type") || mimeType(name),
-        lastModified: Date.now(),
+        modified: Date.now(),
       });
-      cache.set(path, file);
+      folders.get(path.slice(0, slash))?.add(name);
     }
 
     status = 201;
     headers.append("Content-Location", pathname);
   } else if (method === "DELETE") {
-    if (!cache.has(path)) {
+    if (files.has(path)) {
+      files.delete(path);
+      const slash = path.lastIndexOf("/") + 1;
+      folders.get(path.slice(0, slash))?.delete(path.slice(slash));
+    } else if (folders.has(path)) {
+      // Deletes the folder and all in it. The root folder stays.
+      removeFolder(path);
+      if (path === "/") {
+        folders.set("/", new Set());
+      } else {
+        const parent = path.slice(
+          0,
+          path.lastIndexOf("/", path.length - 2) + 1,
+        );
+        folders.get(parent)?.delete(path.slice(parent.length));
+      }
+    } else {
       return new Response(null, { status: 404 });
     }
-
-    // Deletes the file, or the folder and all in it.
-    for (const key of cache.keys()) {
-      if (key === path || (path.endsWith("/") && key.startsWith(path))) {
-        cache.delete(key);
-      }
-    }
-    // The root folder stays.
-    cache.set("/", null);
     status = 204;
   } else {
     status = 405;
@@ -122,35 +138,56 @@ async function memory(request) {
 }
 
 /**
+ * Creates a folder and its parent folders.
+ * @param {string} path The path of the folder, with `/` at the end.
+ */
+function makeFolder(path) {
+  if (folders.has(path)) return;
+  const parent = path.slice(0, path.lastIndexOf("/", path.length - 2) + 1);
+  makeFolder(parent);
+  folders.set(path, new Set());
+  folders.get(parent)?.add(path.slice(parent.length));
+}
+
+/**
+ * Removes a folder, its files and its folders.
+ * @param {string} path The path of the folder, with `/` at the end.
+ */
+function removeFolder(path) {
+  for (const name of folders.get(path) ?? []) {
+    if (name.endsWith("/")) removeFolder(`${path}${name}`);
+    else files.delete(`${path}${name}`);
+  }
+  folders.delete(path);
+}
+
+/**
  * Gives the HTML list of the files and the folders in a folder.
  * @param {string} path The path of the folder, with `/` at the end.
  * @param {URLSearchParams} searchParams The query, for each link.
  * @returns {ReadableStream<Uint8Array>}
  */
 function listing(path, searchParams) {
-  // The children are the paths in the folder with no other "/" than a "/" at
-  // the end for a folder.
   /** @type {import("@rfetch/lib/listing").Entry[]} */
   const entries = [];
-  for (const [key, file] of cache) {
-    if (key === path || !key.startsWith(path)) continue;
-    const child = key.slice(path.length);
-    const slash = child.indexOf("/");
-    if (slash === -1) {
-      entries.push({
-        Name: child,
-        IsDir: false,
-        Size: file.size,
-        MimeType: file.type || mimeType(child),
-        ModTime: new Date(file.lastModified).toISOString(),
-      });
-    } else if (slash === child.length - 1) {
+  for (const child of folders.get(path) ?? []) {
+    if (child.endsWith("/")) {
       entries.push({
         Name: child.slice(0, -1),
         IsDir: true,
         Size: -1,
         MimeType: "",
         ModTime: "",
+      });
+    } else {
+      const file = files.get(`${path}${child}`);
+      if (!file) continue;
+      entries.push({
+        Name: child,
+        IsDir: false,
+        Size: file.bytes.length,
+        MimeType: file.type || mimeType(child),
+        ModTime: new Date(file.modified).toISOString(),
       });
     }
   }
