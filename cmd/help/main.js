@@ -1,5 +1,5 @@
 import { backends } from "../../backend/main.js";
-import * as commands from "../main.js";
+import { FOLDERS } from "../folders.js";
 
 /**
  * @type {Object<string, () => string>}
@@ -12,7 +12,7 @@ usage["commands"] = () =>
   rfetch [command]
 
 Available Commands:
-  ${Object.keys(commands).join("\n  ")}
+  ${Object.keys(FOLDERS).join("\n  ")}
 
 Use "rfetch [command] --help" for more information about a command.
 Use "rfetch help flags" for to see the global flags.

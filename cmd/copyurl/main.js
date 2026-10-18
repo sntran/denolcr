@@ -1,6 +1,6 @@
 import { basename, resolve } from "node:path";
 
-import { fetch } from "../../mod.js";
+import { fetch } from "../../fetch.js";
 
 /**
  * @typedef {Object} Options

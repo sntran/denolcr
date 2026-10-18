@@ -1,4 +1,4 @@
-import { fetch } from "../../mod.js";
+import { fetch } from "../../fetch.js";
 
 /**
  * @param {string} location

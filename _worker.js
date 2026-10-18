@@ -17,7 +17,8 @@
  * A path with no remote is a static file of the site.
  */
 // The import also sets the global `fetch`, which reads the paths of remotes.
-import { fetch, lsjson } from "./mod.js";
+import { fetch } from "./fetch.js";
+import { lsjson } from "./cmd/lsjson/main.js";
 import { parse } from "@rfetch/lib/fspath";
 
 /**

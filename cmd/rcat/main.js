@@ -1,5 +1,5 @@
 import process from "node:process";
-import { fetch } from "../../mod.js";
+import { fetch } from "../../fetch.js";
 
 /**
  * Copies standard input to file on remote.

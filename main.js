@@ -10,10 +10,13 @@
  * ./main.js copy source:/path/to/file destination:/path/to/file
  * ```
  */
-import { argv, env, stdout } from "node:process";
+import process, { argv, env, stderr, stdout } from "node:process";
 import { parseArgs } from "node:util";
 
-import * as commands from "./mod.js";
+// The import sets the global `fetch`, which reads the paths of remotes.
+import "./fetch.js";
+
+import { FOLDERS } from "./cmd/folders.js";
 
 /** Optional params for the subcommand. */
 const options = {
@@ -68,8 +71,15 @@ for (const name of Object.keys(flags)) {
 }
 
 (async () => {
+  let name = subcommand;
+  if (!Object.hasOwn(FOLDERS, name)) {
+    stderr.write(`Error: unknown command "${name}" for "rfetch"\n`);
+    process.exitCode = 1;
+    name = "help";
+  }
+  const module = await import(`./cmd/${FOLDERS[name]}/main.js`);
   /** TODO merge global flags into config */
-  const response = await commands[subcommand](...args, flags);
+  const response = await module[name](...args, flags);
   if (response.body) {
     for await (const chunk of response.body) {
       stdout.write(chunk);

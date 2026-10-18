@@ -1,4 +1,4 @@
-import { lsjson } from "../../mod.js";
+import { lsjson } from "../lsjson/main.js";
 
 const FORMATS = {
   "p": "Path",

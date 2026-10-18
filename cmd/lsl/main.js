@@ -1,4 +1,4 @@
-import { lsf } from "../../mod.js";
+import { lsf } from "../lsf/main.js";
 
 /**
  * List the objects in path with modification time, size and path.

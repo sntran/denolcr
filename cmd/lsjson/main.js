@@ -2,7 +2,7 @@ import { parse } from "@rfetch/lib/fspath";
 import { readListing } from "@rfetch/lib/listing";
 import { toLocaleISOString } from "@rfetch/lib/time";
 
-import { fetch } from "../../mod.js";
+import { fetch } from "../../fetch.js";
 
 const encoder = new TextEncoder();
 

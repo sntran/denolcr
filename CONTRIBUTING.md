@@ -70,8 +70,8 @@ Cloudflare: it gets all from the request and from `env`, the second argument of
 `fetch`. A backend on top of another remote, for example `crypt` or `chunker`,
 sends its requests to that remote with the global `fetch`, for example
 `fetch(":memory:/crypt/file.bin")`. The host sets the global `fetch` that reads
-such a path: the import of `mod.js` sets it, and `_worker.js` imports `mod.js`.
-The tests of such a backend import `mod.js` too:
+such a path: the import of `fetch.js` sets it. `mod.js`, the commands and
+`_worker.js` import `fetch.js`. The tests of such a backend import `mod.js`:
 
 ```js
 // Sets the global `fetch` that reads the paths of remotes.
@@ -109,9 +109,9 @@ options of the request go on, for example a remote `RFETCH_CONFIG_NAME_TYPE`
 that only the headers tell. The options of the backend itself do not go. When
 the remote is a URL, no option goes: a secret must not go out to a server.
 
-The `fetch` of `mod.js` reads the headers `RFETCH_*` and `RCLONE_*` of a request
-as the variables, in the place of the variables of the process. A remote can
-come only from variables: `RFETCH_CONFIG_NAME_TYPE` and its options, as in
+The `fetch` of `fetch.js` reads the headers `RFETCH_*` and `RCLONE_*` of a
+request as the variables, in the place of the variables of the process. A remote
+can come only from variables: `RFETCH_CONFIG_NAME_TYPE` and its options, as in
 rclone. The backend gets the options of the path, the connection string and the
 flags, in its query, and all the other options in `env`, as
 `RFETCH_REMOTE_NAME`. The headers `RFETCH_*` and `RCLONE_*` never go out to a
@@ -196,6 +196,16 @@ modification time.
 
 `renderListing` of `@rfetch/lib/listing` writes such a list from the entries of
 a folder, and `readListing` reads it.
+
+## Commands
+
+Each command is a function of a module in `cmd`, for example `cat` of
+`cmd/cat/main.js` and `reveal` of `cmd/obscure/main.js`. A new command goes in
+`cmd/main.js`, for `mod.js`, and in `cmd/folders.js`, for the command line:
+`main.js` loads only the module of its command, because the load of all the
+commands takes much time. A command imports `fetch.js` and the modules of the
+other commands that it uses, not `mod.js`. The test `cmd/folders_test.js` makes
+sure that the two lists are the same.
 
 ## Tests of a backend
 

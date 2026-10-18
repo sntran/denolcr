@@ -8,7 +8,7 @@
  * A backend on top of another remote, for example crypt, sends its requests
  * to that remote with the global `fetch`, for example
  * `fetch(":memory:/path")`. The host sets the global `fetch` that reads
- * such a path: `mod.js` in Node.js, and `_worker.js` in a Worker.
+ * such a path: the import of `fetch.js` sets it, in Node.js and in a Worker.
  *
  * @typedef {Object} Backend
  * @property {(request: Request, env?: Object) => Response | Promise<Response>} fetch
