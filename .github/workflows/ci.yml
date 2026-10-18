@@ -4,6 +4,8 @@
 #   newer versions. The job installs rclone and Go, thus the tests that
 #   compare rfetch with rclone and with Go run too.
 # - deno fmt --check: the format of the files.
+# - wasm: the build of backend/crypt/secretbox.wasm from its source gives the
+#   same bytes as the file in the repository.
 #
 # This workflow deploys nothing: the Pages project deploys the branches.
 name: CI
@@ -85,3 +87,24 @@ jobs:
           deno-version: 2.9.6
 
       - run: deno fmt --check
+
+  wasm:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend/crypt/native
+    steps:
+      - uses: actions/checkout@v4
+
+      # The compiler of rust-toolchain.toml, with the target of WebAssembly.
+      - name: Install Rust
+        run: |
+          channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal \
+            --target wasm32-unknown-unknown
+
+      - run: ./build.sh
+
+      - name: Compare with the file in the repository
+        run: git diff --exit-code -- ../secretbox.wasm

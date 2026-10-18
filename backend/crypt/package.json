@@ -6,6 +6,12 @@
   "exports": {
     ".": "./main.js"
   },
+  "imports": {
+    "#wasm": {
+      "workerd": "./wasm.workerd.js",
+      "default": "./wasm.js"
+    }
+  },
   "scripts": {
     "test": "node --test"
   },
@@ -20,8 +26,6 @@
   "author": "Trần Nguyễn Sơn",
   "license": "ISC",
   "dependencies": {
-    "@noble/ciphers": "^0.5.3",
-    "@noble/hashes": "^1.4.0",
     "@rfetch/lib": "^0.1.0",
     "@sntran/html-rewriter": "^0.2.0",
     "base32-decode": "^1.0.0",

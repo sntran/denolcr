@@ -93,7 +93,7 @@
  * - 1049120 bytes total (a 0.05% overhead). This is the overhead for big files.
  */
 
-import { scryptAsync as scrypt } from "@noble/hashes/scrypt";
+import { scrypt } from "node:crypto";
 import { HTMLRewriter } from "@sntran/html-rewriter";
 import { formatBytes } from "@rfetch/lib/format";
 import { mimeType } from "@rfetch/lib/mime";
@@ -142,6 +142,8 @@ const N = 2 ** 14; // 16384
 const r = 8;
 const p = 1;
 const dkLen = 32 + 32 + 16;
+/** The memory that scrypt can use: it needs 128 * N * r bytes, 16 MiB. */
+const SCRYPT_MEMORY = 2 * 128 * N * r;
 
 const SECRETBOX_OPTIONS = {
   blockSize: 64 * 1024, // 64 KiB
@@ -584,7 +586,18 @@ export async function deriveKey(password, salt = "") {
     return new Uint8Array(dkLen);
   }
   const saltBytes = bytes(salt).length ? bytes(salt) : DEFAULT_SALT;
-  return await scrypt(bytes(password), saltBytes, { N, r, p, dkLen });
+  // The scrypt of node:crypto is native code, also in a Worker: it is about
+  // 4 times faster than scrypt in JavaScript there.
+  const key = await new Promise((resolve, reject) => {
+    scrypt(
+      bytes(password),
+      saltBytes,
+      dkLen,
+      { N, r, p, maxmem: SCRYPT_MEMORY },
+      (error, key) => error ? reject(error) : resolve(key),
+    );
+  });
+  return new Uint8Array(key.buffer, key.byteOffset, key.length);
 }
 
 /**

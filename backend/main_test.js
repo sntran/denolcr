@@ -82,9 +82,8 @@ test("load gives each backend, and nothing for other names", async () => {
 test("each workspace imports only node:, its packages, and its files", () => {
   for (const folder of WORKSPACES) {
     const path = join(ROOT, folder);
-    const { dependencies = {}, devDependencies = {} } = JSON.parse(
-      readFileSync(join(path, "package.json")),
-    );
+    const { dependencies = {}, devDependencies = {}, imports = {} } = JSON
+      .parse(readFileSync(join(path, "package.json")));
     for (const file of filesOf(path)) {
       const source = readFileSync(join(path, file), "utf8");
       for (const specifier of importsOf(source)) {
@@ -102,6 +101,24 @@ test("each workspace imports only node:, its packages, and its files", () => {
             isHost || !target.startsWith(".."),
             `${where} is out of the folder`,
           );
+          continue;
+        }
+        if (specifier.startsWith("#")) {
+          // A file of the folder, from the field `imports` of package.json.
+          assert.ok(
+            Object.hasOwn(imports, specifier),
+            `${where} is not in imports`,
+          );
+          const targets = JSON.stringify(imports[specifier]).match(
+            /"\.[^"]*"/g,
+          );
+          for (const target of targets ?? []) {
+            const inside = relative(path, resolve(path, JSON.parse(target)));
+            assert.ok(
+              !inside.startsWith(".."),
+              `${where} is out of the folder`,
+            );
+          }
           continue;
         }
         const name = packageOf(specifier);

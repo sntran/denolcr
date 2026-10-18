@@ -270,6 +270,24 @@ default). Put the credentials in `RFETCH_S3_ACCESS_KEY_ID` and
 `RCLONE_`. Use a bucket only for the tests: the tests make folders in it and
 delete them.
 
+## WebAssembly of crypt
+
+The crypt backend encrypts the blocks of the data with
+`backend/crypt/secretbox.wasm`: NaCl secretbox (XSalsa20 and Poly1305), as
+rclone. Node.js, WebCrypto and Workers have no Salsa20, and the module is about
+2 times faster than the same code in JavaScript. The module has no imports.
+
+- The source is the Rust crate in `backend/crypt/native`.
+  `backend/crypt/native/build.sh` builds the module, with the compiler of
+  `rust-toolchain.toml` and the versions of `Cargo.lock`.
+- Node.js, Deno and Bun read the file (`wasm.js`). A Worker cannot compile a
+  module at run time, thus wrangler compiles it at the build
+  (`wasm.workerd.js`). The field `imports` of `backend/crypt/package.json`
+  selects the file.
+- After a change of the crate, build the module and commit it with the change.
+  The job `wasm` of CI builds the module again, and fails when its bytes are not
+  the bytes of the file in the repository.
+
 ## Benchmarks
 
 The cases of `bench/cases.js` measure the time of the backends, of the code in

@@ -7,7 +7,7 @@
  * data. The nonce goes up by 1 for each block, as a number in little-endian
  * bytes.
  */
-import { xsalsa20poly1305 } from "@noble/ciphers/salsa";
+import module from "#wasm";
 
 /**
  * Options for secretbox
@@ -48,17 +48,17 @@ export class EncryptionStream extends TransformStream {
       },
       transform(chunk, controller) {
         const data = pending.length ? concat(pending, chunk) : chunk;
-        let offset = 0;
-        for (; data.length - offset >= blockSize; offset += blockSize) {
-          const block = data.subarray(offset, offset + blockSize);
-          controller.enqueue(xsalsa20poly1305(key, nonce).encrypt(block));
-          increment(nonce);
+        const size = data.length - data.length % blockSize;
+        if (size > 0) {
+          controller.enqueue(
+            seal(key, nonce, data.subarray(0, size), blockSize),
+          );
         }
-        pending = data.slice(offset);
+        pending = data.slice(size);
       },
       flush(controller) {
         if (pending.length > 0) {
-          controller.enqueue(xsalsa20poly1305(key, nonce).encrypt(pending));
+          controller.enqueue(seal(key, nonce, pending, blockSize));
         }
       },
     });
@@ -89,15 +89,6 @@ export class DecryptionStream extends TransformStream {
     /** The data that is not a full header or block yet. */
     let pending = new Uint8Array(0);
 
-    /** @param {Uint8Array} block */
-    function open(block) {
-      try {
-        return xsalsa20poly1305(key, nonce).decrypt(block);
-      } catch {
-        throw new Error(Errors.BAD_BLOCK);
-      }
-    }
-
     super({
       transform(chunk, controller) {
         const data = pending.length ? concat(pending, chunk) : chunk;
@@ -113,12 +104,13 @@ export class DecryptionStream extends TransformStream {
           nonce = data.slice(magic.length, headerSize);
           offset = headerSize;
         }
-        for (; data.length - offset >= blockLength; offset += blockLength) {
-          controller.enqueue(open(data.subarray(offset, offset + blockLength)));
-          // The nonce goes up by 1 for each block.
-          increment(nonce);
+        const size = data.length - offset -
+          (data.length - offset) % blockLength;
+        if (size > 0) {
+          const boxes = data.subarray(offset, offset + size);
+          controller.enqueue(open(key, nonce, boxes, blockSize));
         }
-        pending = data.slice(offset);
+        pending = data.slice(offset + size);
       },
       flush(controller) {
         if (!nonce) {
@@ -128,7 +120,7 @@ export class DecryptionStream extends TransformStream {
           if (pending.length <= TAG_SIZE) {
             throw new Error(Errors.BAD_HEADER);
           }
-          controller.enqueue(open(pending));
+          controller.enqueue(open(key, nonce, pending, blockSize));
         }
       },
     });
@@ -173,6 +165,108 @@ export function decryptedSize(size, options = {}) {
     }
   }
   return blocks * blockSize + residue;
+}
+
+/**
+ * The functions and the memory of `secretbox.wasm`. The instance comes at
+ * the first use.
+ * @type {any}
+ */
+let wasm;
+
+/**
+ * Gives a view of the memory of `secretbox.wasm`, with the key and the nonce
+ * in it.
+ * @param {Uint8Array} key 32 bytes.
+ * @param {Uint8Array} nonce 24 bytes.
+ */
+function load(key, nonce) {
+  if (key.length !== 32) throw new RangeError("The key must be 32 bytes.");
+  if (nonce.length !== NONCE_SIZE) {
+    throw new RangeError(`The nonce must be ${NONCE_SIZE} bytes.`);
+  }
+  wasm ??= new WebAssembly.Instance(module, {}).exports;
+  const memory = new Uint8Array(wasm.memory.buffer);
+  memory.set(key, wasm.key());
+  memory.set(nonce, wasm.nonce());
+  return memory;
+}
+
+/**
+ * Reads the nonce back from the memory of `secretbox.wasm`, and removes the
+ * key from it.
+ * @param {Uint8Array} memory
+ * @param {Uint8Array} nonce
+ */
+function unload(memory, nonce) {
+  nonce.set(memory.subarray(wasm.nonce(), wasm.nonce() + NONCE_SIZE));
+  memory.fill(0, wasm.key(), wasm.key() + 32);
+}
+
+/**
+ * Seals the data in boxes: a box for each part of `blockSize` bytes, with a
+ * tag and the encrypted part. The nonce goes up by 1 for each box, in place.
+ * @param {Uint8Array} key
+ * @param {Uint8Array} nonce
+ * @param {Uint8Array} data
+ * @param {number} blockSize
+ * @returns {Uint8Array} The boxes.
+ */
+function seal(key, nonce, data, blockSize) {
+  const blocks = Math.ceil(data.length / blockSize);
+  const result = new Uint8Array(data.length + blocks * TAG_SIZE);
+  let at = 0;
+  for (let offset = 0; offset < data.length;) {
+    const memory = load(key, nonce);
+    // The whole blocks that go in the input of the module.
+    const step = Math.floor(wasm.size() / (blockSize + TAG_SIZE)) * blockSize;
+    if (step === 0) throw new RangeError("The block size is too large.");
+    const part = data.subarray(offset, offset + step);
+    memory.set(part, wasm.input());
+    const size = wasm.seal(part.length, blockSize);
+    result.set(memory.subarray(wasm.output(), wasm.output() + size), at);
+    unload(memory, nonce);
+    at += size;
+    offset += part.length;
+  }
+  return result;
+}
+
+/**
+ * Opens the boxes: each box has a tag and `blockSize` bytes of encrypted
+ * data, and the last box can be shorter. The nonce goes up by 1 for each
+ * box, in place.
+ * @param {Uint8Array} key
+ * @param {Uint8Array} nonce
+ * @param {Uint8Array} boxes
+ * @param {number} blockSize
+ * @returns {Uint8Array} The data.
+ * @throws {Error} With the message `Errors.BAD_BLOCK` for a box that does
+ *   not authenticate.
+ */
+function open(key, nonce, boxes, blockSize) {
+  const boxLength = blockSize + TAG_SIZE;
+  const count = Math.ceil(boxes.length / boxLength);
+  const result = new Uint8Array(boxes.length - count * TAG_SIZE);
+  let at = 0;
+  for (let offset = 0; offset < boxes.length;) {
+    const memory = load(key, nonce);
+    // The whole boxes that go in the input of the module.
+    const step = Math.floor(wasm.size() / boxLength) * boxLength;
+    if (step === 0) throw new RangeError("The block size is too large.");
+    const part = boxes.subarray(offset, offset + step);
+    memory.set(part, wasm.input());
+    const size = wasm.open(part.length, blockSize);
+    if (size < 0) {
+      unload(memory, nonce);
+      throw new Error(Errors.BAD_BLOCK);
+    }
+    result.set(memory.subarray(wasm.output(), wasm.output() + size), at);
+    unload(memory, nonce);
+    at += size;
+    offset += part.length;
+  }
+  return result;
 }
 
 /**
