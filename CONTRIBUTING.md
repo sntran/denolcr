@@ -252,12 +252,13 @@ backend goes in its `options`. An unknown flag is an error, as in rclone. A
 command reads a boolean flag with `isTrue` of `@rfetch/lib/options`: the flag
 can be `true` or the text `true` of a query.
 
-The lists of text, `ls`, `lsl`, `lsd` and `lsf`, read the items of `lsjson` with
-`listLines` of `cmd/lsf/main.js`, and write each line as rclone writes it: the
-time with `toListTime` of `@rfetch/lib/time`, in the local time zone, and the
-size and the count with `sizeField` and `countField` of `@rfetch/lib/format`, in
-fields of the widths of rclone. `cmd/lsf/rclone_test.js` compares the lines with
-the lines of rclone.
+The lists of text, `ls`, `lsl`, `lsd` and `lsf`, send the body of `lsjson`
+through a `LineStream` of `cmd/lsjson/main.js`. This stream reads the body in
+chunks of any size, and gives the line of each item. Each command writes the
+line as rclone writes it: the time with `toListTime` of `@rfetch/lib/time`, in
+the local time zone, and the size and the count with `sizeField` and
+`countField` of `@rfetch/lib/format`, in fields of the widths of rclone.
+`cmd/lsf/rclone_test.js` compares the lines with the lines of rclone.
 
 ## Tests of a backend
 

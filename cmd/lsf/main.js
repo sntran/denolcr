@@ -1,6 +1,6 @@
 import { isTrue } from "@rfetch/lib/options";
 import { toListTime } from "@rfetch/lib/time";
-import { lsjson } from "../lsjson/main.js";
+import { LineStream, lsjson } from "../lsjson/main.js";
 
 const FORMATS = {
   "p": "Path",
@@ -116,7 +116,7 @@ const FORMATS = {
  * @param {string} [flags.separator=";"] - Separator for the listing.
  * @returns {Promise<Response>}
  */
-export function lsf(location, flags = {}) {
+export async function lsf(location, flags = {}) {
   const format = flags.format ?? "p";
   const csv = isTrue(flags.csv);
   // As rclone, the separator of CSV is "," when the flag does not tell it.
@@ -127,7 +127,9 @@ export function lsf(location, flags = {}) {
   // CSV has a separator of one character.
   const comma = [...separator][0] ?? ",";
 
-  return listLines(location, flags, (item) => {
+  const response = await lsjson(location, flags);
+  if (!response.ok) return response;
+  const lines = new LineStream((item) => {
     if (dirsOnly && !item.IsDir) return;
     if (filesOnly && item.IsDir) return;
     const values = [...format].map((letter) => {
@@ -140,6 +142,9 @@ export function lsf(location, flags = {}) {
     });
     if (!csv) return values.join(separator);
     return values.map((value) => quoted(value, comma)).join(comma);
+  });
+  return new Response(response.body.pipeThrough(lines), {
+    headers: { "Content-Type": "text/plain" },
   });
 }
 
@@ -160,38 +165,3 @@ function quoted(value, comma) {
 /** A space at the start of a text, as `unicode.IsSpace` of Go. */
 const SPACE =
   /^[\t\n\v\f\r \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]/;
-
-/**
- * Lists a path as `lsjson`, with a line for each item, for the lists of
- * text: `lsf`, `ls`, `lsl` and `lsd`.
- * @param {string} location
- * @param {Object} flags The flags of `lsjson`, for example `recursive`.
- * @param {(item: import("../../mod.js").File) => string | undefined} line
- *   Gives the line of an item, with no line break, or no line.
- * @returns {Promise<Response>}
- */
-export async function listLines(location, flags, line) {
-  const response = await lsjson(location, flags);
-  if (!response.ok) return response;
-
-  const headers = new Headers(response.headers);
-  headers.set("Content-Type", "text/plain");
-
-  const body = response.body
-    .pipeThrough(new TextDecoderStream())
-    .pipeThrough(
-      new TransformStream({
-        transform(chunk, controller) {
-          // `lsjson` gives each item on a line, with a comma at the end of
-          // each line but the last.
-          chunk = chunk.trim().replace(/,$/, "");
-          if (!chunk.startsWith("{") || chunk.at(-1) !== "}") return;
-          const text = line(JSON.parse(chunk));
-          if (text !== undefined) controller.enqueue(`${text}\n`);
-        },
-      }),
-    )
-    .pipeThrough(new TextEncoderStream());
-
-  return new Response(body, { headers });
-}

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { listen } from "@rfetch/lib/testing/server";
 import memory from "@rfetch/memory";
 import { fetch } from "../../mod.js";
-import { lsjson } from "./main.js";
+import { LineStream, lsjson } from "./main.js";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -263,4 +263,38 @@ test("lsjson gives a folder with no time the default time of rclone", async () =
   const folder = items.find(({ Name }) => Name === "D");
   assert.equal(folder.IsDir, true);
   assert.equal(folder.ModTime, "2000-01-01T00:00:00Z");
+});
+
+test("LineStream reads the body of lsjson in chunks of any size", async () => {
+  const text = [
+    "[",
+    '{"Path":"a","Name":"a","IsDir":false},',
+    '{"Path":"日本語 b","Name":"日本語 b","IsDir":false},',
+    '{"Path":"C","Name":"C","IsDir":true}',
+    "]",
+    "",
+  ].join("\n");
+  const bytes = encoder.encode(text);
+  // All in one chunk, a chunk for each byte (thus a character of three
+  // bytes is in three chunks), and chunks of 7 bytes.
+  for (const size of [bytes.length, 1, 7]) {
+    const body = new ReadableStream({
+      start(controller) {
+        for (let i = 0; i < bytes.length; i += size) {
+          controller.enqueue(bytes.slice(i, i + size));
+        }
+        controller.close();
+      },
+    });
+    const lines = body.pipeThrough(
+      new LineStream(({ Path, IsDir }) => IsDir ? undefined : Path),
+    );
+    assert.equal(await new Response(lines).text(), "a\n日本語 b\n", `${size}`);
+  }
+});
+
+test("LineStream gives an error for a line that is not an item", async () => {
+  const body = new Response('[\n{"Path":"a",\n]\n').body;
+  const lines = body.pipeThrough(new LineStream(({ Path }) => Path));
+  await assert.rejects(new Response(lines).text(), SyntaxError);
 });

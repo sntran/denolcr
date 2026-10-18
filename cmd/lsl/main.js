@@ -1,7 +1,7 @@
 import { sizeField } from "@rfetch/lib/format";
 import { isTrue } from "@rfetch/lib/options";
 import { toListTime } from "@rfetch/lib/time";
-import { listLines } from "../lsf/main.js";
+import { LineStream, lsjson } from "../lsjson/main.js";
 
 /**
  * List the objects in path with modification time, size and path.
@@ -26,17 +26,22 @@ import { listLines } from "../lsf/main.js";
  * @param {number} [flags.max_depth=Infinity] - Maximum depth of recursion.
  * @returns {Promise<Response>}
  */
-export function lsl(location, flags = {}) {
+export async function lsl(location, flags = {}) {
   const human = isTrue(flags.human_readable);
+  const response = await lsjson(location, {
+    recursive: true,
+    max_depth: "Infinity",
+    ...flags,
+  });
+  if (!response.ok) return response;
   // As `rclone lsl`: the size in 9 characters, the local time to the
   // nanosecond, then the path.
-  return listLines(
-    location,
-    { recursive: true, max_depth: "Infinity", ...flags },
-    (item) => {
-      if (item.IsDir) return;
-      const time = toListTime(item.ModTime, 9);
-      return `${sizeField(item.Size, human, 9)} ${time} ${item.Path}`;
-    },
-  );
+  const lines = new LineStream((item) => {
+    if (item.IsDir) return;
+    const time = toListTime(item.ModTime, 9);
+    return `${sizeField(item.Size, human, 9)} ${time} ${item.Path}`;
+  });
+  return new Response(response.body.pipeThrough(lines), {
+    headers: { "Content-Type": "text/plain" },
+  });
 }

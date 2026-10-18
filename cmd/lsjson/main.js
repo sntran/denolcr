@@ -269,6 +269,62 @@ async function* walk(folder, path) {
 }
 
 /**
+ * A stream that reads the body of `lsjson`, in chunks of any size, and gives
+ * the body of a list of text: a line for each item. It keeps only the part of
+ * a line that has no "\n" yet. The lists of text `ls`, `lsl`, `lsd` and `lsf`
+ * use it.
+ *
+ * Example
+ *
+ * ```js
+ * import { LineStream, lsjson } from "./main.js";
+ * const response = await lsjson("remote:path");
+ * const paths = response.body.pipeThrough(
+ *   new LineStream((item) => item.Path),
+ * );
+ * ```
+ * @extends {TransformStream<Uint8Array, Uint8Array>}
+ */
+export class LineStream extends TransformStream {
+  /**
+   * @param {(item: Item) => string | undefined} line Gives the line of an
+   *   item, with no line break, or no line.
+   */
+  constructor(line) {
+    const decoder = new TextDecoder();
+    let rest = "";
+    /**
+     * Writes the lines of the items of the lines of `lsjson`.
+     * @param {string[]} texts
+     * @param {TransformStreamDefaultController<Uint8Array>} controller
+     */
+    const write = (texts, controller) => {
+      let lines = "";
+      for (let text of texts) {
+        // `lsjson` gives each item on a line, with a comma at the end of
+        // each line but the last.
+        text = text.trim().replace(/,$/, "");
+        if (!text.startsWith("{")) continue;
+        const value = line(JSON.parse(text));
+        if (value !== undefined) lines += `${value}\n`;
+      }
+      if (lines) controller.enqueue(encoder.encode(lines));
+    };
+    super({
+      transform(chunk, controller) {
+        const texts = (rest + decoder.decode(chunk, { stream: true }))
+          .split("\n");
+        rest = texts.pop() ?? "";
+        write(texts, controller);
+      },
+      flush(controller) {
+        write([rest + decoder.decode()], controller);
+      },
+    });
+  }
+}
+
+/**
  * The name of a file in the path of a location, as a backend reads it: with
  * no percent-encoding.
  * @param {string} segment For example `a%20b.txt` or `a b.txt`.
