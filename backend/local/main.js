@@ -45,12 +45,20 @@ async function local(request) {
        */
       const files = await readdir(absolutePath, { withFileTypes: true });
       files.sort((a, b) => a.name.localeCompare(b.name));
+      // The stat of each file, at the same time: one after the other takes
+      // much more time. A file that goes away before its stat is not in
+      // the list.
+      const fileStats = await Promise.all(
+        files.map((file) =>
+          stat(join(absolutePath, file.name)).catch(() => null)
+        ),
+      );
 
       if (method === "GET") {
         const query = escapeHTML(`${searchParams}`);
 
         body = new ReadableStream({
-          async start(controller) {
+          start(controller) {
             controller.enqueue(`
               <search>
                 <form>
@@ -80,14 +88,15 @@ async function local(request) {
                 </tr>
               `);
 
-            for (const file of files) {
+            for (const [index, file] of files.entries()) {
+              if (!fileStats[index]) continue;
               const name = file.name;
               const isDirectory = file.isDirectory();
               const href = `${encodeURIComponent(name)}${
                 isDirectory ? "/" : ""
               }`;
 
-              const { size, mtimeMs } = await stat(join(absolutePath, name));
+              const { size, mtimeMs } = fileStats[index];
               const mtime = timeOf(mtimeMs);
 
               controller.enqueue(`<tr>
@@ -151,7 +160,9 @@ async function local(request) {
 
         body = new ReadableStream({
           async pull(controller) {
-            const chunk = new Uint8Array(Math.min(64 * 1024, remaining));
+            // A read of 1 MiB: each read is a call to the system, and parts
+            // of 64 KiB make a read of a large file much slower.
+            const chunk = new Uint8Array(Math.min(1024 * 1024, remaining));
             const { bytesRead } = remaining > 0
               ? await file.read(chunk, 0, chunk.length, position)
               : { bytesRead: 0 };
