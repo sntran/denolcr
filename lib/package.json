@@ -15,7 +15,6 @@
     "./path": "./path.js",
     "./progress": "./progress.js",
     "./range": "./range.js",
-    "./rewriter": "./rewriter.js",
     "./size": "./size.js",
     "./sized": "./sized.js",
     "./time": "./time.js",
@@ -37,10 +36,8 @@
   },
   "author": "Trần Nguyễn Sơn",
   "license": "ISC",
-  "dependencies": {
-    "@sntran/html-rewriter": "^0.2.0"
-  },
   "devDependencies": {
+    "@sntran/html-rewriter": "^0.2.0",
     "fast-check": "^3.19.0"
   }
 }

@@ -94,7 +94,7 @@
  */
 
 import { scrypt } from "node:crypto";
-import { formatBytes } from "@rfetch/lib/format";
+import { readListing, renderListing } from "@rfetch/lib/listing";
 import { mimeType } from "@rfetch/lib/mime";
 import { optionsOf, remoteHeaders } from "@rfetch/lib/options";
 import { decodePath } from "@rfetch/lib/path";
@@ -106,7 +106,6 @@ import {
 } from "@rfetch/lib/range";
 import { sized } from "@rfetch/lib/sized";
 import { reveal } from "@rfetch/lib/obscure";
-import { htmlRewriter } from "@rfetch/lib/rewriter";
 import PathCipher from "./PathCipher.js";
 import {
   decryptedSize,
@@ -414,7 +413,7 @@ async function getRange(target, headers, cipher, path, header) {
  * files, from the list of the encrypted folder on the remote.
  *
  * Each link gets the query of the request with no secret option, and no
- * option of the remote. A name that does not decrypt is not a link, as
+ * option of the remote. A name that does not decrypt is not in the list, as
  * rclone skips such a name.
  * @param {Response} response The list of the encrypted folder.
  * @param {{ names: import("./PathCipher.js").PathCipher }} cipher
@@ -422,73 +421,42 @@ async function getRange(target, headers, cipher, path, header) {
  * @returns {Promise<Response>}
  */
 async function listing(response, { names }, searchParams) {
-  const query = new URLSearchParams(searchParams);
-  for (const name of SECRETS) query.delete(name);
-  const suffix = query.size ? `?${query}` : "";
-
-  // The links of the list are relative to the encrypted folder.
-  const base = new URL("http://remote/folder/");
-
-  /** True when the link of the current row is a file that decrypts. */
-  let isFile = false;
-
-  const rewriter = (await htmlRewriter())
-    .on("tr", {
-      element() {
-        isFile = false;
-      },
-    })
-    .on("tr a[href]", {
-      element(element) {
-        const href = new URL(element.getAttribute("href"), base);
-        if (href.origin !== base.origin) {
-          element.removeAttribute("href");
-          return;
-        }
-        if (!href.pathname.startsWith(base.pathname)) {
-          // The parent folder.
-          element.setAttribute("href", `../${suffix}`);
-          return;
-        }
-
-        const rest = href.pathname.slice(base.pathname.length);
-        const isDirectory = rest.endsWith("/");
-        let name;
-        try {
-          const encrypted = decodeURIComponent(
-            isDirectory ? rest.slice(0, -1) : rest,
-          );
-          if (encrypted === "" || encrypted.includes("/")) throw encrypted;
-          name = names.decryptName(encrypted);
-        } catch {
-          element.removeAttribute("href");
-          element.removeAttribute("type");
-          return;
-        }
-
-        isFile = !isDirectory;
-        element.setAttribute(
-          "href",
-          `${encodeURIComponent(name)}${isDirectory ? "/" : ""}${suffix}`,
-        );
-        element.setAttribute("type", isDirectory ? "" : mimeType(name));
-        // The text of an element is HTML-escaped.
-        element.setInnerContent(isDirectory ? `${name}/` : name);
-      },
-    })
-    .on("tr data[value]", {
-      element(element) {
-        const size = isFile ? sizeOf(element.getAttribute("value")) : -1;
-        element.setAttribute("value", `${size}`);
-        element.setInnerContent(
-          size >= 0 ? formatBytes(size, { locale: true }) : "—",
-        );
-      },
-    });
-
   const headers = new Headers(response.headers);
   headers.delete("Content-Length");
-  return new Response(rewriter.transform(response).body, {
+  headers.set("Content-Type", "text/html;charset=utf-8");
+  // The answer to HEAD has no body.
+  if (response.body === null) {
+    return new Response(null, { status: response.status, headers });
+  }
+
+  const query = new URLSearchParams(searchParams);
+  for (const name of SECRETS) query.delete(name);
+
+  // The links of the list are relative to the encrypted folder.
+  const encrypted = await readListing(
+    response,
+    new URL("http://remote/folder/"),
+  );
+  /** @type {import("@rfetch/lib/listing").Entry[]} */
+  const entries = [];
+  for (const { Name, IsDir, Size, ModTime } of encrypted) {
+    let name;
+    try {
+      if (Name.includes("/")) continue;
+      name = names.decryptName(Name);
+    } catch {
+      continue;
+    }
+    entries.push({
+      Name: name,
+      IsDir,
+      Size: IsDir ? -1 : sizeOf(Size < 0 ? null : String(Size)),
+      MimeType: IsDir ? "" : mimeType(name),
+      ModTime,
+    });
+  }
+
+  return new Response(renderListing(entries, { query: `${query}` }), {
     status: response.status,
     headers,
   });

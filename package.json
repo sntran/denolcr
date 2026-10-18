@@ -40,7 +40,6 @@
     "@rfetch/local": "^0.1.0",
     "@rfetch/memory": "^0.1.0",
     "@rfetch/s3": "^0.1.0",
-    "@sntran/html-rewriter": "^0.2.0",
     "@sntran/serve": "^0.0.1"
   },
   "devDependencies": {
