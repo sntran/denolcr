@@ -121,8 +121,16 @@ A local path, for example `file.txt`, `../file.txt` or `/tmp/file.txt`, is
 relative to the current folder, as in rclone. The `fetch` of `fetch.js` gives
 the absolute path to the local backend, with `RFETCH_LOCAL_ROOT: /` in `env`.
 `RFETCH_LOCAL_ROOT` is not an option: a config file, a variable, a header or the
-query cannot set it. Thus `:local:path` and a client of `rfetch serve` stay in
-the current folder.
+query cannot set it. Thus `:local:path` stays in the current folder.
+
+`rfetch serve http REMOTE:PATH` serves the folder `REMOTE:PATH`, as
+`rclone serve http`: the path of a request is a path in that folder, and each
+request goes to the `fetch` of `fetch.js`. Thus the remote gets all its options,
+from the config file, the variables and the flags. A client only reads: the
+server refuses each method but `GET` and `HEAD`, and `TRACE` most of all,
+because the answer of `fetch.js` to `TRACE` tells the options of the remote. A
+client sets no option: the server removes its query and its headers `RFETCH_*`
+and `RCLONE_*`, and a name with a `/` after the decoding gives 400.
 
 ## Workspaces
 

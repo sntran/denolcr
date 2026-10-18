@@ -1,12 +1,12 @@
 import { test } from "node:test";
 import process from "node:process";
 import { spawn } from "node:child_process";
+import { request } from "node:http";
 import { once } from "node:events";
 import { mkdir, mkdtemp, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { serve } from "@sntran/serve";
 import assert from "node:assert/strict";
 
 import { listen } from "@rfetch/lib/testing/server";
@@ -25,28 +25,16 @@ function variableOf(body, name) {
 }
 
 test("fetch", async (t) => {
-  await t.test("global", () => {
-    const controller = new AbortController();
-    serve({
-      fetch: (_request) => new Response(),
-      port: 0,
-      signal: controller.signal,
-      async onListen({ port, hostname }) {
-        const url = `http://${hostname}:${port}/`;
-        let response = await fetch(url, {
-          method: "HEAD",
-        });
-        assert(response.ok);
-
-        const request = new Request(url, {
-          method: "HEAD",
-        });
-        response = await fetch(request);
-        assert(response.ok);
-
-        controller.abort();
-      },
-    });
+  await t.test("global", async () => {
+    const server = await listen(() => new Response());
+    try {
+      let response = await fetch(`${server.url}`, { method: "HEAD" });
+      assert(response.ok);
+      response = await fetch(new Request(server.url, { method: "HEAD" }));
+      assert(response.ok);
+    } finally {
+      await server.close();
+    }
   });
 
   await t.test("TRACE", async (t) => {
@@ -513,6 +501,31 @@ test("the command line", async (t) => {
       const [code] = await once(child, "close");
       assert.equal(code, 0);
       assert.equal(stderr, "");
+    });
+
+    await t.test("serve reads --addr, and a TRACE does not stop it", async () => {
+      const child = spawn(
+        process.execPath,
+        [MAIN, "serve", "http", ".", "--addr", "127.0.0.1:0"],
+        { cwd: folder },
+      );
+      try {
+        const [line] = await once(child.stdout, "data");
+        const [url] = `${line}`.match(/http:\/\/127\.0\.0\.1:\d+/) ?? [];
+        assert.ok(url, `${line}`);
+        const status = await new Promise((resolve, reject) => {
+          request(`${url}/`, { method: "TRACE" }, (response) => {
+            response.resume();
+            resolve(response.statusCode);
+          }).on("error", reject).end();
+        });
+        assert.equal(status, 405);
+        const response = await fetch(new URL("a.txt", `${url}/`));
+        assert.equal(await response.text(), "a");
+        assert.equal(child.exitCode, null);
+      } finally {
+        child.kill();
+      }
     });
   } finally {
     await rm(folder, { recursive: true, force: true });

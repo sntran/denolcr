@@ -21,6 +21,10 @@ import { FOLDERS } from "./cmd/folders.js";
 
 /** Optional params for the subcommand. */
 const options = {
+  // The address of `serve`, for example `--addr :8080`.
+  "addr": {
+    type: "string",
+  },
   "dry-run": {
     type: "boolean",
     default: env["RCLONE_DRY_RUN"] === "true",
