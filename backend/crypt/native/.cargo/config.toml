@@ -1,3 +1,0 @@
-# SIMD of WebAssembly: Node.js, Deno, Bun and workerd have it.
-[target.wasm32-unknown-unknown]
-rustflags = ["-C", "target-feature=+simd128"]
