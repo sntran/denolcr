@@ -242,6 +242,17 @@ async function getFolder(url, method, headers, noHead, query) {
 }
 
 /**
+ * Writes a time to the second, as the http backend of rclone: its precision
+ * is 1 s, and the time of `Last-Modified` has no milliseconds.
+ * @param {number} time The milliseconds since 1970.
+ * @returns {string} For example `2026-10-17T10:00:00Z`.
+ */
+function toSecond(time) {
+  return new Date(Math.floor(time / 1000) * 1000).toISOString()
+    .replace(/\.\d+Z$/, "Z");
+}
+
+/**
  * Reads the files and the folders of an index page, as `parse` of the http
  * backend of rclone: each link to a child of the folder, one time. The rows
  * of a table of rfetch also give the size and the time.
@@ -294,9 +305,7 @@ async function readIndex(response, base) {
     ["tr time[datetime]", {
       element(element) {
         const time = Date.parse(attributeOf(element, "datetime") ?? "");
-        if (current && !isNaN(time)) {
-          current.ModTime = new Date(time).toISOString();
-        }
+        if (current && !isNaN(time)) current.ModTime = toSecond(time);
       },
     }],
   ]);
@@ -333,7 +342,7 @@ async function head(entries, base, headers) {
       }
       entry.Size = isEncoded(response) ? -1 : sizeOf(response.headers);
       const time = Date.parse(response.headers.get("Last-Modified") ?? "");
-      if (!isNaN(time)) entry.ModTime = new Date(time).toISOString();
+      if (!isNaN(time)) entry.ModTime = toSecond(time);
       entry.MimeType = response.headers.get("Content-Type") ?? "";
     }
   };

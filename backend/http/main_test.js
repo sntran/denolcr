@@ -193,7 +193,8 @@ describe("http with an index page that is not of rfetch", () => {
 
   test("lists each link to a child of the folder one time", async () => {
     const entries = await fs.list("");
-    const time = new Date(LAST_MODIFIED).toISOString();
+    // The time is to the second, as the precision of http in rclone.
+    const time = "2026-10-17T10:00:00Z";
     assert.deepEqual(
       entries.map(({ Name, IsDir, Size, ModTime }) => ({
         Name,

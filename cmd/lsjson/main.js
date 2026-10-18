@@ -1,7 +1,7 @@
 import { parse } from "@rfetch/lib/fspath";
 import { readListing } from "@rfetch/lib/listing";
 import { isTrue } from "@rfetch/lib/options";
-import { toLocaleISOString } from "@rfetch/lib/time";
+import { DEFAULT_TIME, toLocaleISOString } from "@rfetch/lib/time";
 
 import { fetch } from "../../fetch.js";
 
@@ -211,7 +211,8 @@ function folderOf(entries, { location, depth, flags, init, filename }) {
       Name,
       Size,
       MimeType: IsDir ? "inode/directory" : MimeType,
-      ModTime: ModTime ? toLocaleISOString(ModTime) : "",
+      // A folder with no time has the default time of rclone.
+      ModTime: ModTime ? toLocaleISOString(ModTime) : IsDir ? DEFAULT_TIME : "",
       IsDir,
     });
     if (IsDir && depth > 1) {

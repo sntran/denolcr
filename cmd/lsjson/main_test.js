@@ -257,3 +257,10 @@ test("lsjson gives 404 for a path that is not found, as rclone", async () => {
     await response.body?.cancel();
   }
 });
+
+test("lsjson gives a folder with no time the default time of rclone", async () => {
+  const items = await lsjson(":memory:/A/").then((response) => response.json());
+  const folder = items.find(({ Name }) => Name === "D");
+  assert.equal(folder.IsDir, true);
+  assert.equal(folder.ModTime, "2000-01-01T00:00:00Z");
+});
