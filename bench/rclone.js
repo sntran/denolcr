@@ -119,11 +119,15 @@ function run(tool, args, input) {
 /**
  * The lines of `lsjson`, in order, for a compare. The size of a folder is not
  * in a line: rclone gives the size of a local folder, and rfetch gives -1.
+ * The time is to the millisecond: Deno gives the time of a file in
+ * milliseconds. cmd/lsjson/rclone_test.js compares the nanoseconds.
  */
 function lines(tool, args) {
   run(tool, args);
   return JSON.parse(readFileSync(join(root, "output"), "utf8"))
-    .map(({ Path, Size, IsDir }) => `${Path} ${IsDir ? "folder" : Size}`)
+    .map(({ Path, Size, IsDir, ModTime }) =>
+      `${Path} ${IsDir ? "folder" : Size} ${Date.parse(ModTime)}`
+    )
     .sort();
 }
 

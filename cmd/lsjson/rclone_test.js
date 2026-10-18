@@ -54,8 +54,8 @@ describe("lsjson and rclone lsjson", {
         Size: IsDir ? -1 : Size,
         IsDir,
         MimeType,
-        // rclone has nanoseconds, and the lists of rfetch milliseconds.
-        ModTime: IsDir ? 0 : Math.floor(Date.parse(ModTime)),
+        // The same digits as rclone: 9 for the nanoseconds of local files.
+        ModTime,
       }))
       .sort((a, b) => a.Path < b.Path ? -1 : +(a.Path > b.Path));
   }

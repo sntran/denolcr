@@ -58,9 +58,12 @@ async function local(request, env = {}) {
       // The stat of each file, at the same time: one after the other takes
       // much more time. A file that goes away before its stat is not in
       // the list.
+      // The times in nanoseconds, as rclone gives them.
       const fileStats = await Promise.all(
         files.map((file) =>
-          stat(join(absolutePath, file.name)).catch(() => null)
+          stat(join(absolutePath, file.name), { bigint: true }).catch(() =>
+            null
+          )
         ),
       );
 
@@ -106,8 +109,8 @@ async function local(request, env = {}) {
                 isDirectory ? "/" : ""
               }`;
 
-              const { size, mtimeMs } = fileStats[index];
-              const mtime = timeOf(mtimeMs);
+              const { size, mtimeNs } = fileStats[index];
+              const mtime = timeOf(Number(mtimeNs / 1000000n));
 
               controller.enqueue(`<tr>
                 <td>${isDirectory ? "📁" : "📄"}</td>
@@ -126,7 +129,7 @@ async function local(request, env = {}) {
                 <td>${
                 mtime
                   ? `<time
-                    datetime="${mtime.toISOString()}"
+                    datetime="${isoStringOf(mtimeNs)}"
                   >${mtime.toLocaleString()}</time>`
                   : "-"
               }
@@ -244,6 +247,22 @@ async function local(request, env = {}) {
 function isOutside(root, path) {
   const rest = relative(root, path);
   return rest === ".." || rest.startsWith(`..${sep}`) || isAbsolute(rest);
+}
+
+/**
+ * The time of a file in ISO 8601, with 9 digits after the second: the
+ * format of rclone for a remote with a precision of 1 ns.
+ * @param {bigint} mtimeNs The nanoseconds after 1970.
+ * @returns {string}
+ */
+function isoStringOf(mtimeNs) {
+  const second = 1000000000n;
+  // The floor, also for a time before 1970.
+  let nanoseconds = mtimeNs % second;
+  if (nanoseconds < 0n) nanoseconds += second;
+  const seconds = (mtimeNs - nanoseconds) / second;
+  const date = new Date(Number(seconds) * 1000).toISOString().slice(0, 19);
+  return `${date}.${String(nanoseconds).padStart(9, "0")}Z`;
 }
 
 /**
