@@ -60,6 +60,44 @@ bytes, with ranges. The prefix `RCLONE_` of rclone also works.
 - `reveal`
 - `serve`
 
+## Runtimes
+
+rfetch runs on Node.js 22.2 or later, on Deno and on Bun:
+
+```sh
+node main.js COMMAND ...
+deno run -A main.js COMMAND ...
+bun main.js COMMAND ...
+```
+
+`node bench/rclone.js RUNTIME...` runs the same commands with rfetch on each
+runtime and with rclone, and first makes sure that they give the same data and
+the same lists. Each time is the median of 5 runs of the command as a new
+process, in ms, thus the start of the runtime is in it. The table is one run on
+a Linux machine with 4 CPUs (Intel Xeon at 2.10 GHz) and rclone 1.75.1. The
+times on one machine can change by 10 to 25 % from one run to the next, also for
+rclone. Run the benchmark on your machine to choose a runtime.
+
+| Command, in ms                             | Node.js 22.22 | Node.js 24.21 | Node.js 26.12 | Deno 2.9.6 | Bun 1.4.3 | rclone 1.75.1 |
+| ------------------------------------------ | ------------: | ------------: | ------------: | ---------: | --------: | ------------: |
+| `lsjson` of an empty folder                |           135 |           130 |           142 |        108 |        48 |            57 |
+| local: `cat` of 64 MiB                     |           166 |           187 |           176 |        155 |        90 |            90 |
+| local: `lsjson --recursive`, 1000 files    |           267 |           249 |           226 |        212 |        73 |            50 |
+| crypt: `cat` of 64 MiB                     |           383 |           395 |           416 |        411 |       402 |           228 |
+| crypt: `rcat` of 64 MiB                    |           469 |           449 |           429 |        535 |       461 |           443 |
+| crypt: `lsjson --recursive`, 1000 files    |           387 |           347 |           346 |        347 |       160 |           113 |
+| chunker: `cat` of 64 MiB, chunks of 8 MiB  |           235 |           209 |           220 |        188 |       113 |            81 |
+| chunker: `rcat` of 64 MiB, chunks of 8 MiB |           377 |           364 |           363 |        474 |       285 |           380 |
+
+- `lsjson` of an empty folder shows the time of the start.
+- crypt and chunker are on top of local files. rclone writes the files that
+  rfetch reads.
+- Deno gives the time of a local file to the millisecond. The other runtimes and
+  rclone give it to the nanosecond.
+- In Bun and in a Cloudflare Worker, HTMLRewriter is a part of the runtime. In
+  Node.js and in Deno, it is WebAssembly, which loads when a command reads the
+  first list.
+
 ## Development
 
 - Clone the repository and go to its folder.
