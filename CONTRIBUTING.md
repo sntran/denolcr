@@ -207,9 +207,15 @@ a folder, and `readListing` reads it.
 A backend on top of another backend reads the list of the other backend with
 `readListing`, changes the entries, and writes the list with `renderListing`,
 for example the names of `crypt`. `lsjson` reads each list with `readListing`.
-The read is `scanTags` of `@rfetch/lib/html`, in JavaScript: do not use
-HTMLRewriter. In Node.js and in Deno, HTMLRewriter is WebAssembly, and its load
-and each element in it cost much time.
+
+Read HTML only with `readElements` of `@rfetch/lib/rewriter`. It is
+HTMLRewriter, that is lol-html, the HTML parser of Cloudflare, as the HTML
+standard tells. Do not write a parser of HTML: a list can come from any server,
+and its HTML can have scripts, comments and character references. HTMLRewriter
+gives the value of an attribute as it is in the document: read it with
+`attributeOf`, which decodes the character references, for example `&amp;`. In
+workerd and in Bun, HTMLRewriter is a part of the runtime. In Node.js and in
+Deno, it is the WebAssembly of `@sntran/lol-html`, which loads at its first use.
 
 ## Commands
 

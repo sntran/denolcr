@@ -28,7 +28,7 @@ import { parseList } from "./list.js";
 import { childOf, renderListing } from "@rfetch/lib/listing";
 import { mimeType } from "@rfetch/lib/mime";
 import { optionsOf } from "@rfetch/lib/options";
-import { scanTags } from "@rfetch/lib/html";
+import { attributeOf, readElements } from "@rfetch/lib/rewriter";
 import { decodePath, encodePath } from "@rfetch/lib/path";
 
 export const options = {
@@ -253,51 +253,53 @@ async function readIndex(response, base) {
   /** @type {import("@rfetch/lib/listing").Entry[]} */
   const entries = [];
   const seen = new Set();
-  /** The number of open `tr` elements. */
-  let rows = 0;
+  let inRow = false;
   /** @type {import("@rfetch/lib/listing").Entry | null} */
   let current = null;
 
-  scanTags(await response.text(), {
-    start(name, attributes) {
-      if (name === "tr") {
-        rows++;
+  await readElements(response, [
+    ["tr", {
+      element(element) {
+        inRow = true;
         current = null;
-      } else if (name === "a") {
-        const href = attributes.get("href");
-        if (href === undefined) return;
-        const child = childOf(href, base);
-        if (child === null || seen.has(child)) return;
-        seen.add(child);
-        const isDir = child.endsWith("/");
+        element.onEndTag(() => {
+          inRow = false;
+          current = null;
+        });
+      },
+    }],
+    ["a[href]", {
+      element(element) {
+        const name = childOf(attributeOf(element, "href") ?? "", base);
+        if (name === null || seen.has(name)) return;
+        seen.add(name);
+        const isDir = name.endsWith("/");
         const entry = {
-          Name: isDir ? child.slice(0, -1) : child,
+          Name: isDir ? name.slice(0, -1) : name,
           IsDir: isDir,
           Size: -1,
-          MimeType: isDir ? "" : attributes.get("type") || "",
+          MimeType: isDir ? "" : attributeOf(element, "type") || "",
           ModTime: "",
         };
         entries.push(entry);
-        if (rows > 0) current = entry;
-      } else if (name === "data" && rows > 0) {
-        const value = attributes.get("value");
-        if (current && value !== undefined && /^\d+$/.test(value)) {
-          current.Size = Number(value);
-        }
-      } else if (name === "time" && rows > 0) {
-        const time = Date.parse(attributes.get("datetime") ?? "");
+        if (inRow) current = entry;
+      },
+    }],
+    ["tr data[value]", {
+      element(element) {
+        const value = attributeOf(element, "value") ?? "";
+        if (current && /^\d+$/.test(value)) current.Size = Number(value);
+      },
+    }],
+    ["tr time[datetime]", {
+      element(element) {
+        const time = Date.parse(attributeOf(element, "datetime") ?? "");
         if (current && !isNaN(time)) {
           current.ModTime = new Date(time).toISOString();
         }
-      }
-    },
-    end(name) {
-      if (name === "tr") {
-        rows--;
-        current = null;
-      }
-    },
-  });
+      },
+    }],
+  ]);
 
   return entries;
 }

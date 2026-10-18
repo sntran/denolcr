@@ -41,6 +41,10 @@ const INDEX = `<!DOCTYPE html>
 <a href="./b%20c.json">b c.json</a> 17-Oct-2026 10:00    2
 <a href="http://127.0.0.1:1/index/x.txt">x.txt</a>
 <a href="/index/a.txt">a.txt again</a>
+<A HREF=e&amp;f&#x20;g.txt>e&amp;f g.txt</A> 17-Oct-2026 10:00    3
+<a href="caf&eacute;.txt">caf&eacute;.txt</a> 17-Oct-2026 10:00    4
+<script>document.write('<a href="script.txt">script.txt</a>')</script>
+<!-- <a href="comment.txt">comment.txt</a> -->
 <a href="lost.txt">lost.txt</a>
 <a href="sub/">sub/</a>
 <a href="sub/deep.txt">sub/deep.txt</a>
@@ -48,7 +52,12 @@ const INDEX = `<!DOCTYPE html>
 </pre></body></html>`;
 
 /** The files of the index page. */
-const INDEX_FILES = { "/index/a.txt": "a", "/index/b c.json": "{}" };
+const INDEX_FILES = {
+  "/index/a.txt": "a",
+  "/index/b c.json": "{}",
+  "/index/e&f g.txt": "efg",
+  "/index/café.txt": "café",
+};
 
 /** @param {number} size */
 function content(size) {
@@ -160,6 +169,8 @@ describe("http and rclone", {
     assert.deepEqual(expected.map(({ Path }) => Path), [
       "a.txt",
       "b c.json",
+      "café.txt",
+      "e&f g.txt",
       "sub",
     ]);
     assert.deepEqual(normalize(await walk(url)), expected);

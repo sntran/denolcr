@@ -141,6 +141,7 @@ describe("http with an index page that is not of rfetch", () => {
     "/files/a.txt": "a",
     "/files/b c.json": "{}",
     "/files/d.bin": "ddd",
+    "/files/e&f.txt": "eeee",
   };
   const INDEX = `<!DOCTYPE html>
 <html><body><h1>Index of /files</h1><pre>
@@ -151,6 +152,9 @@ describe("http with an index page that is not of rfetch", () => {
 <a href="http://127.0.0.1:1/files/x.txt">x.txt</a>
 <a href="/files/d.bin">d.bin</a>   17-Oct-2026 10:00    3
 <a href="d.bin">d.bin again</a>
+<a href="e&amp;f.txt">e&amp;f.txt</a>  17-Oct-2026 10:00    4
+<script>document.write('<a href="script.txt">')</script>
+<!-- <a href="comment.txt">comment.txt</a> -->
 <a href="lost.txt">lost.txt</a>
 <a href="sub/">sub/</a>
 <a href="sub/deep.txt">sub/deep.txt</a>
@@ -201,6 +205,7 @@ describe("http with an index page that is not of rfetch", () => {
         { Name: "a.txt", IsDir: false, Size: 1, ModTime: time },
         { Name: "b c.json", IsDir: false, Size: 2, ModTime: time },
         { Name: "d.bin", IsDir: false, Size: 3, ModTime: time },
+        { Name: "e&f.txt", IsDir: false, Size: 4, ModTime: time },
         // A file whose HEAD request fails is not in the list, as in rclone.
         { Name: "sub", IsDir: true, Size: -1, ModTime: "" },
       ],
@@ -221,6 +226,7 @@ describe("http with an index page that is not of rfetch", () => {
         { Name: "a.txt", Size: -1, MimeType: mimeType("a.txt") },
         { Name: "b c.json", Size: -1, MimeType: "application/json" },
         { Name: "d.bin", Size: -1, MimeType: "application/octet-stream" },
+        { Name: "e&f.txt", Size: -1, MimeType: mimeType("e&f.txt") },
         { Name: "lost.txt", Size: -1, MimeType: mimeType("lost.txt") },
         { Name: "sub", Size: -1, MimeType: "" },
       ],
