@@ -1,0 +1,47 @@
+{
+  "name": "@rfetch/lib",
+  "version": "0.1.0",
+  "description": "The code that rfetch and its backends share: the list of a folder, paths, ranges, types of files, sizes, the obscure of rclone, and the shared tests of the backends.",
+  "type": "module",
+  "exports": {
+    "./format": "./format.js",
+    "./fspath": "./fspath.js",
+    "./html": "./html.js",
+    "./ini": "./ini.js",
+    "./listing": "./listing.js",
+    "./mime": "./mime.js",
+    "./obscure": "./obscure.js",
+    "./options": "./options.js",
+    "./path": "./path.js",
+    "./progress": "./progress.js",
+    "./range": "./range.js",
+    "./rewriter": "./rewriter.js",
+    "./size": "./size.js",
+    "./sized": "./sized.js",
+    "./time": "./time.js",
+    "./testing/bench": "./testing/bench.js",
+    "./testing/remote": "./testing/remote.js",
+    "./testing/server": "./testing/server.js",
+    "./testing/suite": "./testing/suite.js"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22.2.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sntran/rfetch.git",
+    "directory": "lib"
+  },
+  "author": "Trần Nguyễn Sơn",
+  "license": "ISC",
+  "dependencies": {
+    "@sntran/lol-html": "^2.8.1",
+    "entities": "^8.1.0"
+  },
+  "devDependencies": {
+    "fast-check": "^3.19.0"
+  }
+}

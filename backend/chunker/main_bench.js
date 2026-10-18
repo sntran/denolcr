@@ -1,80 +1,55 @@
-import { mkBuffer } from "../../deps.js";
+/**
+ * Benchmark of `PUT` of chunker against `rclone rcat` of a chunker remote.
+ *
+ * `rclone` must be in the PATH. Run with `node backend/chunker/main_bench.js`.
+ */
+import { spawn } from "node:child_process";
+import { randomBytes } from "node:crypto";
+import { once } from "node:events";
+import { Writable } from "node:stream";
+import { bench } from "@rfetch/lib/testing/bench";
 import backend from "./main.js";
 
-const buffer = mkBuffer(1024 * 1024 * 10); // 10M
+const buffer = randomBytes(1024 * 1024 * 10); // 10M
 const file = new File([buffer], "10M.bin", {
   type: "application/octet-stream",
 });
 
 const chunkSize = 1024 * 1024 * 4; // 4M
 
-//#region No chunking
-Deno.bench(
-  "rclone",
-  { group: "backend/chunker: default chunk_size" },
-  async () => {
-    const rclone = new Deno.Command("rclone", {
-      args: [
-        "rcat",
-        `:chunker,remote=':memory:':${file.name}`,
-      ],
-      stdin: "piped",
-    });
-    const rcat = rclone.spawn();
-    file.stream().pipeTo(rcat.stdin);
-    await rcat.status;
-  },
-);
+/**
+ * Sends the file to `rclone rcat` of the remote.
+ * @param {string} remote
+ */
+async function rcat(remote) {
+  const rclone = spawn("rclone", ["rcat", `${remote}:${file.name}`], {
+    stdio: ["pipe", "ignore", "inherit"],
+  });
+  await file.stream().pipeTo(Writable.toWeb(rclone.stdin));
+  await once(rclone, "close");
+}
 
-Deno.bench("rfetch", {
-  group: "backend/chunker: default chunk_size",
-  baseline: true,
-}, async () => {
+/**
+ * Sends the file to chunker with `PUT`.
+ * @param {Record<string, string>} params
+ */
+async function put(params) {
   const url = new URL(`/${file.name}`, "file:");
-  url.searchParams.set("remote", ":memory:");
-
+  for (const [name, value] of Object.entries(params)) {
+    url.searchParams.set(name, value);
+  }
   const response = await backend.fetch(
-    new Request(url, {
-      method: "PUT",
-      body: file,
-    }),
+    new Request(url, { method: "PUT", body: file }),
   );
   await response.arrayBuffer();
+}
+
+await bench("backend/chunker: default chunk_size", {
+  rfetch: () => put({ remote: ":memory:" }),
+  rclone: () => rcat(":chunker,remote=':memory:'"),
 });
-//#endregion No chunking
 
-//#region Chunking
-Deno.bench(
-  "rclone",
-  { group: "backend/chunker: small chunk_size" },
-  async () => {
-    const rclone = new Deno.Command("rclone", {
-      args: [
-        "rcat",
-        `:chunker,remote=':memory:',chunk_size=${chunkSize}:${file.name}`,
-      ],
-      stdin: "piped",
-    });
-    const rcat = rclone.spawn();
-    file.stream().pipeTo(rcat.stdin);
-    await rcat.status;
-  },
-);
-
-Deno.bench("rfetch", {
-  group: "backend/chunker: small chunk_size",
-  baseline: true,
-}, async () => {
-  const url = new URL(`/${file.name}`, "file:");
-  url.searchParams.set("remote", ":memory:");
-  url.searchParams.set("chunk_size", `${chunkSize}`);
-
-  const response = await backend.fetch(
-    new Request(url, {
-      method: "PUT",
-      body: file,
-    }),
-  );
-  await response.arrayBuffer();
+await bench("backend/chunker: small chunk_size", {
+  rfetch: () => put({ remote: ":memory:", chunk_size: `${chunkSize}` }),
+  rclone: () => rcat(`:chunker,remote=':memory:',chunk_size=${chunkSize}`),
 });
-//#endregion Chunking

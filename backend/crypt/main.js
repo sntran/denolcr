@@ -1,5 +1,3 @@
-#!/usr/bin/env -S deno serve --allow-all
-
 /**
  * Crypt remote
  *
@@ -95,11 +93,27 @@
  * - 1049120 bytes total (a 0.05% overhead). This is the overhead for big files.
  */
 
-import { contentType, extname, scrypt } from "../../deps.js";
-import { fetch } from "../../mod.js";
-import { reveal } from "../../cmd/obscure/main.js";
+import { scrypt } from "node:crypto";
+import { readListing, renderListing } from "@rfetch/lib/listing";
+import { mimeType } from "@rfetch/lib/mime";
+import { optionsOf, remoteHeaders } from "@rfetch/lib/options";
+import { decodePath } from "@rfetch/lib/path";
+import {
+  notSatisfiable,
+  parseRange,
+  partialHeaders,
+  sliceStream,
+} from "@rfetch/lib/range";
+import { sized } from "@rfetch/lib/sized";
+import { reveal } from "@rfetch/lib/obscure";
 import PathCipher from "./PathCipher.js";
-import { DecryptionStream, EncryptionStream } from "./secretbox.js";
+import {
+  decryptedSize,
+  DecryptionStream,
+  encryptedSize,
+  EncryptionStream,
+  Errors,
+} from "./secretbox.js";
 
 const encoder = new TextEncoder();
 
@@ -127,6 +141,8 @@ const N = 2 ** 14; // 16384
 const r = 8;
 const p = 1;
 const dkLen = 32 + 32 + 16;
+/** The memory that scrypt can use: it needs 128 * N * r bytes, 16 MiB. */
+const SCRYPT_MEMORY = 2 * 128 * N * r;
 
 const SECRETBOX_OPTIONS = {
   blockSize: 64 * 1024, // 64 KiB
@@ -134,118 +150,339 @@ const SECRETBOX_OPTIONS = {
 };
 
 /**
- * Serves a crypted remote.
+ * The options of the backend, with their types, for example for the flag
+ * `--crypt-password` of the command line.
+ */
+export const options = {
+  string: ["remote", "password", "password2"],
+};
+
+/**
+ * The options that are secret. They are not in the links of a list, which a
+ * browser can keep in its history and send to other sites.
+ */
+const SECRETS = ["password", "password2"];
+
+/**
+ * Serves a crypted remote. The requests to the remote under crypt go to the
+ * global `fetch`.
  * @param {Request} request
+ * @param {Record<string, unknown>} [env] The options in the variables
+ *   `RFETCH_CRYPT_*` or `RCLONE_CRYPT_*`.
  * @returns {Promise<Response>}
  */
-async function crypt(request) {
-  let { pathname, searchParams } = new URL(request.url);
+async function crypt(request, env = {}) {
+  const { method } = request;
+  const { pathname, searchParams } = new URL(request.url);
 
-  let remote = searchParams.get("remote");
+  const path = decodePath(pathname);
+  if (path === null) {
+    return new Response(null, { status: 400 });
+  }
+
+  const options = optionsOf(request, "crypt", env);
+  const remote = options.get("remote")?.replace(/\/$/, "");
   if (!remote) {
     return new Response("Missing remote", { status: 400 });
   }
+  if (!options.get("password")) {
+    return new Response("Missing password", { status: 400 });
+  }
 
-  remote = remote.replace(/\/$/, "");
+  let cipher;
+  try {
+    cipher = await cipherOf(
+      options.get("password"),
+      options.get("password2") ?? "",
+    );
+  } catch {
+    return new Response("The password is not obscured", { status: 400 });
+  }
 
-  const password = searchParams.get("password");
-  const salt = searchParams.get("password2");
+  const isDirectory = path.endsWith("/");
+  const target = remote + cipher.names.encrypt(path);
 
-  const key = await deriveKey(password, salt);
+  // The data on the remote is encrypted, thus a range of the data is not a
+  // range of the file.
+  const headers = remoteHeaders(request.headers, "crypt", remote);
+  headers.delete("Range");
 
-  const pathCipher = PathCipher({
-    nameKey: key.subarray(32, 64),
-    nameTweak: key.subarray(64),
+  const range = request.headers.get("Range");
+  if (method === "GET" && !isDirectory && range !== null) {
+    return await getRange(target, headers, cipher, path, range);
+  }
+
+  if (method === "GET" || method === "HEAD") {
+    const response = await fetch(target, { method, headers });
+    if (!response.ok) {
+      return response;
+    }
+    if (isDirectory) {
+      return await listing(response, cipher, searchParams);
+    }
+
+    const result = new Headers({
+      "Content-Type": mimeType(path),
+      "Accept-Ranges": "bytes",
+    });
+    const size = sizeOf(response.headers.get("Content-Length"));
+    if (size >= 0) {
+      result.set("Content-Length", `${size}`);
+    }
+    const lastModified = response.headers.get("Last-Modified");
+    if (lastModified) {
+      result.set("Last-Modified", lastModified);
+    }
+
+    let body = null;
+    if (method === "GET" && response.body) {
+      body = response.body.pipeThrough(
+        new DecryptionStream(cipher.dataKey, SECRETBOX_OPTIONS),
+      );
+      if (size >= 0) body = sized(body, size);
+    } else {
+      await response.body?.cancel();
+    }
+    return new Response(body, { status: response.status, headers: result });
+  }
+
+  if (method === "PUT") {
+    // The remote does not get the type of the file: the type tells about
+    // the content.
+    headers.delete("Content-Type");
+    /** @type {RequestInit} */
+    const init = { method, headers };
+    if (!isDirectory) {
+      const length = request.headers.get("Content-Length");
+      headers.delete("Content-Length");
+      if (length !== null && /^\d+$/.test(length)) {
+        headers.set(
+          "Content-Length",
+          `${encryptedSize(Number(length), SECRETBOX_OPTIONS)}`,
+        );
+      }
+      const body = request.body ?? ReadableStream.from([]);
+      init.body = body.pipeThrough(
+        new EncryptionStream(cipher.dataKey, SECRETBOX_OPTIONS),
+      );
+      init.duplex = "half";
+    }
+
+    const response = await fetch(target, init);
+    await response.body?.cancel();
+    const result = new Headers();
+    if (response.ok) {
+      result.set("Content-Location", pathname);
+    }
+    return new Response(null, { status: response.status, headers: result });
+  }
+
+  if (method === "DELETE") {
+    const response = await fetch(target, { method, headers });
+    await response.body?.cancel();
+    return new Response(null, { status: response.status });
+  }
+
+  return new Response(null, {
+    status: 405,
+    headers: { Allow: "GET, HEAD, PUT, DELETE" },
   });
+}
 
-  const isDirectory = pathname.endsWith("/");
-  pathname = decodeURIComponent(pathname);
-  const encryptedPathname = pathCipher.encrypt(pathname);
+/**
+ * Gets a range of a file, as the seek of rclone: the header of the
+ * encrypted file gives its nonce and its size, then only the blocks of the
+ * range are read and decrypted. When the remote sends all the file for a
+ * range, all the file is decrypted, and the answer has the range only.
+ * @param {string} target The encrypted path on the remote.
+ * @param {Headers} headers The headers of the request, with no `Range`.
+ * @param {{ dataKey: Uint8Array }} cipher
+ * @param {string} path The path of the file.
+ * @param {string} header The `Range` of the request.
+ * @returns {Promise<Response>}
+ */
+async function getRange(target, headers, cipher, path, header) {
+  const { magic, blockSize } = SECRETBOX_OPTIONS;
+  const headerSize = magic.length + 24;
+  const blockLength = blockSize + 16;
 
-  const url = remote.replace(/\/$/, "") + encryptedPathname;
+  const init = { headers: new Headers(headers) };
+  init.headers.set("Range", `bytes=0-${headerSize - 1}`);
+  const first = await fetch(target, init);
+  if (first.status === 416) {
+    // The encrypted file is shorter than its header.
+    return new Response(Errors.TOO_SHORT, { status: 500 });
+  }
+  if (!first.ok) {
+    return first;
+  }
 
-  // Encrypts upload body if any.
-  if (request.body) {
-    request = new Request(request, {
-      body: request.body.pipeThrough(
-        new EncryptionStream(key.subarray(0, 32), SECRETBOX_OPTIONS),
-      ),
+  // The size of the encrypted file.
+  const total = first.status === 206
+    ? first.headers.get("Content-Range")?.match(/\/(\d+)$/)?.[1] ?? null
+    : first.headers.get("Content-Length");
+  const size = sizeOf(total);
+  if (size < 0) {
+    await first.body?.cancel();
+    return new Response("The size of the encrypted file is not correct", {
+      status: 500,
     });
   }
 
-  // Delegates to the underlying remote.
-  const requestHeaders = new Headers(request.headers);
-  // Encrypted data on underlying remote won't respond to range.
-  requestHeaders.delete("Range");
-  request = new Request(request, {
-    headers: requestHeaders,
+  let range;
+  try {
+    range = parseRange(header, size);
+  } catch {
+    await first.body?.cancel();
+    return notSatisfiable(size);
+  }
+
+  const result = new Headers({
+    "Content-Type": mimeType(path),
+    "Accept-Ranges": "bytes",
   });
+  const lastModified = first.headers.get("Last-Modified");
+  if (lastModified) result.set("Last-Modified", lastModified);
+  const decrypt = (options) =>
+    new DecryptionStream(cipher.dataKey, { ...SECRETBOX_OPTIONS, ...options });
 
-  let response = await fetch(url, request);
-  let { status, statusText, headers, body } = response;
-  headers = new Headers(headers);
-
-  const mimetype = contentType(extname(pathname)) || "";
-  if (mimetype) {
-    headers.set("Content-Type", mimetype);
-  }
-
-  if (body) {
-    let contentLength = Number(headers.get("Content-Length"));
-    if (contentLength) { // Adjusts the content length.
-      contentLength = DecryptionStream.size(contentLength, SECRETBOX_OPTIONS);
-      headers.set("Content-Length", `${contentLength}`);
-    }
-
-    if (isDirectory) {
-      const rewriter = new HTMLRewriter();
-      rewriter.on("tr a[href]", {
-        element(element) {
-          let href = element.getAttribute("href");
-          let type = element.getAttribute("type");
-
-          const { pathname } = new URL(href, "file:");
-          let basename = pathname.slice(1);
-          if (pathname != "/") {
-            basename = pathCipher.decrypt(basename);
-            href = `${basename}?${searchParams}`;
-            element.setAttribute("href", href);
-
-            // Replaces inner text with original name.
-            element.setInnerContent(basename);
-          }
-
-          if (type) {
-            type = contentType(extname(basename)) || type;
-            element.setAttribute("type", type);
-          }
-        },
-      });
-      rewriter.on(`tr data[value]`, {
-        element(element) {
-          const encryptedSize = Number(element.getAttribute("value"));
-          const originalSize = DecryptionStream.size(
-            encryptedSize,
-            SECRETBOX_OPTIONS,
-          );
-          element.setAttribute("value", `${originalSize}`);
-        },
-      });
-
-      response = rewriter.transform(response);
-      body = response.body;
+  if (first.status !== 206) {
+    // The remote sent all the file.
+    let body = first.body.pipeThrough(decrypt());
+    let length = size;
+    if (range) {
+      length = range.end - range.start + 1;
+      body = sliceStream(body, range.start, length);
+      for (const [name, value] of Object.entries(partialHeaders(range, size))) {
+        result.set(name, value);
+      }
     } else {
-      body = body.pipeThrough(
-        new DecryptionStream(key.subarray(0, 32), SECRETBOX_OPTIONS),
-      );
+      result.set("Content-Length", `${size}`);
     }
+    return new Response(sized(body, length), {
+      status: range ? 206 : 200,
+      headers: result,
+    });
   }
 
-  return new Response(body, {
-    status,
-    statusText,
+  const bytes = new Uint8Array(await first.arrayBuffer());
+  if (
+    bytes.length < headerSize ||
+    magic.some((byte, index) => bytes[index] !== byte)
+  ) {
+    return new Response(Errors.BAD_MAGIC, { status: 500 });
+  }
+  const nonce = bytes.slice(magic.length, headerSize);
+  const { start, end } = range ?? { start: 0, end: size - 1 };
+  const length = size === 0 ? 0 : end - start + 1;
+  if (length === 0) {
+    result.set("Content-Length", "0");
+    return new Response(null, { headers: result });
+  }
+
+  // The blocks of the range.
+  const block = Math.floor(start / blockSize);
+  const lastBlock = Math.floor(end / blockSize);
+  const from = headerSize + block * blockLength;
+  const to = Math.min(
+    headerSize + (lastBlock + 1) * blockLength,
+    Number(total),
+  ) - 1;
+  init.headers.set("Range", `bytes=${from}-${to}`);
+  const second = await fetch(target, init);
+  if (!second.ok) {
+    await second.body?.cancel();
+    return new Response(null, { status: 502 });
+  }
+  // A remote that sends all the file sends the blocks before the range too.
+  let data = second.body;
+  if (second.status !== 206) data = sliceStream(data, from, to - from + 1);
+  const body = sliceStream(
+    data.pipeThrough(decrypt({ nonce, block })),
+    start - block * blockSize,
+    length,
+  );
+
+  if (range) {
+    for (const [name, value] of Object.entries(partialHeaders(range, size))) {
+      result.set(name, value);
+    }
+  } else {
+    result.set("Content-Length", `${size}`);
+  }
+  return new Response(sized(body, length), {
+    status: range ? 206 : 200,
+    headers: result,
+  });
+}
+
+/**
+ * Gives the list of a folder with the names, the sizes and the types of the
+ * files, from the list of the encrypted folder on the remote.
+ *
+ * Each link gets the query of the request with no secret option, and no
+ * option of the remote. A name that does not decrypt is not in the list, as
+ * rclone skips such a name.
+ * @param {Response} response The list of the encrypted folder.
+ * @param {{ names: import("./PathCipher.js").PathCipher }} cipher
+ * @param {URLSearchParams} searchParams
+ * @returns {Promise<Response>}
+ */
+async function listing(response, { names }, searchParams) {
+  const headers = new Headers(response.headers);
+  headers.delete("Content-Length");
+  headers.set("Content-Type", "text/html;charset=utf-8");
+  // The answer to HEAD has no body.
+  if (response.body === null) {
+    return new Response(null, { status: response.status, headers });
+  }
+
+  const query = new URLSearchParams(searchParams);
+  for (const name of SECRETS) query.delete(name);
+
+  // The links of the list are relative to the encrypted folder.
+  const encrypted = await readListing(
+    response,
+    new URL("http://remote/folder/"),
+  );
+  /** @type {import("@rfetch/lib/listing").Entry[]} */
+  const entries = [];
+  for (const { Name, IsDir, Size, ModTime } of encrypted) {
+    let name;
+    try {
+      if (Name.includes("/")) continue;
+      name = names.decryptName(Name);
+    } catch {
+      continue;
+    }
+    entries.push({
+      Name: name,
+      IsDir,
+      Size: IsDir ? -1 : sizeOf(Size < 0 ? null : String(Size)),
+      MimeType: IsDir ? "" : mimeType(name),
+      ModTime,
+    });
+  }
+
+  return new Response(renderListing(entries, { query: `${query}` }), {
+    status: response.status,
     headers,
   });
+}
+
+/**
+ * The size of a file from the size of its encrypted data, or -1 for no size
+ * or a size that no encrypted data has.
+ * @param {string | null} value
+ * @returns {number}
+ */
+function sizeOf(value) {
+  if (value === null || !/^\d+$/.test(value)) return -1;
+  try {
+    return decryptedSize(Number(value), SECRETBOX_OPTIONS);
+  } catch {
+    return -1;
+  }
 }
 
 /**
@@ -273,15 +510,8 @@ async function crypt(request) {
  * @param {...string} args
  */
 export async function encode(options, ...args) {
-  const key = await deriveKey(options.password, options.password2);
-  const pathCipher = PathCipher({
-    nameKey: key.slice(32, 64),
-    nameTweak: key.slice(64),
-  });
-  const encoded = args.map((path) =>
-    (path ? pathCipher.encrypt(path) : "") + "\n"
-  );
-
+  const { names } = await cipherOf(options.password, options.password2 ?? "");
+  const encoded = args.map((path) => (path ? names.encrypt(path) : "") + "\n");
   return new Response(encoded.join(""));
 }
 
@@ -311,33 +541,92 @@ export async function encode(options, ...args) {
  * @param {...string} args
  */
 export async function decode(options, ...args) {
-  const key = await deriveKey(options.password, options.password2);
-  const pathCipher = PathCipher({
-    nameKey: key.slice(32, 64),
-    nameTweak: key.slice(64),
-  });
-
-  const decoded = args.map((arg) =>
-    (arg ? pathCipher.decrypt(arg) : "") + "\n"
-  );
+  const { names } = await cipherOf(options.password, options.password2 ?? "");
+  const decoded = args.map((arg) => (arg ? names.decrypt(arg) : "") + "\n");
   return new Response(decoded.join(""));
 }
 
 /**
- * @param {string} encPass
- * @param {string} encSalt
+ * Makes the keys from a password and a salt, as `Cipher.Key` of rclone: 32
+ * bytes for the data, 32 bytes for the names, and 16 bytes of tweak for the
+ * names. An empty password gives keys of zero bytes.
+ * @param {string | Uint8Array} password The password, not obscured.
+ * @param {string | Uint8Array} [salt] The salt, not obscured. An empty salt
+ *   is the salt of rclone.
  * @returns {Promise<Uint8Array>}
  */
-async function deriveKey(encPass, encSalt) {
-  const password = await reveal(encPass)
-    .then((response) => response.arrayBuffer())
-    .then((buf) => new Uint8Array(buf));
-  const decryptedSalt = await reveal(encSalt)
-    .then((response) => response.arrayBuffer())
-    .then((buf) => new Uint8Array(buf));
-  const salt = decryptedSalt.length ? decryptedSalt : DEFAULT_SALT;
+export async function deriveKey(password, salt = "") {
+  const bytes = (text) =>
+    typeof text === "string" ? encoder.encode(text) : text;
+  if (bytes(password).length === 0) {
+    return new Uint8Array(dkLen);
+  }
+  const saltBytes = bytes(salt).length ? bytes(salt) : DEFAULT_SALT;
+  // The scrypt of node:crypto is native code, also in a Worker: it is about
+  // 4 times faster than scrypt in JavaScript there.
+  const key = await new Promise((resolve, reject) => {
+    scrypt(
+      bytes(password),
+      saltBytes,
+      dkLen,
+      { N, r, p, maxmem: SCRYPT_MEMORY },
+      (error, key) => error ? reject(error) : resolve(key),
+    );
+  });
+  return new Uint8Array(key.buffer, key.byteOffset, key.length);
+}
 
-  return scrypt(password, salt, { N, r, p, dkLen });
+/**
+ * The ciphers of the last passwords. scrypt takes much time, thus each
+ * request does not make the keys again.
+ * @type {Map<string, Promise<{ dataKey: Uint8Array, names: import("./PathCipher.js").PathCipher }>>}
+ */
+const ciphers = new Map();
+const MAX_CIPHERS = 16;
+
+/**
+ * Gives the key of the data and the cipher of the names for an obscured
+ * password and an obscured salt.
+ * @param {string} password
+ * @param {string} salt "" for the salt of rclone.
+ * @throws {Error} When the password or the salt is not obscured.
+ */
+function cipherOf(password, salt) {
+  const id = JSON.stringify([password, salt]);
+  let cipher = ciphers.get(id);
+  if (cipher) {
+    // The last used cipher goes to the end.
+    ciphers.delete(id);
+  } else {
+    cipher = (async () => {
+      const key = await deriveKey(
+        await revealBytes(password),
+        salt ? await revealBytes(salt) : "",
+      );
+      return {
+        dataKey: key.subarray(0, 32),
+        names: PathCipher({
+          nameKey: key.subarray(32, 64),
+          nameTweak: key.subarray(64),
+        }),
+      };
+    })();
+    cipher.catch(() => ciphers.delete(id));
+  }
+  ciphers.set(id, cipher);
+  if (ciphers.size > MAX_CIPHERS) {
+    ciphers.delete(ciphers.keys().next().value);
+  }
+  return cipher;
+}
+
+/**
+ * @param {string} obscured
+ * @returns {Promise<Uint8Array>}
+ */
+async function revealBytes(obscured) {
+  const response = await reveal(obscured);
+  return new Uint8Array(await response.arrayBuffer());
 }
 
 export default {

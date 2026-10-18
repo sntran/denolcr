@@ -1,0 +1,37 @@
+{
+  "name": "@rfetch/crypt",
+  "version": "0.1.0",
+  "description": "The crypt backend of rfetch: it encrypts the files and their names, as rclone.",
+  "type": "module",
+  "exports": {
+    ".": "./main.js"
+  },
+  "imports": {
+    "#wasm": {
+      "workerd": "./wasm.workerd.js",
+      "default": "./wasm.js"
+    }
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22.2.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sntran/rfetch.git",
+    "directory": "backend/crypt"
+  },
+  "author": "Trần Nguyễn Sơn",
+  "license": "ISC",
+  "dependencies": {
+    "@rfetch/lib": "^0.1.0",
+    "base32-decode": "^1.0.0",
+    "base32-encode": "^2.0.0"
+  },
+  "devDependencies": {
+    "@rfetch/memory": "^0.1.0",
+    "fast-check": "^3.19.0"
+  }
+}

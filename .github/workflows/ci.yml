@@ -1,0 +1,114 @@
+# The checks of each push and of each pull request:
+#
+# - npm test: the tests, with the oldest Node.js of package.json and the
+#   newer versions. The job installs rclone and Go, thus the tests that
+#   compare rfetch with rclone and with Go run too.
+# - deno fmt --check: the format of the files.
+# - wasm: the tests of the crate of backend/crypt/secretbox.wasm, and its
+#   build from its source gives the same bytes as the file in the repository.
+#
+# This workflow deploys nothing: the Pages project deploys the branches.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+# A new push to a branch stops the old run of that branch.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24, 26]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      # Go runs the tests of backend/http/list.js against encoding/csv.
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: false
+
+      # rclone reads each variable RCLONE_NAME as the flag --name. Thus the
+      # version is not in a variable RCLONE_VERSION of the job: rclone reads
+      # it as the flag --version, and fails.
+      - name: Install rclone
+        env:
+          VERSION: 1.75.1
+          SHA256: 982b5aa772841168f8e380f139e9e787b2a105403e32b94da8676a0e1c0a13ab
+        run: |
+          mkdir -p "$HOME/bin" "$RUNNER_TEMP/rclone"
+          cd "$RUNNER_TEMP/rclone"
+          zip="rclone-v$VERSION-linux-amd64.zip"
+          curl -fsSLO "https://downloads.rclone.org/v$VERSION/$zip"
+          echo "$SHA256  $zip" | sha256sum -c -
+          unzip -q "$zip"
+          install -m 755 "rclone-v$VERSION-linux-amd64/rclone" "$HOME/bin/rclone"
+          "$HOME/bin/rclone" version
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+          echo "RCLONE=$HOME/bin/rclone" >> "$GITHUB_ENV"
+
+      - run: npm ci
+
+      # A test against rclone or Go skips when the tool is not installed.
+      # Here the tools are installed, thus such a skip is an error.
+      - name: npm test
+        shell: bash
+        run: |
+          npm test 2>&1 | tee "$RUNNER_TEMP/test.log"
+          if grep -E "(rclone|Go) is not installed" "$RUNNER_TEMP/test.log"; then
+            echo "::error::A test skipped because a tool is not installed."
+            exit 1
+          fi
+
+  format:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: 2.9.6
+
+      - run: deno fmt --check
+
+  wasm:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend/crypt/native
+    steps:
+      - uses: actions/checkout@v4
+
+      # The compiler of rust-toolchain.toml, with the target of WebAssembly.
+      - name: Install Rust
+        run: |
+          channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal \
+            --target wasm32-unknown-unknown
+
+      # The tests compare each box with the crate crypto_secretbox, on the
+      # machine of the job.
+      - run: cargo test --locked
+
+      - run: ./build.sh
+
+      - name: Compare with the file in the repository
+        run: git diff --exit-code -- ../secretbox.wasm

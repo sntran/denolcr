@@ -1,4 +1,6 @@
-import { lsf } from "../../mod.js";
+import { sizeField } from "@rfetch/lib/format";
+import { isTrue } from "@rfetch/lib/options";
+import { LineStream, lsjson } from "../lsjson/main.js";
 /**
  * List the objects in the path with size and path.
  *
@@ -22,14 +24,20 @@ import { lsf } from "../../mod.js";
  * @param {number} [flags.max_depth=Infinity] - Maximum depth of recursion.
  * @returns {Promise<Response>}
  */
-export function ls(location, flags = {}) {
-  flags = {
-    recursive: "true",
+export async function ls(location, flags = {}) {
+  const human = isTrue(flags.human_readable);
+  const response = await lsjson(location, {
+    recursive: true,
     max_depth: "Infinity",
-    files_only: "true",
-    format: "sp",
-    separator: "\t",
     ...flags,
-  };
-  return lsf(location, flags);
+  });
+  if (!response.ok) return response;
+  // As `rclone ls`: the size in 9 characters, then the path.
+  const lines = new LineStream((item) => {
+    if (item.IsDir) return;
+    return `${sizeField(item.Size, human, 9)} ${item.Path}`;
+  });
+  return new Response(response.body.pipeThrough(lines), {
+    headers: { "Content-Type": "text/plain" },
+  });
 }

@@ -1,0 +1,27 @@
+# The blocks of the data of rclone crypt: NaCl secretbox (XSalsa20 and
+# Poly1305) in WebAssembly, for Node.js and for Workers. build.sh builds
+# ../secretbox.wasm from it.
+[package]
+name = "secretbox"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+# XSalsa20 is in src/salsa.rs.
+[dependencies]
+poly1305 = "=0.8.0"
+subtle = { version = "=2.6.1", default-features = false }
+
+# The tests compare each box with this crate.
+[dev-dependencies]
+crypto_secretbox = { version = "=0.1.1", default-features = false, features = ["salsa20"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

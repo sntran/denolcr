@@ -1,0 +1,25 @@
+{
+  "name": "@rfetch/alias",
+  "version": "0.1.0",
+  "description": "The alias backend of rfetch: a new name for a path in a remote.",
+  "type": "module",
+  "exports": {
+    ".": "./main.js"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22.2.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sntran/rfetch.git",
+    "directory": "backend/alias"
+  },
+  "author": "Trần Nguyễn Sơn",
+  "license": "ISC",
+  "dependencies": {
+    "@rfetch/lib": "^0.1.0"
+  }
+}

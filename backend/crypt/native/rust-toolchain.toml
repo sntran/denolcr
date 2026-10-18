@@ -1,0 +1,6 @@
+# The same compiler gives the same secretbox.wasm: the check of CI builds it
+# again and compares the bytes.
+[toolchain]
+channel = "1.97.0"
+targets = ["wasm32-unknown-unknown"]
+profile = "minimal"

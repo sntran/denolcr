@@ -1,4 +1,4 @@
-import { Chunker } from "../../lib/streams/chunker.js";
+import { Chunker } from "./chunker.js";
 
 /**
  * @param {Request} request

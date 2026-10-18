@@ -1,9 +1,13 @@
 import { test } from "node:test";
 import process from "node:process";
 import { readdir } from "node:fs/promises";
-import { join } from "../../deps.js";
-import { assert } from "../../dev_deps.js";
+import { join } from "node:path";
+import assert from "node:assert/strict";
 
+import { backendSuite } from "@rfetch/lib/testing/suite";
+import { remote } from "@rfetch/lib/testing/remote";
+// Sets the global `fetch` that reads the paths of remotes.
+import "../../mod.js";
 import backend from "./main.js";
 
 test("local path", async () => {
@@ -29,4 +33,17 @@ test("local path", async () => {
       `should have link to ${name}`,
     );
   }
+});
+
+backendSuite("alias", backend, {
+  type: "alias",
+  params: { remote: ":memory:/alias" },
+});
+
+test("the links of a list are in the alias", async () => {
+  const fs = remote(backend, { params: { remote: ":memory:/links" } });
+  await fs.put("a b.txt", new TextEncoder().encode("a"));
+  const html = await fs.get("").then((response) => response.text());
+  assert.ok(html.includes(` href="a%20b.txt?remote=%3Amemory%3A%2Flinks"`));
+  assert.ok(html.includes(` href="../?remote=%3Amemory%3A%2Flinks"`));
 });

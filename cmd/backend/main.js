@@ -1,3 +1,5 @@
+import { fetch } from "../../fetch.js";
+
 /**
  * Run a backend-specific command.
  *

@@ -1,61 +1,31 @@
 /**
- * Benchmark `lsjson` command vs `rclone lsjson` command.
+ * Benchmark of the `lsjson` command against `rclone lsjson`.
  *
- * `rclone` must be installed and available in the PATH.
+ * `rclone` must be in the PATH. Run with `node cmd/lsjson/main_bench.js`.
  *
- * This benchmark skips the time to spawn `rclone` process for more
- * accurate comparison.
+ * This benchmark leaves out the time to start the `rclone` process, for a
+ * more accurate comparison.
  */
-
+import { spawn } from "node:child_process";
+import { Readable } from "node:stream";
+import { bench } from "@rfetch/lib/testing/bench";
 import { lsjson } from "./main.js";
 
 const remotes = ["./", "./backend/", "./cmd/"];
 
 for (const remote of remotes) {
-  Deno.bench(
-    `rfetch lsjson ${remote} --recursive`,
-    {
-      baseline: true,
-      group: `timing ${remote} --recursive`,
-      permissions: {
-        env: true,
-        read: true,
-      },
-    },
-    async () => {
+  await bench(`timing ${remote} --recursive`, {
+    [`rfetch lsjson ${remote} --recursive`]: async () => {
       const response = await lsjson(remote, { recursive: true });
       await response.arrayBuffer();
     },
-  );
-
-  Deno.bench(
-    `rclone lsjson ${remote} --recursive`,
-    {
-      group: `timing ${remote} --recursive`,
-      permissions: {
-        env: true,
-        read: true,
-        run: true,
-      },
-    },
-    async (b) => {
-      const command = new Deno.Command("rclone", {
-        args: [
-          "lsjson",
-          remote,
-          "--recursive",
-        ],
-        stdout: "piped",
+    [`rclone lsjson ${remote} --recursive`]: async (timer) => {
+      const rclone = spawn("rclone", ["lsjson", remote, "--recursive"], {
+        stdio: ["ignore", "pipe", "inherit"],
       });
-
-      const process = command.spawn();
-
-      b.start();
-
-      const response = new Response(process.stdout);
-      await response.arrayBuffer();
-
-      b.end();
+      timer.start();
+      await new Response(Readable.toWeb(rclone.stdout)).arrayBuffer();
+      timer.end();
     },
-  );
+  });
 }

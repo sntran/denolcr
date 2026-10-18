@@ -1,4 +1,4 @@
-#!/usr/bin/env -S deno run --allow-all
+#!/usr/bin/env node
 
 /**
  * rfetch - fetching between remotes
@@ -10,69 +10,59 @@
  * ./main.js copy source:/path/to/file destination:/path/to/file
  * ```
  */
-import { argv, env, stdout } from "node:process";
-import { parseArgs } from "node:util";
+import process, { argv, stderr, stdout } from "node:process";
+import { once } from "node:events";
 
-import * as commands from "./mod.js";
+// The import sets the global `fetch`, which reads the paths of remotes.
+import "./fetch.js";
 
-/** Optional params for the subcommand. */
-const options = {
-  "dry-run": {
-    type: "boolean",
-    default: env["RCLONE_DRY_RUN"] === "true",
-  },
-  "header": {
-    type: "string",
-    multiple: true,
-  },
-  "header-download": {
-    type: "string",
-    multiple: true,
-  },
-  "header-upload": {
-    type: "string",
-    multiple: true,
-  },
-  "human-readable": {
-    type: "boolean",
-  },
-  "progress": {
-    type: "boolean",
-    short: "P",
-    default: env["RCLONE_PROGRESS"] === "true",
-  },
-  "transfers": {
-    type: "string",
-    default: env["RCLONE_TRANSFERS"] || "4",
-  }
-};
-
-const {
-  values: flags,
-  positionals: [
-    subcommand = "help",
-    ...args
-  ],
-} = parseArgs({
-  args: argv.slice(2),
-  options,
-  strict: false,
-  allowPositionals: true,
-  allowNegative: true,
-  tokens: true,
-});
-
-for (const name of Object.keys(flags)) {
-  // Adds snake_case version of the flag.
-  flags[name.replace(/-/g, "_")] = flags[name];
-}
+import { backends } from "./backend/main.js";
+import { parseFlags } from "./cmd/flags.js";
+import { FOLDERS } from "./cmd/folders.js";
 
 (async () => {
+  /** @type {Awaited<ReturnType<typeof parseFlags>>} */
+  let parsed;
+  try {
+    parsed = await parseFlags(argv.slice(2), backends);
+  } catch (error) {
+    // As rclone: for example `Error: unknown flag: --nosuch`.
+    stderr.write(`Error: ${error.message}\n`);
+    process.exitCode = 1;
+    return;
+  }
+  const { flags, positionals: [subcommand = "help", ...positionals] } = parsed;
+
+  let name = subcommand;
+  let args = positionals;
+  if (!Object.hasOwn(FOLDERS, name)) {
+    stderr.write(`Error: unknown command "${name}" for "rfetch"\n`);
+    process.exitCode = 1;
+    [name, args] = ["help", []];
+  }
+  // `rfetch COMMAND --help` shows the help.
+  if (flags.help) [name, args] = ["help", []];
+  const module = await import(`./cmd/${FOLDERS[name]}/main.js`);
   /** TODO merge global flags into config */
-  const response = await commands[subcommand](...args, flags);
+  const response = await module[name](...args, flags);
+  if (!response.ok) {
+    // As rclone: the exit code 3 is "directory not found", and 1 is an
+    // other error.
+    const text = (await response.text()).trim() || response.statusText ||
+      (response.status === 404 ? "not found" : `status ${response.status}`);
+    stderr.write(`Error: ${text}\n`);
+    process.exitCode = response.status === 404 ? 3 : 1;
+    return;
+  }
   if (response.body) {
+    // A reader that closes the pipe, for example `head`, stops the command.
+    stdout.on("error", (error) => {
+      if (error.code === "EPIPE") process.exit();
+      throw error;
+    });
     for await (const chunk of response.body) {
-      stdout.write(chunk);
+      // Waits when the pipe is full: else the output stays in memory.
+      if (!stdout.write(chunk)) await once(stdout, "drain");
     }
   }
 })();

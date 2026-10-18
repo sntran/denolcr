@@ -1,5 +1,3 @@
-#!/usr/bin/env -S deno serve --allow-all
-
 /**
  * Memory Backend
  *
@@ -9,14 +7,32 @@
  * Because it has no parameters you can just use it with the `:memory:` remote
  * name.
  */
-import { contentType, extname, formatBytes } from "../../deps.js";
+import { renderListing } from "@rfetch/lib/listing";
+import { mimeType } from "@rfetch/lib/mime";
+import { decodePath } from "@rfetch/lib/path";
+import { notSatisfiable, parseRange, partialHeaders } from "@rfetch/lib/range";
 
 /**
- * @type {Map<string, File | null>}
+ * A file: its bytes, its media type, and the time of its last change.
+ * @typedef {Object} File
+ * @property {Uint8Array} bytes
+ * @property {string} type
+ * @property {number} modified In milliseconds.
  */
-const cache = new Map();
-// Creates the root folder.
-cache.set("/", null);
+
+/**
+ * The files, by their path with no percent-encoding.
+ * @type {Map<string, File>}
+ */
+const files = new Map();
+
+/**
+ * The folders, by their path with no percent-encoding and with `/` at the
+ * end. The value is the names of the children: `name` for a file and
+ * `name/` for a folder. Thus a list reads only its folder.
+ * @type {Map<string, Set<string>>}
+ */
+const folders = new Map([["/", new Set()]]);
 
 /**
  * Serves a memory remote
@@ -26,166 +42,156 @@ cache.set("/", null);
 async function memory(request) {
   const { method, url } = request;
   const { pathname, searchParams } = new URL(url);
+  const path = decodePath(pathname);
+
+  if (path === null) {
+    return new Response(null, { status: 400 });
+  }
 
   const headers = new Headers();
   let status = 200, body = null;
 
-  if (method === "GET") {
-    // Retrieves file content.
-    for (const [key, value] of cache) {
-      if (key === pathname) {
-        // File.
-        if (value !== null) {
-          body = value.stream();
-          break;
+  if (method === "HEAD" || method === "GET") {
+    const file = files.get(path);
+    if (file) {
+      const { bytes } = file;
+      headers.set("Content-Type", file.type || mimeType(path));
+      headers.set("Content-Length", `${bytes.length}`);
+      headers.set("Last-Modified", new Date(file.modified).toUTCString());
+      headers.set("Accept-Ranges", "bytes");
+      if (method === "GET") {
+        let range;
+        try {
+          range = parseRange(request.headers.get("Range"), bytes.length);
+        } catch {
+          return notSatisfiable(bytes.length);
         }
-
-        const regex = new RegExp(pathname + "([^/]+/?)");
-        /**
-         * @type {string[]}
-         */
-        const children = [];
-        for (const key of cache.keys()) {
-          const [, child] = key.match(regex) || [];
-          if (child) {
-            if (!children.includes(child)) {
-              children.push(child);
-            }
+        // The body is a copy of the bytes, with a length. A Worker reads a
+        // Blob in chunks of 4 KiB, which is slow.
+        body = bytes;
+        if (range) {
+          status = 206;
+          for (
+            const [name, value] of Object.entries(
+              partialHeaders(range, bytes.length),
+            )
+          ) {
+            headers.set(name, value);
           }
+          body = bytes.subarray(range.start, range.end + 1);
         }
-
-        children.sort((a, b) => a.localeCompare(b));
-
-        // Folder listing
-        body = new ReadableStream({
-          start(controller) {
-            controller.enqueue(`
-              <table cellpadding="4">
-              <thead>
-                <tr>
-                  <th></th>
-                  <th>Name</th>
-                  <th>Size</th>
-                  <th>Modified</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>📁</td>
-                  <td><a href="../?${searchParams}">Go up</a></td>
-                  <td>—</td>
-                  <td>—</td>
-                </tr>
-            `);
-
-            for (const name of children) {
-              const value = cache.get(pathname + name);
-              const isDirectory = value === null;
-
-              let filePath = name;
-              if (isDirectory) {
-                filePath += "/";
-              }
-
-              const type = isDirectory
-                ? ""
-                : contentType(extname(pathname)) || "";
-              const size = Number(isDirectory ? "-1" : value.size);
-              const lastModified = value?.lastModified
-                ? new Date(value?.lastModified)
-                : "";
-
-              controller.enqueue(`<tr>
-                <td>${isDirectory ? "📁" : "📄"}</td>
-                <td>
-                  <a
-                    href="${filePath}?${searchParams}"
-                    type="${type}"
-                  >${name}</a>
-                </td>
-                <td>
-                  ${
-                size
-                  ? `<data
-                        value="${size}"
-                      >${formatBytes(size, { locale: true })}</data>`
-                  : "—"
-              }
-                </td>
-                <td>${
-                lastModified
-                  ? `<time
-                      datetime="${lastModified.toISOString()}"
-                    >${lastModified.toLocaleString()}</time>`
-                  : "-"
-              }
-                </td>
-              </tr>`);
-            }
-
-            controller.enqueue("</tbody></table>");
-            controller.close();
-          },
-        }).pipeThrough(new TextEncoderStream());
-
-        headers.set("Content-Type", "text/html;charset=utf-8");
-
-        break;
       }
-    }
-
-    if (!body) {
-      status = 404;
-    }
-  }
-
-  if (method === "PUT") {
-    const folders = pathname.split("/").slice(1, -1);
-    // Creates ancestor folders, recursively.
-    let href = "/";
-    for (const segment of folders) {
-      href += `${segment}/`;
-      cache.set(`${href}`, null);
-    }
-
-    // Folder ending with trailing slash.
-    if (pathname.endsWith("/")) {
-      // Nothing, as we already created it.
+    } else if (folders.has(path)) {
+      headers.set("Content-Type", "text/html;charset=utf-8");
+      if (method === "GET") {
+        body = listing(path, searchParams);
+      }
     } else {
-      // Creates file.
-      const file = new File([await request.arrayBuffer()], pathname, {
-        type: request.headers.get("Content-Type") || "",
-        lastModified: Date.now(),
+      return new Response(null, { status: 404 });
+    }
+  } else if (method === "PUT") {
+    const slash = path.lastIndexOf("/") + 1;
+    // Creates the parent folders, then the folder or the file.
+    makeFolder(path.slice(0, slash));
+    if (slash < path.length) {
+      const name = path.slice(slash);
+      files.set(path, {
+        bytes: new Uint8Array(await request.arrayBuffer()),
+        type: request.headers.get("Content-Type") || mimeType(name),
+        modified: Date.now(),
       });
-      cache.set(pathname, file);
+      folders.get(path.slice(0, slash))?.add(name);
     }
 
     status = 201;
     headers.append("Content-Location", pathname);
-  }
-
-  if (method === "DELETE") {
-    // Folder ending with trailing slash.
-    if (pathname.endsWith("/")) {
-      // Deletes files in that folder.
-      for (const key of cache.keys()) {
-        if (key.startsWith(pathname)) {
-          cache.delete(key);
-        }
+  } else if (method === "DELETE") {
+    if (files.has(path)) {
+      files.delete(path);
+      const slash = path.lastIndexOf("/") + 1;
+      folders.get(path.slice(0, slash))?.delete(path.slice(slash));
+    } else if (folders.has(path)) {
+      // Deletes the folder and all in it. The root folder stays.
+      removeFolder(path);
+      if (path === "/") {
+        folders.set("/", new Set());
+      } else {
+        const parent = path.slice(
+          0,
+          path.lastIndexOf("/", path.length - 2) + 1,
+        );
+        folders.get(parent)?.delete(path.slice(parent.length));
       }
-      // Deletes the folder itself
-      cache.delete(pathname);
     } else {
-      // Deletes file.
-      cache.delete(pathname);
+      return new Response(null, { status: 404 });
     }
     status = 204;
+  } else {
+    status = 405;
+    headers.set("Allow", "GET, HEAD, PUT, DELETE");
   }
 
   return new Response(body, {
     status,
     headers,
   });
+}
+
+/**
+ * Creates a folder and its parent folders.
+ * @param {string} path The path of the folder, with `/` at the end.
+ */
+function makeFolder(path) {
+  if (folders.has(path)) return;
+  const parent = path.slice(0, path.lastIndexOf("/", path.length - 2) + 1);
+  makeFolder(parent);
+  folders.set(path, new Set());
+  folders.get(parent)?.add(path.slice(parent.length));
+}
+
+/**
+ * Removes a folder, its files and its folders.
+ * @param {string} path The path of the folder, with `/` at the end.
+ */
+function removeFolder(path) {
+  for (const name of folders.get(path) ?? []) {
+    if (name.endsWith("/")) removeFolder(`${path}${name}`);
+    else files.delete(`${path}${name}`);
+  }
+  folders.delete(path);
+}
+
+/**
+ * Gives the HTML list of the files and the folders in a folder.
+ * @param {string} path The path of the folder, with `/` at the end.
+ * @param {URLSearchParams} searchParams The query, for each link.
+ * @returns {ReadableStream<Uint8Array>}
+ */
+function listing(path, searchParams) {
+  /** @type {import("@rfetch/lib/listing").Entry[]} */
+  const entries = [];
+  for (const child of folders.get(path) ?? []) {
+    if (child.endsWith("/")) {
+      entries.push({
+        Name: child.slice(0, -1),
+        IsDir: true,
+        Size: -1,
+        MimeType: "",
+        ModTime: "",
+      });
+    } else {
+      const file = files.get(`${path}${child}`);
+      if (!file) continue;
+      entries.push({
+        Name: child,
+        IsDir: false,
+        Size: file.bytes.length,
+        MimeType: file.type || mimeType(child),
+        ModTime: new Date(file.modified).toISOString(),
+      });
+    }
+  }
+  return renderListing(entries, { query: `${searchParams}` });
 }
 
 export default {

@@ -1,0 +1,25 @@
+{
+  "name": "@rfetch/memory",
+  "version": "0.1.0",
+  "description": "The memory backend of rfetch: files in memory.",
+  "type": "module",
+  "exports": {
+    ".": "./main.js"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22.2.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sntran/rfetch.git",
+    "directory": "backend/memory"
+  },
+  "author": "Trần Nguyễn Sơn",
+  "license": "ISC",
+  "dependencies": {
+    "@rfetch/lib": "^0.1.0"
+  }
+}

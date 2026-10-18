@@ -1,0 +1,28 @@
+{
+  "name": "@rfetch/s3",
+  "version": "0.1.0",
+  "description": "The s3 backend of rfetch: Amazon S3 and the services with the same API, for example Cloudflare R2.",
+  "type": "module",
+  "exports": {
+    ".": "./main.js"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22.2.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sntran/rfetch.git",
+    "directory": "backend/s3"
+  },
+  "author": "Trần Nguyễn Sơn",
+  "license": "ISC",
+  "dependencies": {
+    "@rfetch/lib": "^0.1.0"
+  },
+  "devDependencies": {
+    "fast-check": "^3.19.0"
+  }
+}

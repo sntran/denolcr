@@ -1,29 +1,53 @@
-#!/usr/bin/env -S deno serve --allow-all
-
 import process from "node:process";
-import { contentType, extname, formatBytes, join } from "../../deps.js";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { formatBytes } from "@rfetch/lib/format";
+import { escapeHTML } from "@rfetch/lib/html";
+import { mimeType } from "@rfetch/lib/mime";
+import { decodePath } from "@rfetch/lib/path";
+import { notSatisfiable, parseRange, partialHeaders } from "@rfetch/lib/range";
 
 /**
- * Serves a local remote
+ * Serves a local remote: the files and the folders in its root. The root is
+ * the current folder, or `RFETCH_LOCAL_ROOT` of `env`.
+ *
+ * The fetch of rfetch sets the root `/` only for a local path of the command
+ * line or of the code, for example `/tmp/file.txt`: an option, a header or
+ * the query cannot set it. Thus a request from a client of `rfetch serve`,
+ * which has no `env`, stays in the current folder.
  * @param {Request} request
+ * @param {Record<string, unknown>} [env]
  * @returns {Promise<Response>}
  */
-async function local(request) {
+async function local(request, env = {}) {
   const { method, url } = request;
   const { pathname, searchParams } = new URL(url);
-  const absolutePath = join(process.cwd?.() || ".", pathname);
+  const cwd = process.cwd?.() || ".";
+  const root = typeof env.RFETCH_LOCAL_ROOT === "string"
+    ? env.RFETCH_LOCAL_ROOT
+    : cwd;
+  const path = decodePath(pathname);
+  const absolutePath = path === null ? null : join(root, path);
+
+  // A path must not go out of the root, also on Windows, where `\` is a
+  // separator too.
+  if (absolutePath === null || isOutside(root, absolutePath)) {
+    return new Response(null, { status: 400 });
+  }
 
   // Have to use dynamic import here because `fs/promises` is not available in
   // Worker environments.
   const { mkdir, open, readdir, rm, stat } = await import("node:fs/promises");
 
-  let stats;
+  /** @type {import("node:fs").Stats | null} */
+  const stats = await stat(absolutePath).catch(() => null);
 
   const headers = new Headers();
   let status = 200, body = null;
 
   if (method === "HEAD" || method === "GET") {
-    stats = await stat(absolutePath);
+    if (!stats) {
+      return new Response(null, { status: 404 });
+    }
 
     if (stats.isDirectory()) {
       /**
@@ -31,10 +55,23 @@ async function local(request) {
        */
       const files = await readdir(absolutePath, { withFileTypes: true });
       files.sort((a, b) => a.name.localeCompare(b.name));
+      // The stat of each file, at the same time: one after the other takes
+      // much more time. A file that goes away before its stat is not in
+      // the list.
+      // The times in nanoseconds, as rclone gives them.
+      const fileStats = await Promise.all(
+        files.map((file) =>
+          stat(join(absolutePath, file.name), { bigint: true }).catch(() =>
+            null
+          )
+        ),
+      );
 
       if (method === "GET") {
+        const query = escapeHTML(`${searchParams}`);
+
         body = new ReadableStream({
-          async start(controller) {
+          start(controller) {
             controller.enqueue(`
               <search>
                 <form>
@@ -58,48 +95,44 @@ async function local(request) {
               <tbody>
                 <tr>
                   <td>📁</td>
-                  <td><a href="../?${searchParams}">Go up</a></td>
+                  <td><a href="../?${query}">Go up</a></td>
                   <td>—</td>
                   <td>—</td>
                 </tr>
               `);
 
-            for await (const file of files) {
+            for (const [index, file] of files.entries()) {
+              if (!fileStats[index]) continue;
               const name = file.name;
-              let filePath = file.name;
               const isDirectory = file.isDirectory();
-              if (isDirectory) {
-                filePath += "/";
-              }
+              const href = `${encodeURIComponent(name)}${
+                isDirectory ? "/" : ""
+              }`;
 
-              const { size, mtime } = await stat(
-                join(absolutePath, filePath),
-              );
+              const { size, mtimeNs } = fileStats[index];
+              const mtime = timeOf(Number(mtimeNs / 1000000n));
 
               controller.enqueue(`<tr>
                 <td>${isDirectory ? "📁" : "📄"}</td>
                 <td>
                   <a
-                    href="${filePath}?${searchParams}"
-                    type=""
-                  >${name}</a>
+                    href="${href}?${query}"
+                    type="${isDirectory ? "" : escapeHTML(mimeType(name))}"
+                  >${escapeHTML(name)}</a>
                 </td>
-                <td>
-                  <data
+                <td>${
+                isDirectory ? "—" : `<data
                     value="${size}"
-                  >${
-                size ? formatBytes(Number(size), { locale: true }) : "—"
-              }</data>
+                  >${formatBytes(Number(size), { locale: true })}</data>`
+              }
                 </td>
                 <td>${
                 mtime
                   ? `<time
-                    datetime="${mtime.toISOString()}"
+                    datetime="${isoStringOf(mtimeNs)}"
                   >${mtime.toLocaleString()}</time>`
                   : "-"
               }
-                </td>
-
                 </td>
               </tr>`);
             }
@@ -112,65 +145,134 @@ async function local(request) {
 
       headers.set("Content-Type", "text/html;charset=utf-8");
     } else {
-      headers.append("Content-Type", contentType(extname(pathname)) || "");
+      headers.append("Content-Type", mimeType(path));
       headers.append("Content-Length", stats.size.toString());
+      headers.set("Accept-Ranges", "bytes");
 
       if (method === "GET") {
+        let range;
+        try {
+          range = parseRange(request.headers.get("Range"), stats.size);
+        } catch {
+          return notSatisfiable(stats.size);
+        }
+        if (range) {
+          status = 206;
+          for (
+            const [name, value] of Object.entries(
+              partialHeaders(range, stats.size),
+            )
+          ) {
+            headers.set(name, value);
+          }
+        }
+        // The position of the next byte, and the number of bytes to read.
+        let position = range?.start ?? 0;
+        let remaining = range ? range.end - range.start + 1 : stats.size;
         const file = await open(absolutePath);
 
         body = new ReadableStream({
           async pull(controller) {
-            const chunk = new Uint8Array(64 * 1024);
-            const { bytesRead } = await file.read(chunk, 0);
-            controller.enqueue(chunk.slice(0, bytesRead));
+            // A read of 1 MiB: each read is a call to the system, and parts
+            // of 64 KiB make a read of a large file much slower.
+            const chunk = new Uint8Array(Math.min(1024 * 1024, remaining));
+            const { bytesRead } = remaining > 0
+              ? await file.read(chunk, 0, chunk.length, position)
+              : { bytesRead: 0 };
             if (bytesRead === 0) {
               controller.close();
-              file.close();
+              await file.close();
+              return;
             }
+            position += bytesRead;
+            remaining -= bytesRead;
+            controller.enqueue(chunk.subarray(0, bytesRead));
           },
-          cancel() {
-            file.close();
+          async cancel() {
+            await file.close();
           },
         });
       }
     }
 
-    const mtime = stats.mtime?.toUTCString();
-    if (mtime) headers.append("Last-Modified", mtime);
-  }
-
-  /** `PUT` upserts a file at `pathname`. */
-  if (method === "PUT") {
+    if (stats.mtimeMs !== undefined) {
+      headers.append("Last-Modified", timeOf(stats.mtimeMs).toUTCString());
+    }
+  } else if (method === "PUT") {
     // Folder ending with trailing slash.
-    if (pathname.endsWith("/")) {
+    if (path.endsWith("/")) {
       await mkdir(absolutePath, { recursive: true });
     } else {
+      await mkdir(dirname(absolutePath), { recursive: true });
       const file = await open(absolutePath, "w");
-      await request.body.pipeTo(
-        new WritableStream({
-          async write(chunk) {
-            await file.write(chunk);
-          },
-          async close() {
-            await file.close();
-          },
-        }),
-      );
+      try {
+        for await (const chunk of request.body ?? []) {
+          await file.write(chunk);
+        }
+      } finally {
+        await file.close();
+      }
     }
 
     status = 201;
     headers.append("Content-Location", pathname);
-  }
+  } else if (method === "DELETE") {
+    if (!stats) {
+      return new Response(null, { status: 404 });
+    }
+    // The root and the current folder must stay.
+    if (path === "/" || resolve(absolutePath) === resolve(cwd)) {
+      return new Response(null, { status: 403 });
+    }
 
-  if (method === "DELETE") {
     await rm(absolutePath, { recursive: true });
     status = 204;
+  } else {
+    status = 405;
+    headers.set("Allow", "GET, HEAD, PUT, DELETE");
   }
 
   return new Response(body, {
     status,
     headers,
   });
+}
+
+/**
+ * Tells if a path is out of the root folder.
+ * @param {string} root
+ * @param {string} path
+ * @returns {boolean}
+ */
+function isOutside(root, path) {
+  const rest = relative(root, path);
+  return rest === ".." || rest.startsWith(`..${sep}`) || isAbsolute(rest);
+}
+
+/**
+ * The time of a file in ISO 8601, with 9 digits after the second: the
+ * format of rclone for a remote with a precision of 1 ns.
+ * @param {bigint} mtimeNs The nanoseconds after 1970.
+ * @returns {string}
+ */
+function isoStringOf(mtimeNs) {
+  const second = 1000000000n;
+  // The floor, also for a time before 1970.
+  let nanoseconds = mtimeNs % second;
+  if (nanoseconds < 0n) nanoseconds += second;
+  const seconds = (mtimeNs - nanoseconds) / second;
+  const date = new Date(Number(seconds) * 1000).toISOString().slice(0, 19);
+  return `${date}.${String(nanoseconds).padStart(9, "0")}Z`;
+}
+
+/**
+ * The time of a file to the millisecond. As in Go, the time is cut, not
+ * rounded: the `mtime` of Node.js is rounded to the nearest millisecond.
+ * @param {number} mtimeMs
+ * @returns {Date}
+ */
+function timeOf(mtimeMs) {
+  return new Date(Math.floor(mtimeMs));
 }
 
 export default {

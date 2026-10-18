@@ -1,203 +1,70 @@
-import { test } from "node:test";
+import { after, describe, it } from "node:test";
+import assert from "node:assert/strict";
 import process from "node:process";
-import { readdir, readFile, stat } from "node:fs/promises";
-import { contentType, extname, join } from "../../deps.js";
 import {
-  assert,
-  assertEquals,
-  assertHeader,
-  assertRejects,
-} from "../../dev_deps.js";
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
+import { backendSuite } from "@rfetch/lib/testing/suite";
 import backend from "./main.js";
 
-const fetch = backend.fetch;
+// The backend serves the current folder. The tests use a new folder as the
+// current folder, with a secret file next to it, out of the root of the
+// backend.
+const folder = await mkdtemp(join(tmpdir(), "rfetch-local-"));
+const root = join(folder, "root");
+await mkdir(root);
+await writeFile(join(folder, "secret.txt"), "secret");
+process.chdir(root);
 
-const encoder = new TextEncoder();
-const cwd = process.cwd();
+backendSuite("local", backend);
 
-test("GET", async (t) => {
-  const requestInit = {
-    method: "GET",
-  };
+describe("local", () => {
+  after(() => rm(folder, { recursive: true, force: true }));
 
   /**
-   * @type {string[]}
+   * @param {string} method
+   * @param {string} path
    */
-  const files = [];
+  async function send(method, path) {
+    const response = await backend.fetch(
+      new Request(`http://rfetch.test${path}`, {
+        method,
+        body: method === "PUT" ? "evil" : null,
+      }),
+    );
+    await response.body?.cancel();
+    return response;
+  }
 
-  await t.test("/", async () => {
-    const url = new URL("/", "local://");
-    const request = new Request(url, requestInit);
-    const response = await fetch(request);
-    const { headers, body } = response;
-
-    assert(body, "should have body");
-    assert(headers.get("Content-Type").includes("text/html"));
-    const html = await response.text();
-
-    const entries = await readdir(cwd, { withFileTypes: true });
-    for await (const entry of entries) {
-      let name = entry.name;
-      if (entry.isDirectory()) {
-        name += "/";
+  it("does not go out of its root folder", async () => {
+    const paths = [
+      "/..%2Fsecret.txt",
+      "/a/..%2F..%2Fsecret.txt",
+      "/%2E%2E%2Fsecret.txt",
+      "/..%2F",
+    ];
+    for (const path of paths) {
+      for (const method of ["GET", "HEAD", "PUT", "DELETE"]) {
+        const { status } = await send(method, path);
+        assert.equal(status, 400, `${method} ${path}`);
       }
-
-      assert(
-        html.includes(` href="${name}`),
-        "should have the link in the HTML",
-      );
-
-      files.push(name);
     }
+
+    assert.equal(await readFile(join(folder, "secret.txt"), "utf8"), "secret");
+    assert.ok((await stat(root)).isDirectory());
   });
 
-  await t.test("a file", async () => {
-    for await (const name of files) {
-      // Checking links for now
-      if (name.endsWith("/")) continue;
-
-      const path = join(cwd, name);
-      const file = await stat(path);
-
-      const url = new URL(`/${name}`, "local://");
-      const request = new Request(url, requestInit);
-      const response = await fetch(request);
-      const { headers, body } = response;
-
-      assertHeader(headers, "Content-Type", contentType(extname(name)) || "");
-      assertHeader(headers, "Content-Length", `${file.size}`);
-      assertHeader(headers, "Last-Modified", file.mtime?.toUTCString() || "");
-
-      assert(
-        body instanceof ReadableStream,
-        "should have body as a ReadableStream",
-      );
-      assertEquals(
-        await response.text(),
-        await readFile(path, "utf8"),
-        "should have the same content",
-      );
-    }
-  });
-});
-
-const newFile = "dummy.file";
-const newFolder = "dummy.folder/"; // Must have trailing slash.
-
-test("PUT", async (t) => {
-  await t.test("a new file", async () => {
-    const targetFile = join(cwd, newFile);
-    const body = "Hello World";
-
-    const url = new URL(`/${newFile}`, "local://");
-    // Sends the PUT request with the body.
-    const request = new Request(url, {
-      method: "PUT",
-      headers: {
-        "Content-Type": contentType(extname(newFile)) ||
-          "application/octet-stream",
-        "Content-Length": `${encoder.encode(body).byteLength}`,
-      },
-      body,
-    });
-    const { status, headers } = await fetch(request);
-
-    assertEquals(status, 201, "should respond with 201 Created");
-    assertHeader(headers, "Content-Location", `/${newFile}`);
-
-    assertEquals(
-      await readFile(targetFile, "utf8"),
-      body,
-      "should have the same content",
-    );
-
-    // Also checks the content with a GET request.
-    const response = await fetch(new Request(url));
-    assertEquals(await response.text(), body, "should have the same content");
-  });
-
-  await t.test("a new folder", async () => {
-    const targetFolder = join(cwd, newFolder);
-
-    const url = new URL(`/${newFolder}`, "local://");
-    // Sends the PUT request with no body.
-    const request = new Request(url, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "text/directory",
-        "Content-Length": "0",
-      },
-    });
-    const { status, headers } = await fetch(request);
-
-    assertEquals(status, 201, "should respond with 201 Created");
-    assertHeader(headers, "Content-Location", `/${newFolder}`);
-
-    const stats = await stat(targetFolder);
-    assert(stats.isDirectory, "should be a directory");
-  });
-
-  await t.test("a new nested file", async () => {
-    const targetFile = join(cwd, newFolder, newFile);
-    const body = "Hello Nested World";
-
-    const url = new URL(`/${join(newFolder, newFile)}`, "local://");
-    // Sends the PUT request with the body.
-    const request = new Request(url, {
-      method: "PUT",
-      headers: {
-        "Content-Type": contentType(extname(newFile)) ||
-          "application/octet-stream",
-        "Content-Length": `${encoder.encode(body).byteLength}`,
-      },
-      body,
-    });
-    const { status, headers } = await fetch(request);
-
-    assertEquals(status, 201, "should respond with 201 Created");
-    assertHeader(headers, "Content-Location", `/${join(newFolder, newFile)}`);
-
-    assertEquals(
-      await readFile(targetFile, "utf8"),
-      body,
-      "should have the same content",
-    );
-
-    // Also checks the content with a GET request.
-    const response = await fetch(new Request(url));
-    assertEquals(await response.text(), body, "should have the same content");
-  });
-});
-
-test("DELETE", async (t) => {
-  await t.test("a file", async () => {
-    const targetFile = join(cwd, newFile);
-    const url = new URL(`/${newFile}`, "local://");
-    // Sends the PUT request with the body.
-    const request = new Request(url, {
-      method: "DELETE",
-    });
-    const { status } = await fetch(request);
-    assertEquals(status, 204, "should respond with 204 No Content");
-
-    assertRejects(() => {
-      return stat(targetFile);
-    });
-  });
-
-  await t.test("a folder", async () => {
-    const targetFolder = join(cwd, newFolder);
-    const url = new URL(`/${newFolder}`, "local://");
-    // Sends the PUT request with the body.
-    const request = new Request(url, {
-      method: "DELETE",
-    });
-    const { status } = await fetch(request);
-    assertEquals(status, 204, "should respond with 204 No Content");
-
-    assertRejects(() => {
-      return stat(targetFolder);
-    });
+  it("does not delete its root folder", async () => {
+    const { status } = await send("DELETE", "/");
+    assert.equal(status, 403);
+    assert.ok((await stat(root)).isDirectory());
   });
 });

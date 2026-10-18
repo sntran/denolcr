@@ -1,9 +1,15 @@
-import { AES, decodeBase32, encodeBase32 } from "../../deps.js";
-import { Decrypt, Encrypt } from "./eme.js";
-import { pad, Padding, unpad } from "./padding.js";
+import decodeBase32 from "base32-decode";
+import encodeBase32 from "base32-encode";
+import { aes256 } from "./aes.js";
+import * as EME from "./eme.js";
+
+/** The size of a block of AES and of the padding, in bytes. */
+const BLOCK_SIZE = 16;
+/** The largest encrypted name that rclone decrypts, in bytes. */
+const MAX_SIZE = 2048;
 
 const encoder = new TextEncoder();
-const decoder = new TextDecoder();
+const decoder = new TextDecoder("utf-8", { fatal: true });
 
 /**
  * @typedef {Object} PathCipherOptions
@@ -20,7 +26,9 @@ const decoder = new TextDecoder();
  */
 
 /**
- * Creates a path cipher.
+ * Creates a path cipher, as the standard name encryption of rclone crypt with
+ * the base32 encoding: EME with AES-256, PKCS#7 padding, and base32hex in
+ * lowercase with no padding.
  * @param {PathCipherOptions} param0
  * @returns {PathCipher}
  */
@@ -28,9 +36,7 @@ export default function PathCipher({ nameKey, nameTweak } = {}) {
   if (nameKey === undefined || nameTweak === undefined) {
     throw new Error("nameKey and nameTweak must be specified");
   }
-  // Name Cipher Fuctions
-  // TODO: Switch to https://github.com/invisal/god_crypto/blob/master/src/aes/aes_wc.ts
-  const nameCipher = new AES(nameKey);
+  const nameCipher = aes256(nameKey);
 
   /**
    * Encrypts a name
@@ -39,12 +45,10 @@ export default function PathCipher({ nameKey, nameTweak } = {}) {
    */
   function encryptName(name) {
     if (name === "") return "";
-    const ciphertext = encoder.encode(name);
-    const paddedCipherText = pad(ciphertext, Padding.PKCS7, 16);
-    const rawCipherText = Encrypt(nameCipher, nameTweak, paddedCipherText);
-
-    const encodedCipher = encodeBase32(rawCipherText, "RFC4648-HEX");
-    return encodedCipher.replace(/=+$/, "").toLowerCase();
+    const padded = pad(encoder.encode(name));
+    const ciphertext = EME.encrypt(nameCipher, nameTweak, padded);
+    return encodeBase32(ciphertext, "RFC4648-HEX", { padding: false })
+      .toLowerCase();
   }
 
   /**
@@ -60,16 +64,28 @@ export default function PathCipher({ nameKey, nameTweak } = {}) {
   }
 
   /**
-   * Decrypts a name
+   * Decrypts a name, with the checks of `decryptSegment` of rclone.
    * @param {string} name
    * @returns {string}
+   * @throws {Error} For a name that is not an encrypted name of this key.
    */
   function decryptName(name) {
-    const rawCipherText = new Uint8Array(
+    // An empty segment of a path stays empty, as in rclone.
+    if (name === "") return "";
+    const ciphertext = new Uint8Array(
       decodeBase32(name.toUpperCase(), "RFC4648-HEX"),
     );
-    const paddedPlaintext = Decrypt(nameCipher, nameTweak, rawCipherText);
-    return decoder.decode(unpad(paddedPlaintext, Padding.PKCS7, 16));
+    if (ciphertext.length % BLOCK_SIZE !== 0) {
+      throw new Error("not a multiple of blocksize");
+    }
+    if (ciphertext.length === 0) {
+      throw new Error("too short after base32 decode");
+    }
+    if (ciphertext.length > MAX_SIZE) {
+      throw new Error("too long after base32 decode");
+    }
+    const padded = EME.decrypt(nameCipher, nameTweak, ciphertext);
+    return decoder.decode(unpad(padded));
   }
 
   /**
@@ -90,4 +106,35 @@ export default function PathCipher({ nameKey, nameTweak } = {}) {
     encrypt,
     decrypt,
   };
+}
+
+/**
+ * Adds PKCS#7 padding: 1 to 16 bytes, each with the number of the bytes.
+ * @param {Uint8Array} bytes
+ * @returns {Uint8Array}
+ */
+function pad(bytes) {
+  const count = BLOCK_SIZE - bytes.length % BLOCK_SIZE;
+  const padded = new Uint8Array(bytes.length + count);
+  padded.set(bytes);
+  padded.fill(count, bytes.length);
+  return padded;
+}
+
+/**
+ * Removes PKCS#7 padding, with the checks of the package pkcs7 of rclone.
+ * @param {Uint8Array} bytes
+ * @returns {Uint8Array}
+ */
+function unpad(bytes) {
+  const count = bytes[bytes.length - 1];
+  if (count === 0 || count > BLOCK_SIZE) {
+    throw new Error("bad padding");
+  }
+  for (let index = bytes.length - count; index < bytes.length; index++) {
+    if (bytes[index] !== count) {
+      throw new Error("bad padding");
+    }
+  }
+  return bytes.subarray(0, bytes.length - count);
 }
