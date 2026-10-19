@@ -31,6 +31,7 @@ export const backends = {
   crypt: () => import("@rfetch/crypt"),
   doi: () => import("@rfetch/doi"),
   drive: () => import("@rfetch/drive"),
+  ftp: () => import("@rfetch/ftp"),
   http: () => import("@rfetch/http"),
   local: () => import("@rfetch/local"),
   memory: () => import("@rfetch/memory"),

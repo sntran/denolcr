@@ -12,6 +12,8 @@ A [Rclone wrapper for WebAssembly build](./rclone.js) is also available.
   [:page_facing_up:](https://rclone.org/azureblob/)
 - DOI: read the files of a dataset with a DOI, on Zenodo, InvenioRDM and
   Dataverse [:page_facing_up:](https://rclone.org/doi/)
+- FTP: the files of an FTP server, also with TLS (FTPS), in Node.js, Deno, Bun
+  and Cloudflare Workers [:page_facing_up:](https://rclone.org/ftp/)
 - Google Drive [:page_facing_up:](https://rclone.org/drive/)
 - HTTP [:page_facing_up:](https://rclone.org/http/)
 - The local filesystem [:page_facing_up:](https://rclone.org/local/)

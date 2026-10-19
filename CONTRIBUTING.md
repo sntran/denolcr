@@ -279,9 +279,9 @@ A backend that uploads a large file in parts, for example s3 and azureblob,
 reads the body with `Parts` of `@rfetch/lib/parts`: each part has the size of
 the option `chunk_size`, and only one part is in memory.
 
-The path of a remote is from its root. For sftp, as in rclone, the root is the
-login folder of the user, and a path that starts with `/` is from the root of
-the server: `fetch.js` gives the same pathname for `sftp:a.txt` and for
+The path of a remote is from its root. For sftp and ftp, as in rclone, the root
+is the login folder of the user, and a path that starts with `/` is from the
+root of the server: `fetch.js` gives the same pathname for `sftp:a.txt` and for
 `sftp:/a.txt`, thus it tells a backend with `RFETCH_TYPE_ROOT` of `env`, for
 example `RFETCH_SFTP_ROOT`, which is `/` for a path that starts with `/`. A
 config file, a variable, a header or the query cannot set it.
@@ -478,6 +478,17 @@ openssl makes for each run: they run when rclone and `openssl` are installed.
 They also compare rfetch with the sftp backend of rclone on the same server, for
 example with keys in the format of OpenSSH that the tests write and rclone
 reads. The tests in `backend/sftp/ssh/ssh_test.js` need no server.
+
+The tests of `ftp` use `rclone serve ftp`, with no TLS, and pyftpdlib, with no
+TLS, with explicit TLS and with implicit TLS, and with MFMT, which sets the time
+of a file. The certificates come from `openssl` for each run. The tests on
+pyftpdlib run when the Python of the variable `PYFTPDLIB_PYTHON`, or `python3`,
+has pyftpdlib and pyOpenSSL: get them with
+`pip install pyftpdlib==2.2.0 pyOpenSSL==26.4.0`, for example in a venv. The
+tests also compare rfetch with the ftp backend of rclone on the same servers.
+`rclone serve ftp` has no MFMT, and its implicit TLS refuses PBSZ and PROT: the
+ftp backend of rclone and of rfetch cannot use it. The tests in
+`backend/ftp/list_test.js` need no server.
 
 The tests of `azureblob` use Azurite, the emulator of Azure Storage, with its
 data in memory: they run when `azurite-blob` is in the `PATH`, or when the

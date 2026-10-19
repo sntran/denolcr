@@ -89,6 +89,11 @@ test("each workspace imports only node:, its packages, and its files", () => {
       for (const specifier of importsOf(source)) {
         const where = `${folder}/${file}: ${specifier}`;
         if (specifier.startsWith("node:")) continue;
+        // The sockets of workerd: TLS cannot start on a connection of
+        // `node:net` there, and explicit FTPS needs that.
+        if (specifier === "cloudflare:sockets" && folder === "backend/ftp") {
+          continue;
+        }
         if (specifier.startsWith(".")) {
           const target = relative(
             path,
