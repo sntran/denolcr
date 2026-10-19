@@ -97,6 +97,7 @@ import { scrypt } from "node:crypto";
 import { readListing, renderListing } from "@rfetch/lib/listing";
 import { mimeType } from "@rfetch/lib/mime";
 import { optionsOf, remoteHeaders } from "@rfetch/lib/options";
+import { encodeLocation } from "@rfetch/lib/fspath";
 import { decodePath } from "@rfetch/lib/path";
 import {
   notSatisfiable,
@@ -200,7 +201,7 @@ async function crypt(request, env = {}) {
   }
 
   const isDirectory = path.endsWith("/");
-  const target = remote + cipher.names.encrypt(path);
+  const target = encodeLocation(remote) + cipher.names.encrypt(path);
 
   // The data on the remote is encrypted, thus a range of the data is not a
   // range of the file.

@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 
 // Sets the global `fetch` that reads the paths of remotes.
 import { fetch, lsjson } from "../../mod.js";
+import { listen } from "@rfetch/lib/testing/server";
 import { brotliDecompressSync, gunzipSync } from "node:zlib";
 
 import { tileId, tileOf } from "./pmtiles.js";
@@ -469,6 +470,24 @@ test("the option remote tells the remote", async () => {
     headers: { RFETCH_TILES_REMOTE: ":memory:/pm-option" },
   });
   assert.equal(await response.text(), "tile 1/1/0");
+});
+
+test("the remote in the path can have a URL in quotes, and its root is a folder", async () => {
+  await put("/pm-url/a.pmtiles", pmtilesFile(allTiles(1)));
+  // A server of the memory backend.
+  const server = await listen((request) =>
+    fetch(`:memory:${new URL(request.url).pathname}`, request)
+  );
+  try {
+    const base = `:tiles::http,url='${server.url}pm-url/':`;
+    // The root of the remote, with no "/" after it.
+    assert.deepEqual(await names(base), ["a.pmtiles"]);
+    const tile = await fetch(`${base}a.pmtiles/1/1/0.mvt`);
+    assert.equal(tile.status, 200);
+    assert.equal(await tile.text(), "tile 1/1/0");
+  } finally {
+    await server.close();
+  }
 });
 
 test("reads the file of go-pmtiles in testdata", async () => {

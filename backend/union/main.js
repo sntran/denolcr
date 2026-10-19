@@ -32,7 +32,7 @@
  * `min_free_space` have no effect.
  */
 
-import { parse } from "@rfetch/lib/fspath";
+import { encodeLocation, parse } from "@rfetch/lib/fspath";
 import { parseList } from "@rfetch/lib/list";
 import { readListing, renderListing } from "@rfetch/lib/listing";
 import { optionsOf, remoteHeaders } from "@rfetch/lib/options";
@@ -272,7 +272,7 @@ async function union(request, env = {}) {
       "union",
       remote,
     );
-    return fetch(remote.replace(/\/$/, "") + encodePath(path), {
+    return fetch(encodeLocation(remote.replace(/\/$/, "")) + encodePath(path), {
       ...init,
       headers,
     });

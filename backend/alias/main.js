@@ -21,6 +21,7 @@
 
 import { relink } from "@rfetch/lib/listing";
 import { optionsOf, remoteHeaders } from "@rfetch/lib/options";
+import { encodeLocation } from "@rfetch/lib/fspath";
 import { decodePath, encodePath } from "@rfetch/lib/path";
 
 /**
@@ -62,7 +63,10 @@ async function alias(request, env = {}) {
     init.body = request.body;
     init.duplex = "half";
   }
-  const response = await fetch(remote + encodePath(path), init);
+  const response = await fetch(
+    encodeLocation(remote) + encodePath(path),
+    init,
+  );
   if (!response.ok) {
     return response;
   }

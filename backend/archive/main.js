@@ -17,7 +17,9 @@
  *
  * - zip: `.zip`, as rclone, and the formats that are zip files, for example
  *   `.docx`, `.xlsx`, `.epub`, `.jar` and `.kmz`. rclone knows only `.zip`.
- *   The methods are Store and Deflate, as rclone.
+ *   The methods are Store and Deflate, as rclone. Of a split archive, for
+ *   example `a.z01` and `a.zip`, the backend reads the last volume
+ *   (`a.zip`): a file in another volume gives 501.
  * - RAR: `.rar`, RAR4 and RAR5, in store mode. rclone does not know RAR.
  *   A list needs a request for each file after large data, because RAR
  *   has no index.
@@ -38,7 +40,7 @@ import {
   passThrough,
   pathOf,
 } from "@rfetch/lib/overlay";
-import { decodePath } from "@rfetch/lib/path";
+import { decodePath, decodeRemotePath } from "@rfetch/lib/path";
 import { notSatisfiable, parseRange, partialHeaders } from "@rfetch/lib/range";
 import { RangedFile, RemoteError } from "@rfetch/lib/ranged";
 import { sized } from "@rfetch/lib/sized";
@@ -231,7 +233,9 @@ async function archive(request, env = {}) {
   const { pathname, searchParams } = new URL(request.url);
   const remote = optionsOf(request, "archive", env).get("remote")
     ?.replace(/\/$/, "");
-  const path = decodePath(pathname);
+  // With no option `remote`, the remote is in the path, and a value of its
+  // connection string can have empty names, for example in `https://`.
+  const path = remote ? decodePath(pathname) : decodeRemotePath(pathname);
   if (path === null) {
     await request.body?.cancel();
     return new Response(null, { status: 400 });
@@ -258,6 +262,7 @@ async function archive(request, env = {}) {
       target.location,
       headers,
       archivesAsFolders,
+      target.folder,
     );
   }
 

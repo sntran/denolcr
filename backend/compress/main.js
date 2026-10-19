@@ -37,6 +37,7 @@ import { createHash } from "node:crypto";
 import { readListing, renderListing } from "@rfetch/lib/listing";
 import { mimeType } from "@rfetch/lib/mime";
 import { optionsOf, remoteHeaders } from "@rfetch/lib/options";
+import { encodeLocation } from "@rfetch/lib/fspath";
 import { decodePath, encodePath } from "@rfetch/lib/path";
 import {
   notSatisfiable,
@@ -288,7 +289,7 @@ async function compress(request, env = {}) {
    * @param {RequestInit} [init]
    */
   const send = (path, init = {}) =>
-    fetch(remote + encodePath(path), {
+    fetch(encodeLocation(remote) + encodePath(path), {
       ...init,
       headers: remoteHeaders(init.headers ?? plain, "compress", remote),
     });

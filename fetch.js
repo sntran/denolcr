@@ -51,6 +51,16 @@ const globalFetch = globalThis.fetch;
  * the configuration for the backend should be provided on the command line
  * (or in environment variables).
  *
+ * ## The path is the path of a URL
+ *
+ * The path after the remote has percent-encoding, as the path of a URL: a
+ * `?` starts the flags of the backend, and a name with `%` or `?` needs
+ * percent-encoding, for example `a%3Fb.txt` for `a?b.txt`. A path has no
+ * fragment: a `#` is a part of a name. `encodeLocation` of
+ * `@rfetch/lib/fspath` gives this form from a path of rclone: the command
+ * line uses it for each path, and a backend uses it for its option
+ * `remote`. Thus there, each name keeps its characters, as in rclone.
+ *
  * ## Precedence
  *
  * The various different methods of backend configuration are read in this
@@ -204,20 +214,25 @@ export async function fetch(input, init = {}) {
   // `/tmp/file.txt`. Only such a path gives the root `/` to the local
   // backend. The Worker gives no such path: a path with no remote is a file
   // of its site.
+  // The path is the path of a URL, with percent-encoding: a "?" starts the
+  // flags. A path has no fragment: a "#" is a part of a name.
+  const path = parsed.path.replaceAll("#", "%23");
   // The path of a remote is from its root. A "/" before it keeps a remote in
   // the path as a part of the path, for example `s3:bucket/a.zip` in
-  // `:archive:s3:bucket/a.zip`: else `s3:` is the scheme of a URL.
-  let location = new URL(
-    parsed.path.startsWith("/") ? parsed.path : `/${parsed.path}`,
-    "file:",
-  );
+  // `:archive:s3:bucket/a.zip`: else `s3:` is the scheme of a URL. The
+  // empty host keeps a path that starts with "//" as a path.
+  let location = new URL(`file://${path.startsWith("/") ? "" : "/"}${path}`);
   /** @type {string | undefined} */
   let root;
   if (parsed.name === "") {
     const { pathToFileURL } = await import("node:url");
     const folder = pathToFileURL(process.cwd());
     if (!folder.pathname.endsWith("/")) folder.pathname += "/";
-    location = new URL(parsed.path, folder);
+    // An absolute path has an empty host: a path that starts with "//" is a
+    // path.
+    location = path.startsWith("/")
+      ? new URL(`file://${path}`)
+      : new URL(path, folder);
     root = "/";
   }
   // `searchParams` may contain other flags not for the current backend.
@@ -280,7 +295,8 @@ export async function fetch(input, init = {}) {
     throw new Error(`Backend ${type} not found.`);
   }
 
-  const url = new URL(`${pathname}?${params}`, import.meta.url || `file:`);
+  // The empty host keeps a path that starts with "//" as a path.
+  const url = new URL(`file://${pathname}?${params}`);
   // Creates a new request with the initial init.
   const request = new Request(url, init);
   // Clones that request and updates the headers.

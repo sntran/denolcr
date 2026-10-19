@@ -46,6 +46,9 @@ const TAIL = 65 * 1024;
 export const MAX_INDEX = 16 * 1024 * 1024;
 
 const FORMAT_ERROR = "zip: not a valid zip file";
+/** The error of a part of a split archive, in another file. */
+const OTHER_VOLUME = (/** @type {string} */ what) =>
+  new ArchiveError(`zip: ${what} is in another volume of the archive`, 501);
 
 /** The names of a zip file are UTF-8, as Go reads them. */
 const decoder = new TextDecoder();
@@ -182,6 +185,10 @@ export async function openZip(file) {
   let records = end.u16(10);
   let indexSize = end.u32(12);
   let indexOffset = end.u32(16);
+  // A split archive has volumes, for example `a.z01` and `a.zip`. The
+  // backend reads only this file: the last volume.
+  let volume = end.u16(4);
+  let indexVolume = end.u16(6);
 
   // These values tell a ZIP64 file.
   if (
@@ -191,20 +198,27 @@ export async function openZip(file) {
     const locator = at < 0 ? null : new Record(await read(at, LOCATOR64_SIZE));
     if (
       locator?.bytes.length === LOCATOR64_SIZE &&
-      locator.u32(0) === LOCATOR64 && locator.u32(4) === 0 &&
-      locator.u32(16) === 1
+      locator.u32(0) === LOCATOR64
     ) {
+      // The ZIP64 record is in the last volume, with the locator.
+      if (locator.u32(4) !== locator.u32(16) - 1) {
+        throw OTHER_VOLUME("the index");
+      }
       const place = locator.u64(8);
       const record = new Record(await read(place, END64_SIZE));
       if (record.bytes.length < END64_SIZE || record.u32(0) !== END64) {
         throw new ArchiveError(FORMAT_ERROR);
       }
+      volume = record.u32(16);
+      indexVolume = record.u32(20);
       records = record.u64(32);
       indexSize = record.u64(40);
       indexOffset = record.u64(48);
       endOffset = place;
     }
   }
+
+  if (indexVolume !== volume) throw OTHER_VOLUME("the index");
 
   // The bytes before the zip file, for example a program.
   let base = endOffset - indexSize - indexOffset;
@@ -241,6 +255,7 @@ export async function openZip(file) {
     let compressed = header.u32(20);
     let uncompressed = header.u32(24);
     let local = header.u32(42);
+    let disk = header.u16(34);
     const name = decoder.decode(
       index.subarray(offset + CENTRAL_SIZE, offset + CENTRAL_SIZE + nameLength),
     );
@@ -254,6 +269,7 @@ export async function openZip(file) {
     let needSize = uncompressed === 0xffffffff;
     let needCompressed = compressed === 0xffffffff;
     let needLocal = local === 0xffffffff;
+    let needDisk = disk === 0xffff;
     for (let at = 0; at + 4 <= extra.length;) {
       const field = new Record(extra.subarray(at));
       const tag = field.u16(0);
@@ -280,6 +296,11 @@ export async function openZip(file) {
           needLocal = false;
           local = take();
         }
+        if (needDisk && next + 4 <= fieldSize) {
+          needDisk = false;
+          disk = data.u32(next);
+          next += 4;
+        }
       }
       at += 4 + fieldSize;
     }
@@ -289,6 +310,8 @@ export async function openZip(file) {
     offset += length;
     const path = cleanPath(name);
     if (!path) continue;
+    // As Go, a file that is not split ignores the volume of each file.
+    const elsewhere = volume > 0 && disk !== volume;
     const details = {
       flags,
       method,
@@ -296,6 +319,7 @@ export async function openZip(file) {
       compressed,
       size: uncompressed,
       local: base + local,
+      elsewhere,
     };
     entries.push({
       path,
@@ -322,11 +346,13 @@ export async function openZip(file) {
  *   compressed: number,
  *   size: number,
  *   local: number,
+ *   elsewhere: boolean,
  * }} entry
  * @param {{ start: number, end: number } | null} range
  * @returns {Promise<ReadableStream<Uint8Array>>}
  */
 async function openEntry(file, entry, range) {
+  if (entry.elsewhere) throw OTHER_VOLUME("the file");
   if (entry.flags & 1) {
     throw new ArchiveError("zip: a file with a password is not supported", 501);
   }

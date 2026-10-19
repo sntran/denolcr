@@ -202,7 +202,15 @@ one request with `Range`, and the file never comes all into memory.
 The path of a request has percent-encoding. Use `decodePath` of
 `@rfetch/lib/path` to get the path with no percent-encoding. It gives `null` for
 a path that is not safe, for example `/..%2Fsecret.txt`, which becomes
-`/../secret.txt` after the decoding. For `null`, give 400.
+`/../secret.txt` after the decoding. For `null`, give 400. A backend that reads
+a remote in its path, as `:archive:s3:bucket/a.zip`, uses `decodeRemotePath`:
+the connection string of that remote can have empty names, for example in
+`url='https://example.com'`.
+
+A backend on another remote, for example alias, gives `fetch` the location
+`encodeLocation(remote) + encodePath(path)`. The option `remote` is a path of
+rclone: `encodeLocation` of `@rfetch/lib/fspath` keeps its `%`, `?` and `#` in
+the names.
 
 For displaying folder content, any HTML can be used, but the listing itself
 should be in a `<table>`, whose each rows are for each file or folder inside.

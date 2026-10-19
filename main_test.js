@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 
 import { listen } from "@rfetch/lib/testing/server";
-import { config, fetch } from "./mod.js";
+import { config, fetch, lsjson } from "./mod.js";
 
 /**
  * Gives an option in the `env` of the backend, from the body of an answer to
@@ -452,6 +452,35 @@ async function run(cwd, args) {
   return { code, stdout, stderr };
 }
 
+test("a path keeps the # of its names, and a // in it is not a host", async () => {
+  /** @param {string} location */
+  const names = async (location) =>
+    (await (await lsjson(location)).json()).map(({ Name }) => Name);
+  const put = await fetch(":memory:/paths/a#b.txt", {
+    method: "PUT",
+    body: "hash",
+  });
+  assert.equal(put.status, 201);
+  assert.deepEqual(await names(":memory:/paths/"), ["a#b.txt"]);
+  assert.equal(await (await fetch(":memory:/paths/a%23b.txt")).text(), "hash");
+  // A "/" at the start is a part of the path: an empty name is not correct.
+  const host = await fetch(":memory://paths/c.txt", {
+    method: "PUT",
+    body: "c",
+  });
+  assert.equal(host.status, 400);
+  assert.deepEqual(await names(":memory:/paths/"), ["a#b.txt"]);
+  // The option remote of a backend is a path of rclone, and the path of
+  // fetch is the path of a URL.
+  const alias = await fetch(":alias:d%3Fe.txt", {
+    method: "PUT",
+    body: "d",
+    headers: { RFETCH_ALIAS_REMOTE: ":memory:/paths/f#g%h" },
+  });
+  assert.equal(alias.status, 201);
+  assert.deepEqual(await names(":memory:/paths/f%23g%25h/"), ["d?e.txt"]);
+});
+
 test("the command line", async (t) => {
   const folder = await mkdtemp(join(tmpdir(), "rfetch-cli-"));
   await writeFile(join(folder, "a.txt"), "a");
@@ -543,6 +572,32 @@ test("the command line", async (t) => {
       const [code] = await once(child, "close");
       assert.equal(code, 0);
       assert.equal(stderr, "");
+    });
+
+    await t.test("reads the names with %, ?, #, \\ and spaces as rclone", async () => {
+      // Each name of the command line is a name of rclone, not of a URL.
+      const names = [
+        "a#b.txt",
+        "c?d.txt",
+        "e%20f.txt",
+        "e f.txt",
+        "g ",
+        "h\\i",
+      ];
+      for (const name of names) await writeFile(join(folder, name), name);
+      for (const name of names) {
+        const { code, stdout, stderr } = await run(folder, ["cat", name]);
+        assert.equal(code, 0, `${name}: ${stderr}`);
+        assert.equal(stdout, name);
+      }
+      const lsjson = await run(folder, ["lsjson", "a#b.txt"]);
+      assert.deepEqual(JSON.parse(lsjson.stdout).map(({ Name }) => Name), [
+        "a#b.txt",
+      ]);
+      const copy = await run(folder, ["copy", "c?d.txt", "copy #1.txt"]);
+      assert.equal(copy.code, 0, copy.stderr);
+      const cat = await run(folder, ["cat", "copy #1.txt"]);
+      assert.equal(cat.stdout, "c?d.txt");
     });
 
     await t.test("serve reads --addr, and a TRACE does not stop it", async () => {

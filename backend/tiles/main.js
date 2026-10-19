@@ -60,7 +60,7 @@
 import { renderListing } from "@rfetch/lib/listing";
 import { optionsOf, remoteHeaders } from "@rfetch/lib/options";
 import { locate, partHeaders, passThrough, pathOf } from "@rfetch/lib/overlay";
-import { decodePath } from "@rfetch/lib/path";
+import { decodePath, decodeRemotePath } from "@rfetch/lib/path";
 import { notSatisfiable, parseRange, partialHeaders } from "@rfetch/lib/range";
 import { RangedFile, RemoteError } from "@rfetch/lib/ranged";
 import { sized } from "@rfetch/lib/sized";
@@ -378,13 +378,15 @@ async function tiles(request, env = {}) {
   const { pathname } = new URL(request.url);
   const remote = optionsOf(request, "tiles", env).get("remote")
     ?.replace(/\/$/, "");
-  const path = decodePath(pathname);
+  // With no option `remote`, the remote is in the path, and a value of its
+  // connection string can have empty names, for example in `https://`.
+  const path = remote ? decodePath(pathname) : decodeRemotePath(pathname);
   if (path === null) {
     await request.body?.cancel();
     return new Response(null, { status: 400 });
   }
 
-  /** @type {{ location: string, inner: string | null, format?: NonNullable<ReturnType<typeof formatOf>> }} */
+  /** @type {{ location: string, inner: string | null, folder: boolean, format?: NonNullable<ReturnType<typeof formatOf>> }} */
   let target;
   try {
     target = locate(remote ? `${remote}${path}` : pathOf(path), formatOf);
@@ -396,7 +398,13 @@ async function tiles(request, env = {}) {
 
   if (target.inner === null || !target.format) {
     // A path out of the files of tiles: the request goes to the remote.
-    return await passThrough(request, target.location, headers, filesAsFolders);
+    return await passThrough(
+      request,
+      target.location,
+      headers,
+      filesAsFolders,
+      target.folder,
+    );
   }
 
   // A path in a file of tiles.

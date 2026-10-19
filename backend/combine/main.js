@@ -23,6 +23,7 @@
 import { parseList } from "@rfetch/lib/list";
 import { relink, renderListing } from "@rfetch/lib/listing";
 import { optionsOf, remoteHeaders } from "@rfetch/lib/options";
+import { encodeLocation } from "@rfetch/lib/fspath";
 import { decodePath, encodePath } from "@rfetch/lib/path";
 
 /**
@@ -90,7 +91,7 @@ function quote(text) {
  * @returns {string} For example `s3:bucket/b%20c.txt`.
  */
 function locationOf(remote, path) {
-  return remote.replace(/\/$/, "") + encodePath(path);
+  return encodeLocation(remote.replace(/\/$/, "")) + encodePath(path);
 }
 
 /**

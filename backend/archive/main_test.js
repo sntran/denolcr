@@ -4,8 +4,9 @@ import { readdirSync, readFileSync } from "node:fs";
 
 import { backendSuite } from "@rfetch/lib/testing/suite";
 import { remote } from "@rfetch/lib/testing/remote";
+import { listen } from "@rfetch/lib/testing/server";
 // Sets the global `fetch` that reads the paths of remotes.
-import { fetch } from "../../mod.js";
+import { fetch, lsjson } from "../../mod.js";
 import backend, { formatOf, locate } from "./main.js";
 import { cleanPath } from "./entry.js";
 import { extendedTime, ntfsTime, rar5File, zipFile } from "./testing.js";
@@ -78,6 +79,7 @@ test("locate splits a path at its first archive", () => {
     {
       location: "s3:bucket/dir/files.zip",
       inner: "a/b.txt",
+      folder: false,
       open: undefined,
     },
   );
@@ -87,7 +89,11 @@ test("locate splits a path at its first archive", () => {
   assert.deepEqual(locate("s3:bucket/files.zip"), {
     location: "s3:bucket/files.zip",
     inner: null,
+    folder: false,
   });
+  // A folder of the remote, and the root of the remote.
+  assert.equal(locate("s3:bucket/dir/").folder, true);
+  assert.equal(locate(":memory:").folder, true);
   // The names get their percent-encoding.
   assert.equal(
     locate(":memory:/a b/c?.zip/d").location,
@@ -391,6 +397,121 @@ test("archive reads the remote in its path, as rclone", async () => {
     (await inner.list("implicit/")).map(({ Name }) => Name),
     ["deep"],
   );
+});
+
+test("archive reads the root of a remote in its path, and a URL in quotes", async () => {
+  await fetch(":memory:/archive-root/files.zip", {
+    method: "PUT",
+    body: zipFile(FILES),
+  });
+  // The root of the remote, with no "/" after it, is a folder.
+  const root = await (await lsjson(":archive::memory:")).json();
+  assert.ok(
+    root.some(({ Name, IsDir }) => Name === "archive-root" && IsDir),
+    JSON.stringify(root),
+  );
+  // A value of the connection string can have "//", for example in a URL.
+  // A server of the memory backend.
+  const server = await listen((request) =>
+    fetch(`:memory:${new URL(request.url).pathname}`, request)
+  );
+  try {
+    const base = `:archive::http,url='${server.url}archive-root/':`;
+    const list = await (await lsjson(base)).json();
+    assert.deepEqual(
+      list.map(({ Name, IsDir }) => [Name, IsDir]),
+      [["files.zip", true]],
+    );
+    const file = await fetch(`${base}files.zip/folder/inner.txt`);
+    assert.equal(file.status, 200);
+    assert.equal(await file.text(), "inner\n");
+  } finally {
+    await server.close();
+  }
+  // With the option remote, the path is a path of the remote: an empty
+  // name is not correct.
+  const fs = remote(backend, { params: { remote: ":memory:/archive-root" } });
+  assert.equal((await fs.get("files.zip//folder/inner.txt")).status, 400);
+});
+
+/**
+ * A copy of a zip file as the last volume of a split archive: the index is
+ * in this volume, the volume 1, with the files of `here`. The other files
+ * are in the volume 0.
+ * @param {Uint8Array} zip
+ * @param {string[]} here
+ * @param {number} [indexVolume]
+ */
+function lastVolume(zip, here, indexVolume = 1) {
+  const copy = zip.slice();
+  const view = new DataView(copy.buffer);
+  for (let at = 0; at + 46 <= copy.length; at++) {
+    if (view.getUint32(at, true) !== 0x02014b50) continue;
+    const name = decoder.decode(
+      copy.subarray(at + 46, at + 46 + view.getUint16(at + 28, true)),
+    );
+    view.setUint16(at + 34, here.includes(name) ? 1 : 0, true);
+  }
+  let end = copy.length - 22;
+  while (view.getUint32(end, true) !== 0x06054b50) end--;
+  view.setUint16(end + 4, 1, true);
+  view.setUint16(end + 6, indexVolume, true);
+  return copy;
+}
+
+test("archive gives 501 for the files of a split zip file in other volumes", async () => {
+  const zip = zipFile([
+    { name: "first.txt", data: "first" },
+    { name: "last.txt", data: "last" },
+  ]);
+  const fs = await setup("archive-split", lastVolume(zip, ["last.txt"]));
+  assert.deepEqual(
+    (await fs.list("files.zip/")).map(({ Name }) => Name),
+    ["first.txt", "last.txt"],
+  );
+  assert.equal(await (await fs.get("files.zip/last.txt")).text(), "last");
+  const first = await fs.get("files.zip/first.txt");
+  assert.equal(first.status, 501);
+  assert.equal(
+    await first.text(),
+    "zip: the file is in another volume of the archive",
+  );
+  // The index in another volume.
+  await fetch(":memory:/archive-split/index.zip", {
+    method: "PUT",
+    body: lastVolume(zip, ["last.txt"], 0),
+  });
+  const index = await fs.get("index.zip/");
+  assert.equal(index.status, 501);
+  assert.equal(
+    await index.text(),
+    "zip: the index is in another volume of the archive",
+  );
+
+  // A split archive of the command zip, when it is installed.
+  const { spawnSync } = await import("node:child_process");
+  const { mkdtempSync, rmSync, writeFileSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const { tmpdir } = await import("node:os");
+  const folder = mkdtempSync(join(tmpdir(), "rfetch-split-"));
+  try {
+    writeFileSync(join(folder, "big.bin"), text(200_000));
+    writeFileSync(join(folder, "small.txt"), "small");
+    const made = spawnSync(
+      "zip",
+      ["-q", "-s", "64k", "-0", "parts.zip", "big.bin", "small.txt"],
+      { cwd: folder },
+    );
+    if (made.status !== 0) return;
+    await fetch(":memory:/archive-split/parts.zip", {
+      method: "PUT",
+      body: readFileSync(join(folder, "parts.zip")),
+    });
+    assert.equal(await (await fs.get("parts.zip/small.txt")).text(), "small");
+    assert.equal((await fs.get("parts.zip/big.bin")).status, 501);
+  } finally {
+    rmSync(folder, { recursive: true, force: true });
+  }
 });
 
 /** The text of folder/large.txt in the RAR files of testdata. */

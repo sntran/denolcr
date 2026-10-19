@@ -5,7 +5,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
+import { listen } from "@rfetch/lib/testing/server";
 import worker from "./_worker.js";
+import memory from "./backend/memory/main.js";
 
 const PASSWORD = "4OSlj-ZYMGdEIGjcWg_gc-DL4O3TFAvr4ct_yV4";
 
@@ -121,6 +123,28 @@ test("reads a tile of a VersaTiles file of a remote", async () => {
   );
   assert.equal(stored.headers.get("Content-Encoding"), "br");
   await stored.body?.cancel();
+});
+
+test("reads a remote with a URL in quotes in the path, and its root", async () => {
+  const { pmtilesFile } = await import("./backend/tiles/testing.js");
+  await send("/:memory:/worker-url/map.pmtiles", {
+    method: "PUT",
+    body: pmtilesFile([{ z: 0, x: 0, y: 0, data: "world" }]),
+  });
+  const server = await listen((request) => memory.fetch(request));
+  try {
+    const base = `/:tiles::http,url='${server.url}worker-url/':`;
+    const tile = await send(`${base}map.pmtiles/0/0/0.mvt`);
+    assert.equal(tile.status, 200);
+    assert.equal(await tile.text(), "world");
+    const list = await send(base, { headers: { Accept: "application/json" } });
+    assert.deepEqual(
+      (await list.json()).map(({ Path, IsDir }) => [Path, IsDir]),
+      [["map.pmtiles", true]],
+    );
+  } finally {
+    await server.close();
+  }
 });
 
 test("reads a named remote of the headers", async () => {
