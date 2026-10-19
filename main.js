@@ -18,7 +18,8 @@ import "./fetch.js";
 
 import { backends } from "./backend/main.js";
 import { parseFlags } from "./cmd/flags.js";
-import { FOLDERS } from "./cmd/folders.js";
+import { FOLDERS, PATHS } from "./cmd/folders.js";
+import { encodeLocation } from "@rfetch/lib/fspath";
 
 (async () => {
   /** @type {Awaited<ReturnType<typeof parseFlags>>} */
@@ -42,6 +43,18 @@ import { FOLDERS } from "./cmd/folders.js";
   }
   // `rfetch COMMAND --help` shows the help.
   if (flags.help) [name, args] = ["help", []];
+  // A path of the command line is a path of rclone: each name keeps its
+  // characters, for example "%", "?", "#" and a space at the end. A path that
+  // is not correct goes to the command as it is: the command gives its
+  // error.
+  args = args.map((arg, index) => {
+    if (!PATHS[name]?.includes(index)) return arg;
+    try {
+      return encodeLocation(arg);
+    } catch {
+      return arg;
+    }
+  });
   const module = await import(`./cmd/${FOLDERS[name]}/main.js`);
   /** TODO merge global flags into config */
   const response = await module[name](...args, flags);

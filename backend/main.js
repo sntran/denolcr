@@ -23,13 +23,18 @@
  */
 export const backends = {
   alias: () => import("@rfetch/alias"),
+  archive: () => import("@rfetch/archive"),
   chunker: () => import("@rfetch/chunker"),
+  combine: () => import("@rfetch/combine"),
+  compress: () => import("@rfetch/compress"),
   crypt: () => import("@rfetch/crypt"),
   drive: () => import("@rfetch/drive"),
   http: () => import("@rfetch/http"),
   local: () => import("@rfetch/local"),
   memory: () => import("@rfetch/memory"),
   s3: () => import("@rfetch/s3"),
+  tiles: () => import("@rfetch/tiles"),
+  union: () => import("@rfetch/union"),
 };
 
 /**

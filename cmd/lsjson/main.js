@@ -1,4 +1,4 @@
-import { parse } from "@rfetch/lib/fspath";
+import { isRemoteRoot, parse } from "@rfetch/lib/fspath";
 import { readListing } from "@rfetch/lib/listing";
 import { isTrue } from "@rfetch/lib/options";
 import { DEFAULT_TIME, toLocaleISOString } from "@rfetch/lib/time";
@@ -64,7 +64,13 @@ export async function lsjson(location, flags = {}, init = {}) {
   if (/(^|[:/])\.\.?$/.test(location)) location = `${location}/`;
   // Only the path in the remote has folders: a value of the connection
   // string can have a "/" too, for example `:crypt,remote='a/b':path`.
-  const parsed = parse(location);
+  let parsed = parse(location);
+  // The root of a remote in the path is a folder, for example `:memory:`
+  // in `:archive::memory:`.
+  if (isRemoteRoot(parsed.path)) {
+    location = `${location}/`;
+    parsed = parse(location);
+  }
   const prefix = location.slice(0, location.length - parsed.path.length);
   const path = parsed.path;
   const isDirectory = path === "" || path.endsWith("/");

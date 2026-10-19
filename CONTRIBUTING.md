@@ -195,10 +195,22 @@ The answers:
   range that is not correct, gets all the file. Use `parseRange` of
   `@rfetch/lib/range`.
 
+A backend that reads parts of a file of another remote, for example the index at
+the end of a zip file, uses `RangedFile` of `@rfetch/lib/ranged`: each read is
+one request with `Range`, and the file never comes all into memory.
+
 The path of a request has percent-encoding. Use `decodePath` of
 `@rfetch/lib/path` to get the path with no percent-encoding. It gives `null` for
 a path that is not safe, for example `/..%2Fsecret.txt`, which becomes
-`/../secret.txt` after the decoding. For `null`, give 400.
+`/../secret.txt` after the decoding. For `null`, give 400. A backend that reads
+a remote in its path, as `:archive:s3:bucket/a.zip`, uses `decodeRemotePath`:
+the connection string of that remote can have empty names, for example in
+`url='https://example.com'`.
+
+A backend on another remote, for example alias, gives `fetch` the location
+`encodeLocation(remote) + encodePath(path)`. The option `remote` is a path of
+rclone: `encodeLocation` of `@rfetch/lib/fspath` keeps its `%`, `?` and `#` in
+the names.
 
 For displaying folder content, any HTML can be used, but the listing itself
 should be in a `<table>`, whose each rows are for each file or folder inside.
@@ -322,8 +334,20 @@ Run all the tests with `npm test`, or the tests of one backend with
 Some tests compare rfetch with rclone, for example the tests of `lib/ini.js` and
 the files `rclone_test.js` of the backends. They run when `rclone` is in the
 `PATH`, or when the variable `RCLONE` is the path of rclone. Else they are
-skipped. The tests of `backend/http/list.js` compare it with the `encoding/csv`
-package of Go, when `go` is in the `PATH` or when the variable `GO` is its path.
+skipped. The tests of `lib/list.js` compare it with the `encoding/csv` package
+of Go, when `go` is in the `PATH` or when the variable `GO` is its path. The
+tests of `backend/archive/sevenzip_test.js` compare the archive backend with
+7-Zip, when `7zz` is in the `PATH` or when the variable `SEVENZIP` is its path.
+The tests of `backend/tiles/go_pmtiles_test.js` compare the tiles backend with
+go-pmtiles, when `go-pmtiles` is in the `PATH` or when the variable `PMTILES` is
+its path: `go install github.com/protomaps/go-pmtiles@v1.31.2`. They also need
+`node:sqlite`, of Node.js 22.13 or later. The tests of
+`backend/tiles/versatiles_rs_test.js` compare the tiles backend with versatiles
+4.15.0, the tool of VersaTiles, when `versatiles` is in the `PATH` or when the
+variable `VERSATILES` is its path. Get it from the
+[releases of versatiles-rs](https://github.com/versatiles-org/versatiles-rs/releases/tag/v4.15.0),
+or with `cargo install versatiles --version 4.15.0 --locked`. The tests of zstd
+need Node.js 22.15 or later.
 
 The tests of `s3` use `rclone serve s3`, a server of the S3 API on a local
 folder. They also run on a real service when the variables `S3_TEST_ENDPOINT`

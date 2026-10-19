@@ -20,8 +20,19 @@ A [Rclone wrapper for WebAssembly build](./rclone.js) is also available.
 These backends adapt or modify other storage providers
 
 - Alias: rename existing remotes [:page_facing_up:](https://rclone.org/alias/)
+- Archive: read the files in zip files (also docx, xlsx, epub, jar and kmz), in
+  7z files, and in RAR files in store mode
+  [:page_facing_up:](https://rclone.org/archive/)
 - Chunker [:page_facing_up:](https://rclone.org/chunker/)
+- Combine: several remotes in one tree of folders
+  [:page_facing_up:](https://rclone.org/combine/)
+- Compress: compress files with gzip
+  [:page_facing_up:](https://rclone.org/compress/)
 - Crypt: encrypt files [:page_facing_up:](https://rclone.org/crypt/)
+- Tiles: read the map tiles and the metadata of PMTiles and VersaTiles files, as
+  folders `Z/X/Y.mvt`. rclone has no such backend.
+- Union: the merged contents of several remotes
+  [:page_facing_up:](https://rclone.org/union/)
 
 ## rfetch as a service
 

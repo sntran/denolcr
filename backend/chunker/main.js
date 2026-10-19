@@ -104,6 +104,7 @@ import { createHash } from "node:crypto";
 import { readListing, renderListing } from "@rfetch/lib/listing";
 import { mimeType } from "@rfetch/lib/mime";
 import { isOption, optionsOf, remoteHeaders } from "@rfetch/lib/options";
+import { encodeLocation } from "@rfetch/lib/fspath";
 import { decodePath, encodePath } from "@rfetch/lib/path";
 import {
   notSatisfiable,
@@ -924,7 +925,10 @@ function send(config, path, init = {}) {
   for (const [name, value] of config.forward) {
     if (!headers.has(name)) headers.set(name, value);
   }
-  return fetch(config.remote + encodePath(path), { ...init, headers });
+  return fetch(encodeLocation(config.remote) + encodePath(path), {
+    ...init,
+    headers,
+  });
 }
 
 /**

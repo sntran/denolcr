@@ -5,7 +5,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
+import { listen } from "@rfetch/lib/testing/server";
 import worker from "./_worker.js";
+import memory from "./backend/memory/main.js";
 
 const PASSWORD = "4OSlj-ZYMGdEIGjcWg_gc-DL4O3TFAvr4ct_yV4";
 
@@ -38,6 +40,111 @@ test("puts and gets a file of a remote on the fly", async () => {
   assert.equal(put.status, 201);
   assert.equal(await (await send("/:memory:/worker/a%3F.txt")).text(), "text");
   assert.equal((await send("/:memory:/worker/missing.txt")).status, 404);
+});
+
+test("reads a file in a zip file of a remote, with the remote in the path", async () => {
+  const { zipFile } = await import("./backend/archive/testing.js");
+  const zip = zipFile([
+    { name: "docs/a.txt", data: "in the zip" },
+    { name: "b.txt", data: "b".repeat(1000), method: 0 },
+  ]);
+  const put = await send("/:memory:/worker-zip/files.zip", {
+    method: "PUT",
+    body: zip,
+  });
+  assert.equal(put.status, 201);
+  const file = await send("/:archive::memory:/worker-zip/files.zip/docs/a.txt");
+  assert.equal(file.status, 200);
+  assert.equal(await file.text(), "in the zip");
+  const part = await send("/:archive::memory:/worker-zip/files.zip/b.txt", {
+    headers: { Range: "bytes=10-19" },
+  });
+  assert.equal(part.status, 206);
+  assert.equal(await part.text(), "b".repeat(10));
+  const list = await send("/:archive::memory:/worker-zip/", {
+    headers: { Accept: "application/json" },
+  });
+  assert.deepEqual(
+    (await list.json()).map(({ Path, IsDir }) => [Path, IsDir]),
+    [["files.zip", true]],
+  );
+  const deep = await send("/:archive::memory:/worker-zip/", {
+    headers: { Accept: "application/json", Depth: "infinity" },
+  });
+  assert.deepEqual(
+    (await deep.json()).map(({ Path }) => Path).sort(),
+    ["files.zip", "files.zip/b.txt", "files.zip/docs", "files.zip/docs/a.txt"],
+  );
+});
+
+test("reads a tile of a PMTiles file of a remote", async () => {
+  const { pmtilesFile } = await import("./backend/tiles/testing.js");
+  const put = await send("/:memory:/worker-tiles/map.pmtiles", {
+    method: "PUT",
+    body: pmtilesFile([
+      { z: 0, x: 0, y: 0, data: "world" },
+      { z: 1, x: 1, y: 0, data: "north-east" },
+    ]),
+  });
+  assert.equal(put.status, 201);
+  const tile = await send(
+    "/:tiles::memory:/worker-tiles/map.pmtiles/1/1/0.mvt",
+  );
+  assert.equal(tile.status, 200);
+  assert.equal(await tile.text(), "north-east");
+  const list = await send("/:tiles::memory:/worker-tiles/map.pmtiles/", {
+    headers: { Accept: "application/json" },
+  });
+  assert.deepEqual(
+    (await list.json()).map(({ Path }) => Path),
+    ["0", "1", "metadata.json"],
+  );
+});
+
+test("reads a tile of a VersaTiles file of a remote", async () => {
+  const { versatilesFile } = await import("./backend/tiles/testing.js");
+  const put = await send("/:memory:/worker-tiles/map.versatiles", {
+    method: "PUT",
+    body: versatilesFile([
+      { z: 0, x: 0, y: 0, data: "world" },
+      { z: 1, x: 1, y: 0, data: "north-east" },
+    ]),
+  });
+  assert.equal(put.status, 201);
+  const tile = await send(
+    "/:tiles::memory:/worker-tiles/map.versatiles/1/1/0.mvt",
+  );
+  assert.equal(tile.status, 200);
+  assert.equal(await tile.text(), "north-east");
+  // The stored bytes in brotli, for a client that decodes them.
+  const stored = await send(
+    "/:tiles::memory:/worker-tiles/map.versatiles/0/0/0.mvt",
+    { headers: { "Accept-Encoding": "gzip, br" } },
+  );
+  assert.equal(stored.headers.get("Content-Encoding"), "br");
+  await stored.body?.cancel();
+});
+
+test("reads a remote with a URL in quotes in the path, and its root", async () => {
+  const { pmtilesFile } = await import("./backend/tiles/testing.js");
+  await send("/:memory:/worker-url/map.pmtiles", {
+    method: "PUT",
+    body: pmtilesFile([{ z: 0, x: 0, y: 0, data: "world" }]),
+  });
+  const server = await listen((request) => memory.fetch(request));
+  try {
+    const base = `/:tiles::http,url='${server.url}worker-url/':`;
+    const tile = await send(`${base}map.pmtiles/0/0/0.mvt`);
+    assert.equal(tile.status, 200);
+    assert.equal(await tile.text(), "world");
+    const list = await send(base, { headers: { Accept: "application/json" } });
+    assert.deepEqual(
+      (await list.json()).map(({ Path, IsDir }) => [Path, IsDir]),
+      [["map.pmtiles", true]],
+    );
+  } finally {
+    await server.close();
+  }
 });
 
 test("reads a named remote of the headers", async () => {
@@ -146,6 +253,11 @@ test("has no local backend: a client reads no file of the runtime", async () => 
     const [path, headers] of [
       ["/:local:/etc/hostname", {}],
       ["/:alias:hostname", { RFETCH_ALIAS_REMOTE: "/etc/" }],
+      ["/:combine:x/hostname", { RFETCH_COMBINE_UPSTREAMS: "x=/etc" }],
+      ["/:union:hostname", { RFETCH_UNION_UPSTREAMS: "/etc :memory:/x" }],
+      ["/:compress:", { RFETCH_COMPRESS_REMOTE: "/etc" }],
+      ["/:archive:/etc/", {}],
+      ["/:tiles:/etc/", {}],
       ["/disk:etc/hostname", { RFETCH_CONFIG_DISK_TYPE: "local" }],
     ]
   ) {
