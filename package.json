@@ -35,6 +35,7 @@
     "@rfetch/alias": "^0.1.0",
     "@rfetch/chunker": "^0.1.0",
     "@rfetch/combine": "^0.1.0",
+    "@rfetch/compress": "^0.1.0",
     "@rfetch/crypt": "^0.1.0",
     "@rfetch/drive": "^0.1.0",
     "@rfetch/http": "^0.1.0",

@@ -23,6 +23,8 @@ These backends adapt or modify other storage providers
 - Chunker [:page_facing_up:](https://rclone.org/chunker/)
 - Combine: several remotes in one tree of folders
   [:page_facing_up:](https://rclone.org/combine/)
+- Compress: compress files with gzip
+  [:page_facing_up:](https://rclone.org/compress/)
 - Crypt: encrypt files [:page_facing_up:](https://rclone.org/crypt/)
 - Union: the merged contents of several remotes
   [:page_facing_up:](https://rclone.org/union/)
