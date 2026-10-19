@@ -32,6 +32,12 @@ function variable(name) {
 export const FLAGS = {
   // `serve`
   "addr": { type: "string" },
+  // `serve webdav`
+  "pass": { type: "string" },
+  // `serve webdav`
+  "read-only": { type: "boolean" },
+  // `serve webdav`
+  "user": { type: "string" },
   // `copyurl`
   "auto-filename": { type: "boolean", short: "a" },
   // `lsf`

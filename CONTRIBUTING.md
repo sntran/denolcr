@@ -138,6 +138,21 @@ because the answer of `fetch.js` to `TRACE` tells the options of the remote. A
 client sets no option: the server removes its query and its headers `RFETCH_*`
 and `RCLONE_*`, and a name with a `/` after the decoding gives 400.
 
+`rfetch serve webdav REMOTE:PATH` serves the folder `REMOTE:PATH` over WebDAV,
+as `rclone serve webdav`, with the same rules for the options of the remote. The
+code of WebDAV is in `cmd/serve/webdav/handler.js`, and the Worker uses it too:
+
+- PROPFIND reads the headers of HEAD, and the list of a folder for `Depth: 1`.
+  `Depth: infinity` gets 403, as RFC 4918 permits.
+- MKCOL is PUT of a folder. COPY and MOVE read each file from the source and put
+  it at the destination. MOVE deletes the source after.
+- The server keeps no data between requests: LOCK gives a token and locks
+  nothing, and PROPPATCH keeps no property, as `rclone serve webdav`. The
+  clients of Windows and macOS need LOCK to write.
+- A client writes, unless `--read-only`. With `--user` and `--pass`, a client
+  must give them with the Basic authentication. The default address is
+  `127.0.0.1:8080`.
+
 ## Workspaces
 
 Each backend is an npm workspace with the name `@rfetch/NAME`, and can be a
@@ -171,7 +186,7 @@ The code that two or more backends use is in the workspace `lib`, the package
 `@rfetch/lib`: for example `listing`, `path`, `range`, `mime` and `obscure`. The
 shared tests of the backends are in it too, in `@rfetch/lib/testing/suite`. The
 code that only one backend uses is in the folder of that backend, for example
-`backend/s3/xml.js`.
+`backend/s3/sigv4.js`.
 
 ## Architecture
 
@@ -348,6 +363,11 @@ variable `VERSATILES` is its path. Get it from the
 [releases of versatiles-rs](https://github.com/versatiles-org/versatiles-rs/releases/tag/v4.15.0),
 or with `cargo install versatiles --version 4.15.0 --locked`. The tests of zstd
 need Node.js 22.15 or later.
+
+The tests of `webdav` use `rclone serve webdav`, and the tests in
+`cmd/serve/webdav/rclone_test.js` use the webdav backend of rclone as a client
+of `rfetch serve webdav`. The tests in `cmd/serve/webdav/main_test.js` use the
+webdav backend of rfetch as a client of `rfetch serve webdav`, with no rclone.
 
 The tests of `s3` use `rclone serve s3`, a server of the S3 API on a local
 folder. They also run on a real service when the variables `S3_TEST_ENDPOINT`
