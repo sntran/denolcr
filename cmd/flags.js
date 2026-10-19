@@ -32,29 +32,47 @@ function variable(name) {
 export const FLAGS = {
   // `serve`
   "addr": { type: "string" },
-  // `serve webdav`
-  "pass": { type: "string" },
-  // `serve webdav`
-  "read-only": { type: "boolean" },
-  // `serve webdav`
-  "user": { type: "string" },
+  // `tree`
+  "all": { type: "boolean" },
   // `copyurl`
   "auto-filename": { type: "boolean", short: "a" },
+  // `hashsum`, `checksum`
+  "base64": { type: "boolean" },
+  // The checks, the deletes and the sums
+  "checkers": { type: "string", default: variable("CHECKERS") || "8" },
+  // `hashsum`, `md5sum`, `sha1sum`
+  "checkfile": { type: "string" },
+  // `check`
+  "combined": { type: "string" },
+  // `copy`, `move`
+  "create-empty-src-dirs": { type: "boolean" },
   // `lsf`
   "csv": { type: "boolean" },
+  // `move`
+  "delete-empty-src-dirs": { type: "boolean" },
+  // `check`
+  "differ": { type: "string" },
   // `lsf`
   "dir-slash": { type: "boolean", short: "d" },
-  // `lsf`
+  // `tree`
+  "dirsfirst": { type: "boolean" },
+  // `lsf`, `tree`
   "dirs-only": { type: "boolean" },
+  // `check`, `checksum`, the sums
+  "download": { type: "boolean" },
   "dry-run": {
     type: "boolean",
     short: "n",
     default: variable("DRY_RUN") === "true",
   },
+  // `check`
+  "error": { type: "string" },
   // `lsf`
   "files-only": { type: "boolean" },
   // `lsf`
   "format": { type: "string", short: "F" },
+  // `tree`
+  "full-path": { type: "boolean" },
   "header": { type: "string", multiple: true },
   "header-download": { type: "string", multiple: true },
   // `copyurl`
@@ -62,10 +80,44 @@ export const FLAGS = {
   "header-upload": { type: "string", multiple: true },
   "help": { type: "boolean", short: "h" },
   "human-readable": { type: "boolean" },
+  // `copy`, `move`
+  "ignore-existing": { type: "boolean" },
+  // `copy`, `move`
+  "ignore-times": { type: "boolean", short: "I" },
+  // `size`, `listremotes`
+  "json": { type: "boolean" },
+  // `rmdirs`
+  "leave-root": { type: "boolean" },
+  // `tree`
+  "level": { type: "string" },
+  // `touch`
+  "localtime": { type: "boolean" },
+  // `listremotes`
+  "long": { type: "boolean" },
+  // `check`
+  "match": { type: "string" },
   // The lists
   "max-depth": { type: "string" },
+  // `check`
+  "missing-on-dst": { type: "string" },
+  // `check`
+  "missing-on-src": { type: "string" },
+  // `tree`
+  "modtime": { type: "boolean" },
   // `copyurl`
   "no-clobber": { type: "boolean" },
+  // `touch`
+  "no-create": { type: "boolean", short: "C" },
+  // `tree`
+  "noindent": { type: "boolean" },
+  // `tree`
+  "noreport": { type: "boolean" },
+  // `check`, `checksum`
+  "one-way": { type: "boolean" },
+  // `hashsum`
+  "output-file": { type: "string" },
+  // `serve webdav`
+  "pass": { type: "string" },
   // `copyurl`
   "print-filename": { type: "boolean", short: "p" },
   "progress": {
@@ -73,13 +125,37 @@ export const FLAGS = {
     short: "P",
     default: variable("PROGRESS") === "true",
   },
-  // The lists
+  // Only the errors in the log.
+  "quiet": { type: "boolean", short: "q" },
+  // `tree`
+  "quote": { type: "boolean" },
+  // `serve webdav`
+  "read-only": { type: "boolean" },
+  // The lists, `touch`
   "recursive": { type: "boolean", short: "R" },
+  // `cryptdecode`
+  "reverse": { type: "boolean" },
+  // `delete`
+  "rmdirs": { type: "boolean" },
   // `lsf`
   "separator": { type: "string", short: "s" },
+  // `tree`
+  "size": { type: "boolean" },
+  // `copy`, `move`, `check`
+  "size-only": { type: "boolean" },
+  // `tree`
+  "sort": { type: "string" },
+  // `tree`
+  "sort-modtime": { type: "boolean" },
+  // `tree`
+  "sort-reverse": { type: "boolean", short: "r" },
   // `copyurl`
   "stdout": { type: "boolean" },
+  // `touch`
+  "timestamp": { type: "string", short: "t" },
   "transfers": { type: "string", default: variable("TRANSFERS") || "4" },
+  // `serve webdav`
+  "user": { type: "string" },
 };
 
 /**

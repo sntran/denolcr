@@ -59,12 +59,23 @@ import { encodeLocation } from "@rfetch/lib/fspath";
   /** TODO merge global flags into config */
   const response = await module[name](...args, flags);
   if (!response.ok) {
-    // As rclone: the exit code 3 is "directory not found", and 1 is an
-    // other error.
-    const text = (await response.text()).trim() || response.statusText ||
+    // As rclone: the exit code 3 is "directory not found", 4 is "object not
+    // found", and 1 is an other error. A command with an output and an
+    // error, for example `check --combined -`, gives the error in
+    // `statusText`, and the output in the body.
+    let text = (await response.text()).trim();
+    if (response.statusText && text) {
+      stdout.write(`${text}\n`);
+      text = response.statusText;
+    }
+    text ||= response.statusText ||
       (response.status === 404 ? "not found" : `status ${response.status}`);
     stderr.write(`Error: ${text}\n`);
-    process.exitCode = response.status === 404 ? 3 : 1;
+    process.exitCode = response.status !== 404
+      ? 1
+      : /object not found$/.test(text)
+      ? 4
+      : 3;
     return;
   }
   if (response.body) {

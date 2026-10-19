@@ -60,68 +60,8 @@ const FOLDER = new URL("http://remote/folder/");
  * @returns {Promise<Response>}
  */
 export async function lsjson(location, flags = {}, init = {}) {
-  // A path that ends with `.` or `..` is a folder, as in rclone.
-  if (/(^|[:/])\.\.?$/.test(location)) location = `${location}/`;
-  // Only the path in the remote has folders: a value of the connection
-  // string can have a "/" too, for example `:crypt,remote='a/b':path`.
-  let parsed = parse(location);
-  // The root of a remote in the path is a folder, for example `:memory:`
-  // in `:archive::memory:`.
-  if (isRemoteRoot(parsed.path)) {
-    location = `${location}/`;
-    parsed = parse(location);
-  }
-  const prefix = location.slice(0, location.length - parsed.path.length);
-  const path = parsed.path;
-  const isDirectory = path === "" || path.endsWith("/");
-  init = { ...init, method: "GET" };
-  let folder = path;
-  let filename;
-  // If file, list the parent directory and keep only the file.
-  if (!isDirectory) {
-    const slash = path.lastIndexOf("/") + 1;
-    folder = path.slice(0, slash);
-    filename = nameOf(path.slice(slash));
-  }
-  const params = new URLSearchParams(flags);
-  const url = `${prefix}${folder}?${params}`;
-  const response = await fetch(url, init);
-
-  if (!response.ok) {
-    return response;
-  }
-
-  /** @type {import("@rfetch/lib/listing").Entry[] | undefined} */
-  let entries;
-  if (!isDirectory) {
-    // A path with no "/" at the end is a folder when no file has the name,
-    // as in rclone: then the list is the list of the folder.
-    entries = await readListing(response, FOLDER);
-    const named = entries.filter(({ Name }) => Name === filename);
-    // As rclone, a path that names no file and no folder is not found.
-    if (named.length === 0) {
-      return new Response("directory not found", { status: 404 });
-    }
-    if (named.every(({ IsDir }) => IsDir)) {
-      return lsjson(`${location}/`, flags, init);
-    }
-  }
-
-  const recursive = isTrue(flags.recursive);
-  let maxDepth = Number(flags.max_depth || (recursive ? Infinity : 1));
-  if (!isDirectory || !recursive) {
-    maxDepth = 1;
-  }
-
-  /** @type {Walk} */
-  const options = { location, depth: maxDepth, flags, init, filename };
-  const listed = entries
-    ? Promise.resolve(folderOf(entries, options))
-    : readListing(response, FOLDER).then((list) => folderOf(list, options));
-  // The error comes when the stream gets to the folder.
-  listed.catch(() => {});
-  const items = walk(listed, "");
-
+  const items = await listItems(location, flags, init);
+  if (items instanceof Response) return items;
   /**
    * The JSON of the item before, with no comma: only the last item has no
    * comma after it.
@@ -168,6 +108,78 @@ export async function lsjson(location, flags = {}, init = {}) {
       "Content-Type": "application/json",
     },
   });
+}
+
+/**
+ * Gives the items of a path, as `lsjson` lists them, or the answer of the
+ * error. The other commands use it to walk a folder.
+ * @param {string} location
+ * @param {Object} [flags={}] As the flags of `lsjson`.
+ * @param {RequestInit} [init]
+ * @returns {Promise<AsyncGenerator<Item> | Response>}
+ */
+export async function listItems(location, flags = {}, init = {}) {
+  // A path that ends with `.` or `..` is a folder, as in rclone.
+  if (/(^|[:/])\.\.?$/.test(location)) location = `${location}/`;
+  // Only the path in the remote has folders: a value of the connection
+  // string can have a "/" too, for example `:crypt,remote='a/b':path`.
+  let parsed = parse(location);
+  // The root of a remote in the path is a folder, for example `:memory:`
+  // in `:archive::memory:`.
+  if (isRemoteRoot(parsed.path)) {
+    location = `${location}/`;
+    parsed = parse(location);
+  }
+  const prefix = location.slice(0, location.length - parsed.path.length);
+  const path = parsed.path;
+  const isDirectory = path === "" || path.endsWith("/");
+  init = { ...init, method: "GET" };
+  let folder = path;
+  let filename;
+  // If file, list the parent directory and keep only the file.
+  if (!isDirectory) {
+    const slash = path.lastIndexOf("/") + 1;
+    folder = path.slice(0, slash);
+    filename = nameOf(path.slice(slash));
+  }
+  const params = new URLSearchParams(flags);
+  const url = `${prefix}${folder}?${params}`;
+  const response = await fetch(url, init);
+
+  if (!response.ok) {
+    return response;
+  }
+
+  /** @type {import("@rfetch/lib/listing").Entry[] | undefined} */
+  let entries;
+  if (!isDirectory) {
+    // A path with no "/" at the end is a folder when no file has the name,
+    // as in rclone: then the list is the list of the folder.
+    entries = await readListing(response, FOLDER);
+    const named = entries.filter(({ Name }) => Name === filename);
+    // As rclone, a path that names no file and no folder is not found.
+    if (named.length === 0) {
+      return new Response("directory not found", { status: 404 });
+    }
+    if (named.every(({ IsDir }) => IsDir)) {
+      return listItems(`${location}/`, flags, init);
+    }
+  }
+
+  const recursive = isTrue(flags.recursive);
+  let maxDepth = Number(flags.max_depth || (recursive ? Infinity : 1));
+  if (!isDirectory || !recursive) {
+    maxDepth = 1;
+  }
+
+  /** @type {Walk} */
+  const options = { location, depth: maxDepth, flags, init, filename };
+  const listed = entries
+    ? Promise.resolve(folderOf(entries, options))
+    : readListing(response, FOLDER).then((list) => folderOf(list, options));
+  // The error comes when the stream gets to the folder.
+  listed.catch(() => {});
+  return walk(listed, "");
 }
 
 /**

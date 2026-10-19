@@ -63,16 +63,30 @@ remote.
 
 ## Commands
 
+The commands give the output of rclone, and its exit codes: 3 for a folder that
+does not exist, 4 for a file that does not exist, and 1 for another error.
+
 - `backend`
 - `cat`
+- `check`, `checksum` and `cryptcheck`: compare the files of two places, or the
+  files and a sum file. The backends give no hash: `check` compares the sizes,
+  and with `--download` the bytes.
 - `config`
-- `copy`
+- `copy` and `copyto`: copy the files that the target does not have, or that
+  differ by size or by time.
 - `copyurl`
+- `cryptdecode`
+- `delete`, `deletefile`, `purge`, `rmdir` and `rmdirs`
+- `hashsum`, `md5sum` and `sha1sum`: MD5, SHA-1, SHA-256, SHA-512 and CRC-32.
+  rfetch reads each file to compute its hash.
+- `listremotes`
 - `ls`
 - `lsd`
 - `lsf`
 - `lsjson`
 - `lsl`
+- `mkdir`
+- `move` and `moveto`: copy, then delete each source file.
 - `obscure`
 - `rcat`
 - `reveal`
@@ -81,6 +95,10 @@ remote.
 - `serve webdav`: serve a remote over WebDAV, as `rclone serve webdav`. A client
   reads and writes, unless `--read-only`. With `--user` and `--pass`, a client
   must log in with them.
+- `size`
+- `touch`: make an empty file. The backends cannot set the time of a file yet.
+- `tree`
+- `version`
 
 ## Runtimes
 

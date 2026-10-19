@@ -287,6 +287,26 @@ the local time zone, and the size and the count with `sizeField` and
 `countField` of `@rfetch/lib/format`, in fields of the widths of rclone.
 `cmd/lsf/rclone_test.js` compares the lines with the lines of rclone.
 
+The other commands use the operations of `cmd/operations.js`, as the package
+`operations` of rclone: `stat` gives the information of a path, `walk` gives the
+files and the folders in a folder, and `copyFile`, `remove` and `mkdir` change
+the files. An operation that fails throws an `OperationError` with the status of
+the answer, and `failure` gives the answer of the command for it. `log` writes
+the errors and the notices of rclone on the standard error, for example
+`2006/01/02 15:04:05 ERROR : a.txt: sizes differ`, and `--quiet` keeps only the
+errors. A command that has an output and an error, for example
+`check --combined -`, gives the output in the body and the error in
+`statusText`: the command line writes the body on the standard output, and the
+error on the standard error.
+
+The command line gives the exit codes of rclone: 3 for the status 404, 4 for the
+status 404 with a message that ends with `object not found`, and 1 for another
+status that is not 2xx.
+
+`cmd/rclone_test.js` runs each command with rfetch and with rclone on the same
+local folders, and compares the outputs, the exit codes and the files after the
+command.
+
 ## Tests of a backend
 
 Each backend must pass the shared tests of `@rfetch/lib/testing/suite`. These
