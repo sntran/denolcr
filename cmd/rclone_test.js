@@ -15,6 +15,7 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -211,7 +212,10 @@ describe("the commands and the commands of rclone", {
     ) {
       const folder = join(home, name);
       rmSync(folder, { recursive: true, force: true });
-      cpSync(source, join(folder, "source"), { recursive: true });
+      cpSync(source, join(folder, "source"), {
+        recursive: true,
+        preserveTimestamps: true,
+      });
       const { status } = tool(...args(name));
       results.push({ status, tree: treeOf(folder) });
     }
@@ -236,24 +240,81 @@ describe("the commands and the commands of rclone", {
     sameEffect((f) => ["copy", `${f}/source`, `${f}/target`]);
     sameEffect((f) => ["copy", `${f}/source/f.txt`, `${f}/target`]);
     sameEffect((f) => ["copyto", `${f}/source/f.txt`, `${f}/target/new.txt`]);
-    // rclone moves a folder of a local remote with one rename. rfetch moves
-    // each file, as rclone does with no DirMove.
-    const noDirMove = ["--disable", "DirMove"];
-    sameEffect((f) => ["move", `${f}/source`, `${f}/target`], noDirMove);
-    sameEffect((f) => [
-      "move",
-      "--delete-empty-src-dirs",
-      `${f}/source`,
-      `${f}/target`,
-    ], noDirMove);
+    // A folder moves with one rename when the target does not exist, as
+    // DirMove of rclone. Else each file moves.
+    sameEffect((f) => ["move", `${f}/source`, `${f}/target`]);
+    sameEffect((f) => ["move", `${f}/source/a`, `${f}/source/empty`]);
     sameEffect((f) => [
       "move",
       "--delete-empty-src-dirs",
       `${f}/source/a`,
-      `${f}/target`,
-    ], noDirMove);
+      `${f}/source/empty`,
+    ]);
     sameEffect((f) => ["moveto", `${f}/source/f.txt`, `${f}/source/g.txt`]);
     sameEffect((f) => ["mkdir", `${f}/source/x/y`]);
     sameEffect((f) => ["touch", `${f}/source/new.txt`]);
+  });
+
+  test("a copy keeps the time of each file, and a second copy skips them", () => {
+    for (const [name, tool] of [["by-rclone", rclone], ["by-rfetch", rfetch]]) {
+      const folder = join(home, name);
+      rmSync(folder, { recursive: true, force: true });
+      cpSync(source, join(folder, "source"), {
+        recursive: true,
+        preserveTimestamps: true,
+      });
+      assert.equal(tool("copy", `${name}/source`, `${name}/target`).status, 0);
+    }
+    // The times of the copies of rfetch are the times of the copies of
+    // rclone, to the microsecond: Node.js sets a time to the microsecond.
+    const times = (name) =>
+      JSON.parse(rclone("lsjson", "-R", `${name}/target`).stdout)
+        .filter((item) => !item.IsDir)
+        .map(({ Path, ModTime }) => [Path, ModTime.slice(0, 26)])
+        .sort();
+    assert.deepEqual(times("by-rfetch"), times("by-rclone"));
+    // rclone sees no difference, and a second copy of rfetch writes no file.
+    assert.equal(
+      rclone("check", "by-rclone/target", "by-rfetch/target").status,
+      0,
+    );
+    // A file of the same size and time, with other bytes: a copy that
+    // compares the sizes and the times does not write it.
+    const marker = join(home, "by-rfetch", "target", "f.txt");
+    const { mtimeNs } = statSync(marker, { bigint: true });
+    writeFileSync(marker, "HELLO");
+    const seconds = (Number(mtimeNs / 1000n) + 0.5) / 1e6;
+    utimesSync(marker, seconds, seconds);
+    assert.equal(
+      rfetch("copy", "by-rfetch/source", "by-rfetch/target").status,
+      0,
+    );
+    assert.equal(
+      readFileSync(marker, "utf8"),
+      "HELLO",
+      "the second copy wrote f.txt",
+    );
+  });
+
+  test("touch sets the time of a file", () => {
+    sameEffect((
+      f,
+    ) => ["touch", "--timestamp", "2020-01-02T03:04:05", `${f}/source/f.txt`]);
+    const times = (name) =>
+      JSON.parse(rclone("lsjson", "-R", `${name}/source`).stdout)
+        .filter((item) => !item.IsDir)
+        .map(({ Path, ModTime }) => [Path, ModTime])
+        .sort();
+    assert.deepEqual(times("by-rfetch"), times("by-rclone"));
+    // A short time is YYMMDD, as rclone.
+    sameEffect((f) => ["touch", "--timestamp", "200102", `${f}/source/a`]);
+    assert.deepEqual(times("by-rfetch"), times("by-rclone"));
+    sameEffect((
+      f,
+    ) => ["touch", "-R", "--timestamp", "210102", `${f}/source`]);
+    assert.deepEqual(times("by-rfetch"), times("by-rclone"));
+    sameEffect((
+      f,
+    ) => ["touch", "--timestamp", "2020-01-02", `${f}/source/f.txt`]);
   });
 });

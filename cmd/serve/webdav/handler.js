@@ -6,10 +6,17 @@
  * - PROPFIND reads the headers of HEAD, and the list of a folder for
  *   `Depth: 1`. `Depth: infinity` gets 403, as RFC 4918 permits: a list of
  *   all the files can be too large.
- * - MKCOL is PUT of a folder. COPY and MOVE read each file and put it at the
- *   destination, and MOVE deletes the source after.
+ * - MKCOL is PUT of a folder. COPY and MOVE of a file, and MOVE of a folder
+ *   to a path that does not exist, go to the backend. For a backend that
+ *   cannot do it, or a destination in another remote, the server reads each
+ *   file and puts it at the destination, and MOVE deletes the source after.
+ * - A PUT, a COPY or a MOVE of a file with `X-OC-Mtime` gives that time to
+ *   the file, and the answer has `X-OC-Mtime: accepted` when the backend
+ *   keeps it. A PROPPATCH of `lastmodified`, with the seconds after 1970, is
+ *   a PATCH of the backend, as ownCloud: rclone sets the time so for the
+ *   vendors `owncloud` and `nextcloud`.
  * - The server keeps no data between requests. Thus a LOCK gives a token
- *   and locks nothing, and PROPPATCH keeps no property, as
+ *   and locks nothing, and PROPPATCH keeps no other property, as
  *   `rclone serve webdav`. The clients of Windows and macOS need LOCK to
  *   write.
  */
@@ -41,6 +48,13 @@ const MAX_XML = 1024 * 1024;
 
 /** The status codes of the backends for a path that is not there. */
 const MISSING = [404, 405, 409, 410];
+
+/**
+ * The status codes of a COPY or a MOVE that the backend cannot do: then the
+ * bytes go through the server. 502 is for a destination in another remote,
+ * and 412 for a folder that exists.
+ */
+const CANNOT = [403, 405, 412, 501, 502];
 
 /** The headers of one connection, which do not go to the remote. */
 const HOP = [
@@ -229,7 +243,10 @@ async function pass(request, server, target) {
   });
   if (method === "PUT") {
     await response.body?.cancel();
-    return new Response(null, { status: response.ok ? 201 : response.status });
+    return new Response(null, {
+      status: response.ok ? 201 : response.status,
+      headers: accepted(response),
+    });
   }
   // The links of a list have the options of the backend in their query.
   const type = response.headers.get("Content-Type") || "";
@@ -240,6 +257,18 @@ async function pass(request, server, target) {
     return relink(response, server.query);
   }
   return response;
+}
+
+/**
+ * The header `X-OC-Mtime: accepted` of an answer of the backend, for the
+ * answer to the client.
+ * @param {Response} response
+ * @returns {Record<string, string>}
+ */
+function accepted(response) {
+  return response.ok && response.headers.get("X-OC-Mtime") === "accepted"
+    ? { "X-OC-Mtime": "accepted" }
+    : {};
 }
 
 /**
@@ -551,10 +580,41 @@ async function proppatch(request, server, target) {
   if (!info) throw new DAVError(404);
   const properties = [...childrenOf(body, "set"), ...childrenOf(body, "remove")]
     .flatMap((change) => childrenOf(change, "prop").flatMap(namesOf));
+  // The time of a file, as ownCloud: `<lastmodified xmlns="DAV:">` with the
+  // seconds after 1970.
+  const time = childrenOf(body, "set")
+    .flatMap((change) => childrenOf(change, "prop"))
+    .flatMap((prop) => childrenOf(prop, "lastmodified"))
+    .find((element) => element.namespace === "DAV:");
+  /** @type {typeof properties} */
+  let failed = [];
+  if (time) {
+    const seconds = (time.text ?? "").trim();
+    let ok = false;
+    if (!info.isDir && /^-?\d{1,15}$/.test(seconds)) {
+      const response = await send(server, "PATCH", info.href, {
+        headers: { "X-OC-Mtime": seconds },
+      });
+      await response.body?.cancel();
+      ok = response.ok;
+    }
+    if (!ok) {
+      failed = properties.filter(({ name, namespace }) =>
+        name === "lastmodified" && namespace === "DAV:"
+      );
+    }
+  }
+  const done = properties.filter((property) => !failed.includes(property));
+  /** @param {typeof properties} list @param {string} status */
+  const propstat = (list, status) =>
+    list.length
+      ? `<D:propstat><D:prop>${list.map(emptyElement).join("")}</D:prop>` +
+        `<D:status>HTTP/1.1 ${status}</D:status></D:propstat>`
+      : "";
   return multistatus(
     `<D:response><D:href>${escapeXML(info.href)}</D:href>` +
-      `<D:propstat><D:prop>${properties.map(emptyElement).join("")}</D:prop>` +
-      `<D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response>`,
+      propstat(done, "200 OK") + propstat(failed, "403 Forbidden") +
+      `</D:response>`,
   );
 }
 
@@ -633,8 +693,10 @@ async function hasBody(request) {
 }
 
 /**
- * Answers COPY and MOVE. Each file goes through the server: the server
- * reads it from the source, and puts it at the destination.
+ * Answers COPY and MOVE. The backend copies or moves a file, and moves a
+ * folder to a path that does not exist. Else each file goes through the
+ * server: the server reads it from the source, and puts it at the
+ * destination.
  * @param {Request} request
  * @param {Server} server
  * @param {string} target
@@ -694,13 +756,43 @@ async function copy(request, server, target) {
     throw new DAVError(409, "The parent folder does not exist");
   }
   const existing = await stat(server, to.replace(/\/$/, ""));
-  if (existing) {
-    if (overwrite === "F") throw new DAVError(412, "The destination exists");
-    await check(send(server, "DELETE", existing.href));
+  if (existing && overwrite === "F") {
+    throw new DAVError(412, "The destination exists");
   }
-  await copyTree(server, source.href, to, source.isDir, depth === "0");
+  // The time of the file at the destination, as ownCloud. rclone gives it
+  // to the source: that is not correct.
+  const time = request.headers.get("X-OC-Mtime");
+  /** @type {Record<string, string>} */
+  const timed = time && !source.isDir ? { "X-OC-Mtime": time } : {};
+  if (
+    (source.isDir ? method === "MOVE" && !existing : !existing?.isDir)
+  ) {
+    const response = await send(server, method, source.href, {
+      headers: { Destination: server.locate(to), ...timed },
+    });
+    await response.body?.cancel();
+    if (response.ok) {
+      return new Response(null, {
+        status: existing ? 204 : 201,
+        headers: accepted(response),
+      });
+    }
+    if (!CANNOT.includes(response.status)) throw new DAVError(response.status);
+  }
+  if (existing) await check(send(server, "DELETE", existing.href));
+  const put = await copyTree(
+    server,
+    source.href,
+    to,
+    source.isDir,
+    depth === "0",
+    timed,
+  );
   if (method === "MOVE") await check(send(server, "DELETE", source.href));
-  return new Response(null, { status: existing ? 204 : 201 });
+  return new Response(null, {
+    status: existing ? 204 : 201,
+    headers: put ? accepted(put) : {},
+  });
 }
 
 /**
@@ -710,8 +802,11 @@ async function copy(request, server, target) {
  * @param {string} to
  * @param {boolean} isDir
  * @param {boolean} [only] For a folder, copy only the folder.
+ * @param {Record<string, string>} [timed] For a file, the header
+ *   `X-OC-Mtime` of its PUT.
+ * @returns {Promise<Response | undefined>} For a file, the answer of its PUT.
  */
-async function copyTree(server, from, to, isDir, only = false) {
+async function copyTree(server, from, to, isDir, only = false, timed = {}) {
   if (!isDir) {
     const response = await send(server, "GET", from);
     if (!response.ok) {
@@ -719,13 +814,18 @@ async function copyTree(server, from, to, isDir, only = false) {
       throw new DAVError(response.status);
     }
     /** @type {Record<string, string>} */
-    const headers = {};
+    const headers = { ...timed };
     for (const name of ["Content-Type", "Content-Length"]) {
       const value = response.headers.get(name);
       if (value) headers[name] = value;
     }
-    await check(send(server, "PUT", to, { headers, body: response.body }));
-    return;
+    const put = await send(server, "PUT", to, {
+      headers,
+      body: response.body,
+    });
+    await put.body?.cancel();
+    if (!put.ok) throw new DAVError(put.status);
+    return put;
   }
   await check(send(server, "PUT", to));
   if (only) return;

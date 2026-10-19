@@ -10,6 +10,7 @@ import process from "node:process";
 import { isRemoteRoot, parse } from "@rfetch/lib/fspath";
 import { readListing } from "@rfetch/lib/listing";
 import { encodePath } from "@rfetch/lib/path";
+import { formatUnixTime, nanosecondsOf } from "@rfetch/lib/time";
 
 import { fetch } from "../fetch.js";
 import { listItems } from "./lsjson/main.js";
@@ -288,13 +289,92 @@ export function numberOf(value, fallback) {
 }
 
 /**
- * Copies a file: it reads the source, and puts it at the target.
+ * The statuses of a COPY or a MOVE that the backend cannot do: then the
+ * bytes go through rfetch. 502 is for a destination in another remote.
+ */
+const CANNOT = new Set([403, 405, 501, 502]);
+
+/**
+ * Tells if a location is a URL, which goes to a server and not to a backend.
+ * @param {string} location
+ */
+function isURL(location) {
+  return /^[a-z][a-z0-9+.-]*:\/\//i.test(location);
+}
+
+/**
+ * The value of the header `X-OC-Mtime` for a time.
+ * @param {string | undefined} modTime A time in ISO 8601.
+ * @returns {Record<string, string>} The header, or no header for no time.
+ */
+function timeHeader(modTime) {
+  const nanoseconds = nanosecondsOf(modTime);
+  return nanoseconds === undefined
+    ? {}
+    : { "X-OC-Mtime": formatUnixTime(nanoseconds) };
+}
+
+/**
+ * Copies or moves a file, and gives it the time of the source, as `Copy`
+ * and `Move` of the operations of rclone. When the source and the target
+ * are in the same remote, the backend copies or moves the file with COPY or
+ * MOVE, and the bytes do not go through rfetch. Else, and for a backend that
+ * cannot do it, rfetch reads the source and puts it at the target, then
+ * deletes the source for a move.
  * @param {string} source
  * @param {string} target
  * @param {Object} [flags]
+ * @param {{ modTime?: string, move?: boolean }} [options] `modTime` is the
+ *   time of the source, in ISO 8601.
+ * @throws {OperationError} When the copy or the move fails.
+ */
+export async function copyFile(
+  source,
+  target,
+  flags = {},
+  { modTime, move = false } = {},
+) {
+  const time = timeHeader(modTime);
+  if (!isURL(source) && !isURL(target)) {
+    for (const method of move ? ["MOVE", "COPY"] : ["COPY"]) {
+      const response = await fetch(withFlags(source, flags), {
+        method,
+        headers: { Destination: withFlags(target, flags), ...time },
+      });
+      if (response.ok) {
+        await response.body?.cancel();
+        if (method === "COPY" && move) await remove(source, flags);
+        return;
+      }
+      if (!CANNOT.has(response.status)) {
+        const text = (await response.text()).trim();
+        throw new OperationError(
+          response.status === 404
+            ? `${source}: not found`
+            : `${target}: ${
+              text || `${response.status} ${response.statusText}`.trim()
+            }`,
+          response.status,
+        );
+      }
+      await response.body?.cancel();
+      // Another remote: a COPY gives the same answer.
+      if (response.status === 502) break;
+    }
+  }
+  await putFile(source, target, flags, time);
+  if (move) await remove(source, flags);
+}
+
+/**
+ * Reads a file, and puts it at the target.
+ * @param {string} source
+ * @param {string} target
+ * @param {Object} flags
+ * @param {Record<string, string>} time The header of the time of the file.
  * @throws {OperationError} When the read or the write fails.
  */
-export async function copyFile(source, target, flags = {}) {
+async function putFile(source, target, flags, time) {
   const response = await fetch(withFlags(source, flags));
   if (!response.ok) {
     await response.body?.cancel();
@@ -304,7 +384,7 @@ export async function copyFile(source, target, flags = {}) {
     );
   }
   /** @type {Record<string, string>} */
-  const headers = {};
+  const headers = { ...time };
   for (const name of ["Content-Type", "Content-Length"]) {
     const value = response.headers.get(name);
     if (value) headers[name] = value;
@@ -322,6 +402,68 @@ export async function copyFile(source, target, flags = {}) {
     );
   }
   await put.body?.cancel();
+}
+
+/**
+ * Moves a folder with all that is in it to a path that does not exist, with
+ * a MOVE of the folder in the backend, as `DirMove` of rclone.
+ * @param {string} source
+ * @param {string} target
+ * @param {Object} [flags]
+ * @returns {Promise<boolean>} False when the backend cannot move the folder:
+ *   then the caller moves each file.
+ * @throws {OperationError} When the move fails.
+ */
+export async function moveFolder(source, target, flags = {}) {
+  if (isURL(source) || isURL(target)) return false;
+  const response = await fetch(withFlags(folderOf(source), flags), {
+    method: "MOVE",
+    headers: { Destination: withFlags(folderOf(target), flags) },
+  });
+  await response.body?.cancel();
+  if (response.ok) return true;
+  // 412: the target exists.
+  if (CANNOT.has(response.status) || response.status === 412) return false;
+  throw new OperationError(
+    `${source}: ${response.status} ${response.statusText}`.trim(),
+    response.status,
+  );
+}
+
+/**
+ * Sets the time of a file with PATCH, as `SetModTime` of rclone.
+ * @param {string} location
+ * @param {bigint} nanoseconds The time, in nanoseconds after 1970.
+ * @param {Object} [flags]
+ * @returns {Promise<boolean>} False when the backend cannot set the time.
+ * @throws {OperationError} When the remote gives another error.
+ */
+export async function setModTime(location, nanoseconds, flags = {}) {
+  const response = await fetch(withFlags(location, flags), {
+    method: "PATCH",
+    headers: { "X-OC-Mtime": formatUnixTime(nanoseconds) },
+  });
+  await response.body?.cancel();
+  if (response.ok) return true;
+  if (CANNOT.has(response.status)) return false;
+  throw new OperationError(
+    response.status === 404
+      ? `${location}: not found`
+      : `${location}: ${response.status} ${response.statusText}`.trim(),
+    response.status,
+  );
+}
+
+/**
+ * Gives the `Last-Modified` of a file, from HEAD.
+ * @param {string} location
+ * @param {Object} [flags]
+ * @returns {Promise<string | null>}
+ */
+export async function lastModified(location, flags = {}) {
+  const response = await fetch(withFlags(location, flags), { method: "HEAD" });
+  await response.body?.cancel();
+  return response.ok ? response.headers.get("Last-Modified") : null;
 }
 
 /**

@@ -44,6 +44,20 @@
  *   not exist, as rclone. PUT of a file makes its folder first, as rclone.
  * - DELETE goes to the server. The server deletes a folder with all that is
  *   in it.
+ * - COPY of a file, and MOVE of a file or a folder, go to the server, with
+ *   the URL of the destination and `Overwrite: T`, after the MKCOL of the
+ *   folder of the destination, as rclone. A folder moves only to a path that
+ *   does not exist.
+ *
+ * The time of a file, as rclone: a PUT with `X-OC-Mtime` sends that header,
+ * in whole seconds, to the vendors that know it: `fastmail`, `owncloud`,
+ * `nextcloud`, `infinitescale` and `rclone`. For `owncloud`, `nextcloud`
+ * and `infinitescale`, a COPY and a MOVE send it too, and when the server
+ * does not answer `X-OC-Mtime: accepted`, a PROPPATCH of `lastmodified`
+ * sets the time. A PATCH with `X-OC-Mtime` is that PROPPATCH. The other
+ * vendors cannot set the time of a file that exists: their PATCH gives 405.
+ * `rclone serve webdav` gives the time of a COPY to the source file, not to
+ * the copy: thus the backend does not send it there.
  *
  * The list has the times of the server, to the second. The type of a file
  * comes from its name, as in rclone.
@@ -56,6 +70,7 @@ import { isTrue, optionsOf } from "@rfetch/lib/options";
 import { decodePath, encodePath } from "@rfetch/lib/path";
 import { isOneRange } from "@rfetch/lib/range";
 import { sized } from "@rfetch/lib/sized";
+import { modTimeOf } from "@rfetch/lib/time";
 import { childrenOf, parseXML, textOf } from "@rfetch/lib/xml";
 
 export const options = {
@@ -91,19 +106,42 @@ const SECRETS = [
 ];
 
 /**
- * The quirks of each server, as `setQuirks` of rclone. `props` is the body
- * of a PROPFIND, and `stream` tells if the server takes a body of unknown
- * size.
- * @type {Record<string, { props: string, stream: boolean }>}
+ * The quirks of a server, as `setQuirks` of rclone.
+ * @typedef {Object} Vendor
+ * @property {string} props The body of a PROPFIND.
+ * @property {boolean} stream The server takes a body of unknown size.
+ * @property {boolean} ocMtime The server sets the time of `X-OC-Mtime` on
+ *   a PUT, as `useOCMtime` of rclone.
+ * @property {boolean} propset A PROPPATCH of `lastmodified` sets the time
+ *   of a file, as `propsetMtime` of rclone.
  */
+
+/** @type {Record<string, Vendor>} */
 const VENDORS = {
-  fastmail: { props: "", stream: true },
-  owncloud: { props: "owncloud", stream: true },
-  infinitescale: { props: "owncloud", stream: false },
-  nextcloud: { props: "owncloud", stream: false },
-  rclone: { props: "", stream: true },
-  other: { props: "standard", stream: false },
+  fastmail: { props: "", stream: true, ocMtime: true, propset: false },
+  owncloud: { props: "owncloud", stream: true, ocMtime: true, propset: true },
+  infinitescale: {
+    props: "owncloud",
+    stream: false,
+    ocMtime: true,
+    propset: true,
+  },
+  nextcloud: { props: "owncloud", stream: false, ocMtime: true, propset: true },
+  rclone: { props: "", stream: true, ocMtime: true, propset: false },
+  other: { props: "standard", stream: false, ocMtime: false, propset: false },
 };
+
+/** The body of a PROPPATCH that sets the time of a file, as rclone. */
+const PROPSET = (seconds) =>
+  `<?xml version="1.0" encoding="utf-8" ?>
+<D:propertyupdate xmlns:D="DAV:">
+ <D:set>
+  <D:prop>
+   <lastmodified xmlns="DAV:">${seconds}</lastmodified>
+  </D:prop>
+ </D:set>
+</D:propertyupdate>
+`;
 
 /** The bodies of PROPFIND, as rclone. With no body, the server gives all. */
 const PROPS = {
@@ -166,7 +204,7 @@ class WebDAVError extends Error {
  *   authentication, the option `headers` and `Referer`.
  * @property {string[]} secrets The names of the headers that do not go to
  *   a server on a different host.
- * @property {{ props: string, stream: boolean }} vendor
+ * @property {Vendor} vendor
  * @property {boolean} authRedirect
  * @property {boolean} excludeShares
  * @property {boolean} excludeMounts
@@ -203,6 +241,11 @@ async function webdav(request, env = {}) {
   }
   const url = new URL(encodePath(path).slice(1), config.base);
   const isFolder = path.endsWith("/");
+  const modTime = modTimeOf(request);
+  if (modTime === undefined) {
+    await request.body?.cancel();
+    return new Response("X-OC-Mtime is not a time", { status: 400 });
+  }
 
   try {
     if (method === "GET" || method === "HEAD") {
@@ -212,25 +255,45 @@ async function webdav(request, env = {}) {
       return await getFolder(config, url, method, `${query}`);
     }
     if (method === "PUT") {
+      /** @type {Record<string, string>} */
+      const headers = { "Content-Location": pathname };
       if (isFolder) {
         await request.body?.cancel();
         await mkdir(config, url);
-      } else {
-        await putFile(config, url, path, request);
+      } else if (await putFile(config, url, path, request, modTime)) {
+        headers["X-OC-Mtime"] = "accepted";
       }
-      return new Response(null, {
-        status: 201,
-        headers: { "Content-Location": pathname },
-      });
+      return new Response(null, { status: 201, headers });
     }
     if (method === "DELETE") {
       await remove(config, url);
       return new Response(null, { status: 204 });
     }
+    if (method === "COPY" || method === "MOVE") {
+      await request.body?.cancel();
+      const target = decodePath(request.headers.get("Destination") ?? "");
+      if (target === null) {
+        return new Response("Destination is not a path", { status: 400 });
+      }
+      return await transfer(config, method, url, target, modTime);
+    }
+    if (method === "PATCH" && !isFolder && config.vendor.propset) {
+      await request.body?.cancel();
+      if (modTime === null) {
+        return new Response("X-OC-Mtime is missing", { status: 400 });
+      }
+      if (!await proppatch(config, url, modTime)) {
+        return new Response("can't set modified time", { status: 501 });
+      }
+      return new Response(null, {
+        status: 204,
+        headers: { "X-OC-Mtime": "accepted" },
+      });
+    }
     await request.body?.cancel();
     return new Response(null, {
       status: 405,
-      headers: { Allow: "GET, HEAD, PUT, DELETE" },
+      headers: { Allow: "GET, HEAD, PUT, DELETE, COPY, MOVE" },
     });
   } catch (error) {
     await request.body?.cancel().catch(() => {});
@@ -646,8 +709,10 @@ async function mkdir(config, url) {
  * @param {URL} url
  * @param {string} path
  * @param {Request} request
+ * @param {bigint | null} modTime The time of the file, or null.
+ * @returns {Promise<boolean>} True when the file has the time.
  */
-async function putFile(config, url, path, request) {
+async function putFile(config, url, path, request, modTime) {
   await mkdir(config, new URL(".", url));
   const header = request.headers.get("Content-Length");
   /** @type {Record<string, string>} */
@@ -655,6 +720,8 @@ async function putFile(config, url, path, request) {
     "Content-Type": request.headers.get("Content-Type") ||
       mimeType(path.slice(path.lastIndexOf("/") + 1)),
   };
+  const timed = modTime !== null && config.vendor.ocMtime;
+  if (timed) headers["X-OC-Mtime"] = `${secondsOf(modTime)}`;
   /** @type {BodyInit} */
   let body;
   if (header !== null && /^\d+$/.test(header)) {
@@ -669,6 +736,134 @@ async function putFile(config, url, path, request) {
   const { response } = await send(config, "PUT", url, { headers, body });
   if (!response.ok) await failed(response);
   await response.body?.cancel();
+  if (!timed) return false;
+  // As rclone: a server of a vendor with no PROPPATCH sets the time.
+  if (
+    response.headers.get("X-OC-Mtime") === "accepted" || !config.vendor.propset
+  ) {
+    return true;
+  }
+  return await proppatch(config, url, modTime);
+}
+
+/**
+ * Copies a file, or moves a file or a folder, on the server, as `Copy`,
+ * `Move` and `DirMove` of rclone.
+ * @param {Config} config
+ * @param {"COPY" | "MOVE"} method
+ * @param {URL} url The URL of the source.
+ * @param {string} target The path of the destination.
+ * @param {bigint | null} modTime The time of the file, or null.
+ * @returns {Promise<Response>}
+ */
+async function transfer(config, method, url, target, modTime) {
+  const destination = new URL(encodePath(target).slice(1), config.base);
+  const isFolder = url.pathname.endsWith("/");
+  if (isFolder) {
+    if (method === "COPY") {
+      return new Response("COPY of a folder is not implemented", {
+        status: 501,
+      });
+    }
+    if (!target.endsWith("/") || destination.href.startsWith(url.href)) {
+      return new Response("Destination is not a new folder", { status: 400 });
+    }
+    // As rclone: a folder does not move over a folder.
+    if (await exists(config, destination)) {
+      return new Response("Destination exists", { status: 412 });
+    }
+    await mkdir(config, new URL("..", destination));
+  } else {
+    if (target.endsWith("/")) {
+      return new Response("Destination is a folder", { status: 409 });
+    }
+    await mkdir(config, new URL(".", destination));
+  }
+  /** @type {Record<string, string>} */
+  const headers = { Destination: destination.href, Overwrite: "T" };
+  const timed = modTime !== null && !isFolder && config.vendor.propset;
+  if (timed) headers["X-OC-Mtime"] = `${secondsOf(modTime)}`;
+  const { response } = await send(config, method, url, { headers });
+  if (!response.ok) {
+    // A server can give another error for a source that does not exist:
+    // `rclone serve webdav` gives 403 to a MOVE.
+    if (response.status !== 404 && !await exists(config, url)) {
+      await response.body?.cancel();
+      throw new WebDAVError("Not Found", 404);
+    }
+    await failed(response);
+  }
+  await response.body?.cancel();
+  const status = isFolder ? 201 : response.status;
+  if (
+    timed && (response.headers.get("X-OC-Mtime") === "accepted" ||
+      await proppatch(config, destination, modTime))
+  ) {
+    return new Response(null, {
+      status,
+      headers: { "X-OC-Mtime": "accepted" },
+    });
+  }
+  return new Response(null, { status });
+}
+
+/**
+ * Tells if a file or a folder exists, with a PROPFIND with `Depth: 0`.
+ * @param {Config} config
+ * @param {URL} url
+ * @returns {Promise<boolean>}
+ */
+async function exists(config, url) {
+  return await propfind(config, url, "0").then(
+    (items) => items.length > 0,
+    (error) => {
+      if (error instanceof WebDAVError && error.status === 404) return false;
+      throw error;
+    },
+  );
+}
+
+/**
+ * Sets the time of a file with a PROPPATCH of `lastmodified`, as
+ * `SetModTime` of rclone for ownCloud and Nextcloud.
+ * @param {Config} config
+ * @param {URL} url
+ * @param {bigint} modTime
+ * @returns {Promise<boolean>} True when the server set the time.
+ * @throws {WebDAVError} With 404 for a file that does not exist.
+ */
+async function proppatch(config, url, modTime) {
+  const { response } = await send(config, "PROPPATCH", url, {
+    headers: { "Content-Type": "application/xml; charset=utf-8" },
+    body: PROPSET(secondsOf(modTime)),
+  });
+  if (response.status === 404) await failed(response);
+  if (response.status !== 207) {
+    await response.body?.cancel();
+    return false;
+  }
+  try {
+    const root = parseXML(await response.text());
+    const statuses = childrenOf(root, "response")
+      .flatMap((item) => childrenOf(item, "propstat"))
+      .map((propstat) => textOf(propstat, "status"));
+    return statuses.length > 0 &&
+      statuses.every((status) => /^HTTP\/[\d.]+\s+2\d\d/.test(status));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The whole seconds of a time, as `Unix` of Go.
+ * @param {bigint} nanoseconds
+ */
+function secondsOf(nanoseconds) {
+  const second = 1_000_000_000n;
+  const seconds = nanoseconds / second;
+  return nanoseconds < 0n && nanoseconds % second !== 0n
+    ? seconds - 1n
+    : seconds;
 }
 
 /**

@@ -79,9 +79,30 @@ after(() => server.stop());
 backendSuite("serve webdav", webdav, {
   type: "webdav",
   params: { url: server.url, vendor: "rclone" },
+  // The vendor rclone sends the time on PUT only.
+  features: {
+    copy: true,
+    move: true,
+    dirMove: true,
+    modTime: true,
+    copyModTime: false,
+  },
 });
 backendSuite("serve webdav, vendor other", webdav, {
   params: { url: server.url },
+  features: { copy: true, move: true, dirMove: true },
+});
+// The vendor owncloud sends the time on PUT, COPY and MOVE, and sets it with
+// PROPPATCH.
+backendSuite("serve webdav, vendor owncloud", webdav, {
+  params: { url: server.url, vendor: "owncloud" },
+  features: {
+    copy: true,
+    move: true,
+    dirMove: true,
+    modTime: true,
+    setModTime: true,
+  },
 });
 
 describe("serve webdav", () => {

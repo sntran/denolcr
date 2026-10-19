@@ -18,6 +18,7 @@ const decoder = new TextDecoder();
 backendSuite("archive", backend, {
   type: "archive",
   params: { remote: ":memory:/archive" },
+  features: { modTime: true, setModTime: true },
 });
 
 /** Text that compresses, of a size. @param {number} size */

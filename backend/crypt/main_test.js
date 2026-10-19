@@ -147,7 +147,17 @@ const params = {
   password2: SALT,
 };
 
-backendSuite("crypt", crypt, { type: "crypt", params });
+backendSuite("crypt", crypt, {
+  type: "crypt",
+  params,
+  features: {
+    copy: true,
+    move: true,
+    dirMove: true,
+    modTime: true,
+    setModTime: true,
+  },
+});
 
 describe("crypt", () => {
   const fs = remote(crypt, { params });

@@ -29,11 +29,20 @@ if (hasRclone) {
   backendSuite("webdav", webdav, {
     type: "webdav",
     params: { url: server.url, vendor: "rclone", user: LOGIN.user, pass },
+    // `rclone serve webdav` gives the time of a COPY to the source file.
+    features: {
+      copy: true,
+      move: true,
+      dirMove: true,
+      modTime: true,
+      copyModTime: false,
+    },
   });
   // The vendor `other` sends the standard properties in each PROPFIND, and
   // a body of unknown size in one piece.
   backendSuite("webdav other", webdav, {
     params: { url: server.url, user: LOGIN.user, pass },
+    features: { copy: true, move: true, dirMove: true },
   });
 
   describe("webdav on rclone serve webdav", () => {

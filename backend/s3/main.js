@@ -36,6 +36,19 @@
  * the variable of rfetch, for example `RFETCH_S3_SECRET_ACCESS_KEY`, or of
  * rclone, `RCLONE_S3_SECRET_ACCESS_KEY`. Put the credentials in a header or
  * in `env`, not in a URL.
+ *
+ * As rclone, the backend keeps the time of a file in the metadata `mtime`
+ * of the object, from the header `X-OC-Mtime` of a `PUT` or a `COPY`. The
+ * `Last-Modified` of `GET` and `HEAD` is that time. The list of a folder
+ * gives the time of the upload: a list of S3 does not give the metadata.
+ *
+ * Other than GET, HEAD, PUT and DELETE, the backend knows:
+ *
+ * - `COPY` of a file to the path of the header `Destination`, with
+ *   CopyObject: the bytes do not go through the backend. A file of more than
+ *   4768 MiB gives 501, as CopyObject cannot copy it in one request.
+ * - `PATCH` of a file with `X-OC-Mtime`: it sets the time of the file, with
+ *   a CopyObject of the object onto itself, as rclone.
  */
 import { createHash } from "node:crypto";
 import { renderListing } from "@rfetch/lib/listing";
@@ -57,7 +70,17 @@ import {
   parseXML,
   textOf,
 } from "@rfetch/lib/xml";
+import { formatUnixTime, modTimeOf, parseUnixTime } from "@rfetch/lib/time";
 import { EMPTY_PAYLOAD, sign, UNSIGNED_PAYLOAD, uriEncode } from "./sigv4.js";
+
+/** The name of the metadata of the time of a file, as rclone. */
+const MTIME = "x-amz-meta-mtime";
+
+/**
+ * The size of the largest file that CopyObject copies, as rclone: less than
+ * 5 GiB for Backblaze B2.
+ */
+const MAX_COPY_SIZE = 4768 * 1024 * 1024;
 
 export const options = {
   string: [
@@ -144,6 +167,12 @@ async function s3(request, env = {}) {
     // A file is in a bucket.
     return new Response(null, { status: method === "PUT" ? 400 : 404 });
   }
+  const modTime = modTimeOf(request);
+  if (modTime === undefined) {
+    return new Response("X-OC-Mtime is not a time", { status: 400 });
+  }
+  /** The headers of an answer that sets the time of a file. */
+  const accepted = modTime === null ? {} : { "X-OC-Mtime": "accepted" };
 
   try {
     if (method === "GET" || method === "HEAD") {
@@ -158,11 +187,36 @@ async function s3(request, env = {}) {
       }
       await (isFolder
         ? putFolder(config, bucket, key)
-        : putFile(config, bucket, key, request));
+        : putFile(config, bucket, key, request, modTime));
       return new Response(null, {
         status: 201,
-        headers: { "Content-Location": pathname },
+        headers: {
+          "Content-Location": pathname,
+          ...(isFolder ? {} : accepted),
+        },
       });
+    }
+    if (method === "COPY" && !isFolder) {
+      const target = decodePath(request.headers.get("Destination") ?? "");
+      const end = target?.indexOf("/", 1) ?? -1;
+      if (target === null || end === -1 || end === target.length - 1) {
+        return new Response("Destination is not a file", { status: 400 });
+      }
+      if (target.endsWith("/")) {
+        return new Response("Destination is a folder", { status: 409 });
+      }
+      await copyFile(config, { bucket, key }, {
+        bucket: target.slice(1, end),
+        key: target.slice(end + 1),
+      }, modTime);
+      return new Response(null, { status: 201, headers: accepted });
+    }
+    if (method === "PATCH" && !isFolder) {
+      if (modTime === null) {
+        return new Response("X-OC-Mtime is missing", { status: 400 });
+      }
+      await copyFile(config, { bucket, key }, { bucket, key }, modTime);
+      return new Response(null, { status: 204, headers: accepted });
     }
     if (method === "DELETE") {
       if (bucket === "") {
@@ -179,9 +233,10 @@ async function s3(request, env = {}) {
     }
     throw error;
   }
+  await request.body?.cancel();
   return new Response(null, {
     status: 405,
-    headers: { Allow: "GET, HEAD, PUT, DELETE" },
+    headers: { Allow: "GET, HEAD, PUT, DELETE, COPY, PATCH" },
   });
 }
 
@@ -463,6 +518,15 @@ function fileHeaders(response, key) {
     const value = response.headers.get(name);
     if (value) headers.set(name, value);
   }
+  // The time of the file, as rclone: the metadata, else the time of the
+  // upload.
+  const modTime = parseUnixTime(response.headers.get(MTIME));
+  if (modTime !== undefined) {
+    headers.set(
+      "Last-Modified",
+      new Date(Number(modTime / 1000000n)).toUTCString(),
+    );
+  }
   return headers;
 }
 
@@ -632,8 +696,10 @@ async function putMarkers(config, bucket, prefix) {
  * @param {string} bucket
  * @param {string} key
  * @param {Request} request
+ * @param {bigint | null} modTime The time of the file, in the metadata
+ *   `mtime`, or null.
  */
-async function putFile(config, bucket, key, request) {
+async function putFile(config, bucket, key, request, modTime) {
   if (config.markers) {
     await putMarkers(config, bucket, key.slice(0, key.lastIndexOf("/") + 1));
   }
@@ -641,9 +707,11 @@ async function putFile(config, bucket, key, request) {
   const length = header !== null && /^\d+$/.test(header)
     ? Number(header)
     : null;
+  /** @type {Record<string, string>} */
   const headers = {
     "Content-Type": request.headers.get("Content-Type") || mimeType(key),
   };
+  if (modTime !== null) headers[MTIME] = formatUnixTime(modTime);
 
   if (length !== null && length <= config.uploadCutoff) {
     const body = sized(request.body ?? new Blob([]).stream(), length);
@@ -729,6 +797,58 @@ async function putFile(config, bucket, key, request) {
     const abort = await send(config, "DELETE", bucket, key, { query: upload });
     await abort.body?.cancel();
     throw error;
+  }
+}
+
+/**
+ * Copies a file with CopyObject, as `Copy` of rclone. With a time, the copy
+ * gets the metadata of the source, with that time: a copy onto the same
+ * object sets the time of the file, as `SetModTime` of rclone. With no
+ * time, the copy keeps the metadata of the source.
+ * @param {Config} config
+ * @param {{ bucket: string, key: string }} source
+ * @param {{ bucket: string, key: string }} target
+ * @param {bigint | null} modTime
+ * @throws {S3Error} With 404 for a source that does not exist, and with 501
+ *   for a file that is too large for CopyObject.
+ */
+async function copyFile(config, source, target, modTime) {
+  const head = await send(config, "HEAD", source.bucket, source.key);
+  await head.body?.cancel();
+  if (head.status === 404) throw new S3Error("Not Found", 404);
+  await check(head);
+  if (Number(head.headers.get("Content-Length")) > MAX_COPY_SIZE) {
+    throw new S3Error("The file is too large for CopyObject", 501);
+  }
+  if (config.markers) {
+    await putMarkers(
+      config,
+      target.bucket,
+      target.key.slice(0, target.key.lastIndexOf("/") + 1),
+    );
+  }
+  /** @type {Record<string, string>} */
+  const headers = {
+    "x-amz-copy-source": `/${uriEncode(source.bucket)}/${
+      uriEncode(source.key, true)
+    }`,
+  };
+  if (modTime !== null) {
+    headers["x-amz-metadata-directive"] = "REPLACE";
+    headers["Content-Type"] = head.headers.get("Content-Type") ||
+      mimeType(target.key);
+    for (const [name, value] of head.headers) {
+      if (name.startsWith("x-amz-meta-")) headers[name] = value;
+    }
+    headers[MTIME] = formatUnixTime(modTime);
+  }
+  const response = await check(
+    await send(config, "PUT", target.bucket, target.key, { headers }),
+  );
+  // S3 can give an error in an answer 200.
+  const text = await response.text();
+  if (/<Error>/.test(text)) {
+    throw new S3Error(textOf(parseXML(text), "Code"), 502);
   }
 }
 

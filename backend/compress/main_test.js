@@ -13,10 +13,12 @@ const encoder = new TextEncoder();
 backendSuite("compress", backend, {
   type: "compress",
   params: { remote: ":memory:/compress" },
+  features: { dirMove: true },
 });
 // The data in gzip are compressed.
 backendSuite("compress", backend, {
   params: { remote: ":memory:/compress-6", level: "6" },
+  features: { dirMove: true },
 });
 
 /** Text that compresses, of a size. @param {number} size */

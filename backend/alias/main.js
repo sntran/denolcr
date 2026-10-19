@@ -59,6 +59,17 @@ async function alias(request, env = {}) {
     method,
     headers: remoteHeaders(request.headers, "alias", remote),
   };
+  // The destination of a COPY or a MOVE is in the remote too.
+  if (method === "COPY" || method === "MOVE") {
+    const target = decodePath(request.headers.get("Destination") ?? "");
+    if (target === null) {
+      return new Response("Destination is not a path", { status: 400 });
+    }
+    init.headers.set(
+      "Destination",
+      encodeLocation(remote) + encodePath(target),
+    );
+  }
   if (request.body) {
     init.body = request.body;
     init.duplex = "half";

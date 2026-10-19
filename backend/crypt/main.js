@@ -271,7 +271,7 @@ async function crypt(request, env = {}) {
 
     const response = await fetch(target, init);
     await response.body?.cancel();
-    const result = new Headers();
+    const result = timeHeaders(response);
     if (response.ok) {
       result.set("Content-Location", pathname);
     }
@@ -284,10 +284,44 @@ async function crypt(request, env = {}) {
     return new Response(null, { status: response.status });
   }
 
+  // A COPY, a MOVE or a PATCH goes to the remote, with the encrypted name of
+  // the destination. The encrypted data does not change.
+  if (method === "COPY" || method === "MOVE" || method === "PATCH") {
+    if (method !== "PATCH") {
+      const destination = decodePath(request.headers.get("Destination") ?? "");
+      if (destination === null) {
+        return new Response("Destination is not a path", { status: 400 });
+      }
+      headers.set(
+        "Destination",
+        encodeLocation(remote) + cipher.names.encrypt(destination),
+      );
+    }
+    const response = await fetch(target, { method, headers });
+    await response.body?.cancel();
+    return new Response(null, {
+      status: response.status,
+      headers: timeHeaders(response),
+    });
+  }
+
   return new Response(null, {
     status: 405,
-    headers: { Allow: "GET, HEAD, PUT, DELETE" },
+    headers: { Allow: "GET, HEAD, PUT, DELETE, COPY, MOVE, PATCH" },
   });
+}
+
+/**
+ * The headers of an answer of the remote that go to the client: the answer
+ * `X-OC-Mtime: accepted` when the remote set the time of the file.
+ * @param {Response} response
+ * @returns {Headers}
+ */
+function timeHeaders(response) {
+  const headers = new Headers();
+  const accepted = response.headers.get("X-OC-Mtime");
+  if (accepted) headers.set("X-OC-Mtime", accepted);
+  return headers;
 }
 
 /**

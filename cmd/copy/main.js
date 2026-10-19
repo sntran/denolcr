@@ -13,9 +13,11 @@
  * - `--dry-run`: copy nothing, and tell what it would copy.
  * - `--transfers N`: copy N files at the same time, 4 by default.
  *
- * The backends do not keep the time of a source file yet: the time of a
- * copy is the time of the copy. Thus a second copy sends the files again,
- * unless `--size-only`.
+ * A copy gets the time of its source, with `X-OC-Mtime`, when the backend
+ * of the target can keep it. In the same remote, the backend copies or
+ * moves each file with COPY or MOVE, and moves a folder with MOVE to a path
+ * that does not exist, as `DirMove` of rclone. Else, the bytes go through
+ * rfetch.
  */
 import { isTrue } from "@rfetch/lib/options";
 
@@ -25,8 +27,10 @@ import {
   failure,
   folderOf,
   join,
+  lastModified,
   log,
   mkdir,
+  moveFolder,
   nameOf,
   numberOf,
   OperationError,
@@ -119,6 +123,14 @@ export async function transfer(source, target, flags, mode = {}) {
     return;
   }
 
+  // A folder moves with one MOVE, when the target does not exist.
+  if (
+    mode.move && !isTrue(flags.dry_run) && !await stat(target, flags) &&
+    await moveFolder(source, target, flags)
+  ) {
+    return;
+  }
+
   /** @type {File[]} */
   const files = [];
   /** @type {string[]} */
@@ -200,8 +212,21 @@ export async function transfer(source, target, flags, mode = {}) {
  */
 async function transferFile(file, target, existing, flags, mode) {
   const verb = mode.move ? "move" : "copy";
-  const same = existing && (isTrue(flags.ignore_existing) ||
+  let same = existing && (isTrue(flags.ignore_existing) ||
     (!isTrue(flags.ignore_times) && isSame(file, existing, flags)));
+  if (
+    existing && !same && !isTrue(flags.ignore_times) &&
+    file.size === existing.size
+  ) {
+    // A backend can keep the time of a file out of its list, as s3 in the
+    // metadata of the file: then HEAD gives another time than the list, to
+    // the second.
+    const time = await lastModified(target, flags);
+    const second = (value) => Math.floor(Date.parse(value) / 1000);
+    if (time && second(time) !== second(existing.modTime)) {
+      same = isSame(file, { size: existing.size, modTime: time }, flags);
+    }
+  }
   if (isTrue(flags.dry_run)) {
     if (!same || mode.move) {
       log(
@@ -213,17 +238,24 @@ async function transferFile(file, target, existing, flags, mode) {
     }
     return;
   }
-  if (!same) await copyFile(file.location, target, flags);
-  // As rclone: a move deletes the source, also when the target has the same
-  // file.
-  if (mode.move) await remove(file.location, flags);
+  if (!same) {
+    await copyFile(file.location, target, flags, {
+      modTime: file.modTime,
+      move: mode.move,
+    });
+  } else if (mode.move) {
+    // As rclone: a move deletes the source, also when the target has the
+    // same file.
+    await remove(file.location, flags);
+  }
 }
 
 /**
  * Tells if two files are the same, as `Equal` of rclone: the same size, and
  * the same time in the precision of the two remotes. A time with no part of
- * a second comes from a remote with a precision of 1 s, as WebDAV: then the
- * times can differ by less than 1 s. Else they can differ by less than 1 ms.
+ * a second comes from a remote with a precision of 1 s, as WebDAV and
+ * `Last-Modified`: then the times can differ by less than 1 s. Else they can
+ * differ by less than 1 ms.
  * A time that a backend does not give is not compared.
  * @param {{ size: number, modTime: string }} a
  * @param {{ size: number, modTime: string }} b

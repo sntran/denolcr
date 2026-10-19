@@ -138,6 +138,21 @@ async function combine(request, env = {}) {
     method,
     headers: remoteHeaders(request.headers, "combine", remote),
   };
+  // A COPY or a MOVE goes to the upstream when the destination is in the
+  // same upstream. Else, the answer is 502, as for another remote.
+  if (method === "COPY" || method === "MOVE") {
+    const target = decodePath(request.headers.get("Destination") ?? "");
+    if (target === null) {
+      return new Response("Destination is not a path", { status: 400 });
+    }
+    const end = target.indexOf("/", 1);
+    if (end === -1 || target.slice(0, end) !== path.slice(0, slash)) {
+      return new Response("The destination is in another upstream.", {
+        status: 502,
+      });
+    }
+    init.headers.set("Destination", locationOf(remote, target.slice(end)));
+  }
   if (request.body) {
     init.body = request.body;
     init.duplex = "half";

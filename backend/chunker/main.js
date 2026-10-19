@@ -207,17 +207,26 @@ async function chunker(request, env = {}) {
     if (method === "GET" || method === "HEAD") {
       return await listFolder(config, path, method, `${searchParams}`);
     }
-    // A folder is a folder of the remote.
-    const response = await send(config, path, {
-      method,
-      headers: remoteHeaders(request.headers, "chunker", config.remote),
-    });
-    await response.body?.cancel();
-    const headers = new Headers();
-    if (method === "PUT" && response.ok) {
-      headers.set("Content-Location", pathname);
+    // A folder is a folder of the remote. The destination of a MOVE is in
+    // the remote too.
+    const headers = remoteHeaders(request.headers, "chunker", config.remote);
+    if (method === "COPY" || method === "MOVE") {
+      const target = decodePath(request.headers.get("Destination") ?? "");
+      if (target === null) {
+        return new Response("Destination is not a path", { status: 400 });
+      }
+      headers.set(
+        "Destination",
+        encodeLocation(config.remote) + encodePath(target),
+      );
     }
-    return new Response(null, { status: response.status, headers });
+    const response = await send(config, path, { method, headers });
+    await response.body?.cancel();
+    const answer = new Headers();
+    if (method === "PUT" && response.ok) {
+      answer.set("Content-Location", pathname);
+    }
+    return new Response(null, { status: response.status, headers: answer });
   }
 
   try {

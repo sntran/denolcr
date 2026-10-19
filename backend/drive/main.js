@@ -96,6 +96,13 @@ async function drive(request, env = {}) {
   pathname = decodeURIComponent(pathname);
   const isDirectory = pathname.endsWith("/");
 
+  if (!["GET", "HEAD", "PUT", "DELETE"].includes(method)) {
+    return new Response(null, {
+      status: 405,
+      headers: { Allow: "GET, HEAD, PUT, DELETE" },
+    });
+  }
+
   if (method === "PUT") {
     // TODO: Nested folder creation.
     if (isDirectory) {

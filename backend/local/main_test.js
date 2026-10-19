@@ -24,7 +24,15 @@ await mkdir(root);
 await writeFile(join(folder, "secret.txt"), "secret");
 process.chdir(root);
 
-backendSuite("local", backend);
+backendSuite("local", backend, {
+  features: {
+    copy: true,
+    move: true,
+    dirMove: true,
+    modTime: true,
+    setModTime: true,
+  },
+});
 
 describe("local", () => {
   after(() => rm(folder, { recursive: true, force: true }));

@@ -481,6 +481,57 @@ test("a path keeps the # of its names, and a // in it is not a host", async () =
   assert.deepEqual(await names(":memory:/paths/f%23g%25h/"), ["d?e.txt"]);
 });
 
+test("COPY and MOVE go to the backend when the destination is in the same remote", async () => {
+  const put = await fetch(":memory:/same/a.txt", { method: "PUT", body: "a" });
+  assert.equal(put.status, 201);
+  // The backend gets the path of the destination in its root.
+  const copy = await fetch(":memory:/same/a.txt", {
+    method: "COPY",
+    headers: { Destination: ":memory:/same/b%20c.txt" },
+  });
+  assert.equal(copy.status, 201);
+  assert.equal(await (await fetch(":memory:/same/b%20c.txt")).text(), "a");
+  // Through an alias, to the remote under it.
+  const alias = await fetch(":alias:a.txt", {
+    method: "MOVE",
+    headers: {
+      RFETCH_ALIAS_REMOTE: ":memory:/same",
+      Destination: ":alias:d.txt",
+    },
+  });
+  assert.equal(alias.status, 201);
+  assert.equal(await (await fetch(":memory:/same/d.txt")).text(), "a");
+  assert.equal((await fetch(":memory:/same/a.txt")).status, 404);
+
+  // Another remote, or the same type with other options, gives 502: the
+  // caller copies the bytes.
+  for (
+    const [destination, headers] of [
+      [`${await mkdtemp(join(tmpdir(), "rfetch-same-"))}/d.txt`, {}],
+      [":alias:e.txt", { RFETCH_ALIAS_REMOTE: ":memory:/other" }],
+      [":memory:/same/e.txt?memory_x=1", {}],
+      ["https://example.com/e.txt", {}],
+    ]
+  ) {
+    const response = await fetch(":memory:/same/d.txt", {
+      method: "COPY",
+      headers: { Destination: destination, ...headers },
+    });
+    await response.body?.cancel();
+    assert.equal(response.status, 502, destination);
+  }
+  // The options of a header apply to the source and to the destination.
+  const other = await fetch(":alias:d.txt", {
+    method: "COPY",
+    headers: {
+      RFETCH_ALIAS_REMOTE: ":memory:/same",
+      Destination: ":alias:f.txt",
+    },
+  });
+  assert.equal(other.status, 201);
+  assert.equal(await (await fetch(":memory:/same/f.txt")).text(), "a");
+});
+
 test("the command line", async (t) => {
   const folder = await mkdtemp(join(tmpdir(), "rfetch-cli-"));
   await writeFile(join(folder, "a.txt"), "a");

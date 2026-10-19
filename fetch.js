@@ -118,11 +118,106 @@ export async function fetch(input, init = {}) {
     return globalFetch(...withoutOptions(input, init));
   }
 
+  const headers = new Headers(init.headers);
+  const { type, name, pathname, params, options } = await resolve(
+    input,
+    headers,
+  );
+
+  // COPY and MOVE: the backend gets the path of the destination in its own
+  // root. The destination must be in the same remote, with the same
+  // options: else, the answer is 502, as WebDAV gives for a destination on
+  // another server, and the caller copies the bytes.
+  const method = `${init.method ?? "GET"}`.toUpperCase();
+  const destination = headers.get("Destination");
+  if ((method === "COPY" || method === "MOVE") && destination !== null) {
+    // A URL is on a server, not in a remote.
+    const target = /^[a-z][a-z0-9+.-]*:\/\//i.test(destination)
+      ? null
+      : await resolve(destination, headers);
+    if (
+      !target || target.type !== type || !sameEntries(target.params, params) ||
+      !sameEntries(Object.entries(target.options), Object.entries(options))
+    ) {
+      await init.body?.cancel?.();
+      return new Response("The destination is not in the same remote.", {
+        status: 502,
+      });
+    }
+    headers.set("Destination", target.pathname);
+  }
+
+  // The headers of this backend are in its options now.
+  const own = PREFIXES.map((start) => `${start}${type.toLowerCase()}_`);
+  for (const key of [...headers.keys()]) {
+    if (own.some((start) => key.startsWith(start))) headers.delete(key);
+  }
+
+  if (init.method === "TRACE") {
+    let body = `TRACE ${pathname}?${params} HTTP/1.1\r`;
+    // Reflects the request as response body, then the options in `env`.
+    for (const [name, value] of headers) {
+      body += `${name}: ${value}\r`;
+    }
+    for (const [name, value] of Object.entries(options)) {
+      body += `${name}: ${value}\r`;
+    }
+    return new Response(body, {
+      status: 200,
+      headers: {
+        "Content-Type": "message/http",
+        "Via": `${type}/1.1 ${name}`.trim(),
+      },
+    });
+  }
+
+  if (init.body instanceof ReadableStream) {
+    // @ts-ignore: Must have `duplex` for streaming body
+    init.duplex = "half"; // Must set this for stream body.
+  }
+
+  const backend = await load(type);
+  if (!backend) {
+    throw new Error(`Backend ${type} not found.`);
+  }
+
+  // The empty host keeps a path that starts with "//" as a path.
+  const url = new URL(`file://${pathname}?${params}`);
+  // Creates a new request with the initial init.
+  const request = new Request(url, init);
+  // Clones that request and updates the headers.
+  return backend.fetch(
+    new Request(request, {
+      headers,
+    }),
+    options,
+  );
+}
+
+/**
+ * The backend of a location, and the request that it gets: its type, the
+ * name of the remote, the path in the remote, the query and the options.
+ * @typedef {Object} Target
+ * @property {string} type
+ * @property {string} name
+ * @property {string} pathname
+ * @property {URLSearchParams} params
+ * @property {Record<string, string>} options The options in `env`, with
+ *   the names of the variables of rfetch.
+ */
+
+/**
+ * Reads a location of rclone, with the options of the config file, of the
+ * variables and of the headers.
+ * @param {string} input
+ * @param {Headers} headers
+ * @returns {Promise<Target>}
+ */
+async function resolve(input, headers) {
   // The parts of the path, as rclone reads them. It throws a SyntaxError
   // for a path that is not correct.
   const parsed = parse(input);
 
-  const headers = new Headers(init.headers);
   // The variables, by their names with no prefix, for example
   // `CONFIG_R2_TYPE`: the environment of the process, then the headers of
   // the request, which take their place. In each place, `RFETCH_` takes the
@@ -261,51 +356,20 @@ export async function fetch(input, init = {}) {
   // variable, a header or the query cannot set it.
   delete optionsEnv.RFETCH_LOCAL_ROOT;
   if (root !== undefined) optionsEnv.RFETCH_LOCAL_ROOT = root;
-  // The headers of this backend are in its options now.
-  const own = PREFIXES.map((start) => `${start}${type.toLowerCase()}_`);
-  for (const key of [...headers.keys()]) {
-    if (own.some((start) => key.startsWith(start))) headers.delete(key);
-  }
 
-  if (init.method === "TRACE") {
-    let body = `TRACE ${pathname}?${params} HTTP/1.1\r`;
-    // Reflects the request as response body, then the options in `env`.
-    for (const [name, value] of headers) {
-      body += `${name}: ${value}\r`;
-    }
-    for (const [name, value] of Object.entries(optionsEnv)) {
-      body += `${name}: ${value}\r`;
-    }
-    return new Response(body, {
-      status: 200,
-      headers: {
-        "Content-Type": "message/http",
-        "Via": `${type}/1.1 ${name}`.trim(),
-      },
-    });
-  }
+  return { type, name, pathname, params, options: optionsEnv };
+}
 
-  if (init.body instanceof ReadableStream) {
-    // @ts-ignore: Must have `duplex` for streaming body
-    init.duplex = "half"; // Must set this for stream body.
-  }
-
-  const backend = await load(type);
-  if (!backend) {
-    throw new Error(`Backend ${type} not found.`);
-  }
-
-  // The empty host keeps a path that starts with "//" as a path.
-  const url = new URL(`file://${pathname}?${params}`);
-  // Creates a new request with the initial init.
-  const request = new Request(url, init);
-  // Clones that request and updates the headers.
-  return backend.fetch(
-    new Request(request, {
-      headers,
-    }),
-    optionsEnv,
-  );
+/**
+ * Tells if two lists of names and values have the same entries, in any
+ * order.
+ * @param {Iterable<[string, string]>} a
+ * @param {Iterable<[string, string]>} b
+ */
+function sameEntries(a, b) {
+  const sorted = (entries) =>
+    JSON.stringify([...entries].sort(([x], [y]) => x < y ? -1 : x > y ? 1 : 0));
+  return sorted(a) === sorted(b);
 }
 
 /**
