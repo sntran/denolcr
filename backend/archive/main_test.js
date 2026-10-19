@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readdirSync, readFileSync } from "node:fs";
 
 import { backendSuite } from "@rfetch/lib/testing/suite";
 import { remote } from "@rfetch/lib/testing/remote";
@@ -7,7 +8,7 @@ import { remote } from "@rfetch/lib/testing/remote";
 import { fetch } from "../../mod.js";
 import backend, { formatOf, locate } from "./main.js";
 import { cleanPath } from "./entry.js";
-import { extendedTime, ntfsTime, zipFile } from "./testing.js";
+import { extendedTime, ntfsTime, rar5File, zipFile } from "./testing.js";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -390,4 +391,172 @@ test("archive reads the remote in its path, as rclone", async () => {
     (await inner.list("implicit/")).map(({ Name }) => Name),
     ["deep"],
   );
+});
+
+/** The text of folder/large.txt in the RAR files of testdata. */
+function rarText() {
+  let value = "";
+  for (let line = 0; value.length < 20000; line++) {
+    value += `line ${line} of the text\n`;
+  }
+  return encoder.encode(value.slice(0, 20000));
+}
+
+/**
+ * Puts the RAR files of testdata in a folder of memory, and gives a client
+ * of the archive remote on that folder.
+ */
+async function rarFixtures() {
+  const folder = new URL("./testdata/", import.meta.url);
+  for (
+    const name of readdirSync(folder).filter((name) => name.endsWith(".rar"))
+  ) {
+    await fetch(`:memory:/archive-rar/${name}`, {
+      method: "PUT",
+      body: readFileSync(new URL(name, folder)),
+    });
+  }
+  return remote(backend, { params: { remote: ":memory:/archive-rar" } });
+}
+
+test("archive reads the RAR files of RAR 6.20 in store mode", async () => {
+  const fs = await rarFixtures();
+  for (const name of ["store5.rar", "store4.rar", "solid5.rar"]) {
+    const root = await fs.list(`${name}/`);
+    assert.deepEqual(
+      root.map(({ Name, IsDir, Size }) => [Name, IsDir, Size]).sort(),
+      [
+        ["a.txt", false, 6],
+        ["empty folder", true, -1],
+        ["empty.txt", false, 0],
+        ["folder", true, -1],
+        ["êé", true, -1],
+      ],
+      name,
+    );
+    // The time of a file, also with the extended time of RAR4.
+    assert.equal(
+      new Date(root.find(({ Name }) => Name === "a.txt").ModTime).toISOString(),
+      "2024-05-06T07:08:09.000Z",
+      name,
+    );
+    assert.deepEqual(
+      (await fs.list(`${name}/êé/`)).map(({ Name }) => Name),
+      ["Hello, 世界.txt"],
+      name,
+    );
+    assert.equal(
+      decoder.decode(await bytesOf(await fs.get(`${name}/êé/Hello, 世界.txt`))),
+      "z\n",
+    );
+    assert.equal(
+      decoder.decode(await bytesOf(await fs.get(`${name}/a.txt`))),
+      "hello\n",
+    );
+    assert.equal((await bytesOf(await fs.get(`${name}/empty.txt`))).length, 0);
+    assert.deepEqual(
+      await bytesOf(await fs.get(`${name}/folder/large.txt`)),
+      rarText(),
+    );
+    const part = await fs.get(`${name}/folder/large.txt`, {
+      Range: "bytes=12345-12399",
+    });
+    assert.equal(part.status, 206);
+    assert.deepEqual(await bytesOf(part), rarText().subarray(12345, 12400));
+    const random = await fs.get(`${name}/folder/deep/random.bin`);
+    assert.equal((await bytesOf(random)).length, 3000);
+  }
+});
+
+test("archive gives 501 for the RAR files that it cannot read", async () => {
+  const fs = await rarFixtures();
+  for (
+    const [path, message] of [
+      [
+        "compressed5.rar/folder/large.txt",
+        "rar: a compressed file is not supported",
+      ],
+      [
+        "compressed4.rar/folder/large.txt",
+        "rar: a compressed file is not supported",
+      ],
+      ["password5.rar/a.txt", "rar: a file with a password is not supported"],
+      ["password4.rar/a.txt", "rar: a file with a password is not supported"],
+      [
+        "volumes.part1.rar/folder/large.txt",
+        "rar: a file in more than one volume is not supported",
+      ],
+      [
+        "headers5.rar/",
+        "rar: an archive with a password on its headers is not supported",
+      ],
+    ]
+  ) {
+    const response = await fs.get(path);
+    assert.equal(response.status, 501, path);
+    assert.equal(await response.text(), message, path);
+  }
+  // The files in store mode of a compressed archive can be read.
+  assert.equal(
+    decoder.decode(await bytesOf(await fs.get("compressed5.rar/a.txt"))),
+    "hello\n",
+  );
+  // A part of a file that starts in a volume before is not in the list.
+  assert.deepEqual(
+    (await fs.list("volumes.part2.rar/folder/")).map(({ Name }) => Name),
+    ["deep"],
+  );
+  assert.deepEqual(
+    (await fs.list("volumes.part1.rar/folder/")).map((
+      { Name, Size },
+    ) => [Name, Size]),
+    [["large.txt", 20000]],
+  );
+});
+
+test("archive reads the headers of a large RAR file in parts", async () => {
+  const big = new Uint8Array(300_000).map((_, index) => index * 7);
+  const files = [{ name: "big.bin", data: big }];
+  for (let index = 0; index < 40; index++) {
+    files.push({
+      name: `many/file${index}.txt`,
+      data: "x".repeat(9000 + index),
+    });
+  }
+  files.push({ name: "last.txt", data: "the end" });
+  const fs = await setup("archive-rar-large", rar5File(files), "files.rar");
+  const many = await fs.list("files.rar/many/");
+  assert.equal(many.length, 40);
+  assert.equal(many.find(({ Name }) => Name === "file39.txt").Size, 9039);
+  assert.equal(
+    decoder.decode(await bytesOf(await fs.get("files.rar/last.txt"))),
+    "the end",
+  );
+  assert.deepEqual(await bytesOf(await fs.get("files.rar/big.bin")), big);
+  const part = await fs.get("files.rar/big.bin", { Range: "bytes=-10" });
+  assert.deepEqual(await bytesOf(part), big.subarray(-10));
+});
+
+test("archive gives the errors of a RAR file that is not correct", async () => {
+  const rar = rar5File([{ name: "a.txt", data: "abc" }]);
+  const bad = rar.slice();
+  // A byte of the header of the file.
+  bad[30] ^= 0xff;
+  const fs = await setup("archive-rar-errors", bad, "bad.rar");
+  const response = await fs.get("bad.rar/");
+  assert.equal(response.status, 500);
+  assert.equal(await response.text(), "rar: header CRC error");
+  await fetch(":memory:/archive-rar-errors/text.rar", {
+    method: "PUT",
+    body: "not a RAR file",
+  });
+  const text = await fs.get("text.rar/");
+  assert.equal(text.status, 500);
+  assert.equal(await text.text(), "rar: not a valid RAR file");
+  // The end of the file is not there.
+  await fetch(":memory:/archive-rar-errors/short.rar", {
+    method: "PUT",
+    body: rar.subarray(0, 25),
+  });
+  assert.equal((await fs.get("short.rar/")).status, 500);
 });

@@ -18,6 +18,9 @@
  * - zip: `.zip`, as rclone, and the formats that are zip files, for example
  *   `.docx`, `.xlsx`, `.epub`, `.jar` and `.kmz`. rclone knows only `.zip`.
  *   The methods are Store and Deflate, as rclone.
+ * - RAR: `.rar`, RAR4 and RAR5, in store mode. rclone does not know RAR.
+ *   A list needs a request for each file after large data, because RAR
+ *   has no index.
  *
  * An archive is read again for each request: rfetch keeps no data between
  * requests. The time of a folder that is not in the index of a zip file is
@@ -33,6 +36,7 @@ import { parse } from "@rfetch/lib/fspath";
 import { sized } from "@rfetch/lib/sized";
 
 import { ArchiveError } from "./entry.js";
+import { openRar } from "./rar.js";
 import { openZip } from "./zip.js";
 
 /**
@@ -99,7 +103,10 @@ const ZIP = [
  * @type {Map<string, (file: RangedFile) =>
  *   Promise<import("./entry.js").Entry[]>>}
  */
-const FORMATS = new Map(ZIP.map((extension) => [extension, openZip]));
+const FORMATS = new Map([
+  ...ZIP.map((extension) => [extension, openZip]),
+  [".rar", openRar],
+]);
 
 /**
  * The reader of an archive from its name, or undefined for a name that is

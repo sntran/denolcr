@@ -168,3 +168,79 @@ export function zipFile(files, { zip64 = false, prefix, comment = "" } = {}) {
   all.set(zip, prefix.length);
   return all;
 }
+
+/**
+ * A number of RAR5: 7 bits in each byte, the low bits first.
+ * @param {number} value
+ */
+function vint(value) {
+  /** @type {number[]} */
+  const bytes = [];
+  do {
+    let byte = value % 128;
+    value = Math.floor(value / 128);
+    if (value > 0) byte |= 0x80;
+    bytes.push(byte);
+  } while (value > 0);
+  return bytes;
+}
+
+/**
+ * A header of RAR5: the CRC-32, the size, then the fields.
+ * @param {number[]} fields
+ */
+function rar5Header(fields) {
+  const body = Uint8Array.from([...vint(fields.length), ...fields]);
+  return Uint8Array.from([...new Writer().u32(crc32(body)).bytes, ...body]);
+}
+
+/**
+ * Writes a RAR5 file in store mode, with no compression, as `rar -m0`.
+ * @param {{ name: string, data?: Uint8Array | string, time?: Date }[]} files
+ *   A name with a "/" at the end is a folder.
+ * @returns {Uint8Array}
+ */
+export function rar5File(files) {
+  /** @type {Uint8Array[]} */
+  const parts = [
+    Uint8Array.of(0x52, 0x61, 0x72, 0x21, 0x1a, 0x07, 0x01, 0x00),
+    // The main header, with no flags.
+    rar5Header([1, 0, 0]),
+  ];
+  for (const file of files) {
+    const isDir = file.name.endsWith("/");
+    const name = encoder.encode(isDir ? file.name.slice(0, -1) : file.name);
+    const data = typeof file.data === "string"
+      ? encoder.encode(file.data)
+      : file.data ?? new Uint8Array(0);
+    const time = Math.floor(
+      (file.time ?? new Date(Date.UTC(2024, 4, 6, 7, 8, 9))).getTime() / 1000,
+    );
+    const fields = [
+      2,
+      ...(isDir ? [0] : [0x02, ...vint(data.length)]),
+      // A folder has a time, a file a time and a CRC-32.
+      ...vint(isDir ? 0x03 : 0x06),
+      ...vint(data.length),
+      ...vint(isDir ? 0o40755 : 0o100644),
+      ...new Writer().u32(time).bytes,
+      ...(isDir ? [] : new Writer().u32(crc32(data)).bytes),
+      // Store mode, then the system Unix.
+      0,
+      1,
+      ...vint(name.length),
+      ...name,
+    ];
+    parts.push(rar5Header(fields), ...(isDir ? [] : [data]));
+  }
+  parts.push(rar5Header([5, 0, 0]));
+  const all = new Uint8Array(
+    parts.reduce((sum, { length }) => sum + length, 0),
+  );
+  let offset = 0;
+  for (const part of parts) {
+    all.set(part, offset);
+    offset += part.length;
+  }
+  return all;
+}

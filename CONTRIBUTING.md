@@ -327,7 +327,9 @@ Some tests compare rfetch with rclone, for example the tests of `lib/ini.js` and
 the files `rclone_test.js` of the backends. They run when `rclone` is in the
 `PATH`, or when the variable `RCLONE` is the path of rclone. Else they are
 skipped. The tests of `lib/list.js` compare it with the `encoding/csv` package
-of Go, when `go` is in the `PATH` or when the variable `GO` is its path.
+of Go, when `go` is in the `PATH` or when the variable `GO` is its path. The
+tests of `backend/archive/sevenzip_test.js` compare the archive backend with
+7-Zip, when `7zz` is in the `PATH` or when the variable `SEVENZIP` is its path.
 
 The tests of `s3` use `rclone serve s3`, a server of the S3 API on a local
 folder. They also run on a real service when the variables `S3_TEST_ENDPOINT`

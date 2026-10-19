@@ -1,8 +1,8 @@
 # The checks of each push and of each pull request:
 #
 # - npm test: the tests, with the oldest Node.js of package.json and the
-#   newer versions. The job installs rclone and Go, thus the tests that
-#   compare rfetch with rclone and with Go run too.
+#   newer versions. The job installs rclone, 7-Zip and Go, thus the tests
+#   that compare rfetch with rclone, with 7-Zip and with Go run too.
 # - deno fmt --check: the format of the files.
 # - wasm: the tests of the crate of backend/crypt/secretbox.wasm, and its
 #   build from its source gives the same bytes as the file in the repository.
@@ -63,15 +63,32 @@ jobs:
           echo "$HOME/bin" >> "$GITHUB_PATH"
           echo "RCLONE=$HOME/bin/rclone" >> "$GITHUB_ENV"
 
+      # 7-Zip reads RAR, zip and 7z: the tests of the archive backend
+      # compare rfetch with it.
+      - name: Install 7-Zip
+        env:
+          ARCHIVE: 7z2501-linux-x64.tar.xz
+          SHA256: 4ca3b7c6f2f67866b92622818b58233dc70367be2f36b498eb0bdeaaa44b53f4
+        run: |
+          mkdir -p "$HOME/bin" "$RUNNER_TEMP/7zip"
+          cd "$RUNNER_TEMP/7zip"
+          curl -fsSLO "https://www.7-zip.org/a/$ARCHIVE"
+          echo "$SHA256  $ARCHIVE" | sha256sum -c -
+          tar -xJf "$ARCHIVE" 7zz
+          install -m 755 7zz "$HOME/bin/7zz"
+          "$HOME/bin/7zz" i | head -n 2
+          echo "SEVENZIP=$HOME/bin/7zz" >> "$GITHUB_ENV"
+
       - run: npm ci
 
-      # A test against rclone or Go skips when the tool is not installed.
+      # A test against rclone, 7-Zip or Go skips when the tool is not
+      # installed.
       # Here the tools are installed, thus such a skip is an error.
       - name: npm test
         shell: bash
         run: |
           npm test 2>&1 | tee "$RUNNER_TEMP/test.log"
-          if grep -E "(rclone|Go) is not installed" "$RUNNER_TEMP/test.log"; then
+          if grep -E "(rclone|7-Zip|Go) is not installed" "$RUNNER_TEMP/test.log"; then
             echo "::error::A test skipped because a tool is not installed."
             exit 1
           fi
