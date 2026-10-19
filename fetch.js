@@ -356,6 +356,14 @@ async function resolve(input, headers) {
   // variable, a header or the query cannot set it.
   delete optionsEnv.RFETCH_LOCAL_ROOT;
   if (root !== undefined) optionsEnv.RFETCH_LOCAL_ROOT = root;
+  // As rclone, the path of a remote of sftp is from the login folder of the
+  // user, and a path that starts with "/" is from the root of the server.
+  // The pathname is the same for the two: the root "/" tells the backend.
+  if (type !== "local") {
+    const key = `RFETCH_${type.toUpperCase()}_ROOT`;
+    delete optionsEnv[key];
+    if (parsed.path.startsWith("/")) optionsEnv[key] = "/";
+  }
 
   return { type, name, pathname, params, options: optionsEnv };
 }

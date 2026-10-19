@@ -18,6 +18,9 @@ A [Rclone wrapper for WebAssembly build](./rclone.js) is also available.
 - Memory [:page_facing_up:](https://rclone.org/memory/)
 - S3: Amazon S3 and the services with the same API, for example Cloudflare R2
   [:page_facing_up:](https://rclone.org/s3/)
+- SFTP: the files of an SSH server, with a client of SSH in JavaScript that runs
+  in Node.js, Deno, Bun and Cloudflare Workers
+  [:page_facing_up:](https://rclone.org/sftp/)
 - WebDAV: Nextcloud, ownCloud, Fastmail Files, `rclone serve webdav` and other
   WebDAV servers [:page_facing_up:](https://rclone.org/webdav/)
 
