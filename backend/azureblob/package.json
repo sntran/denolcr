@@ -1,0 +1,25 @@
+{
+  "name": "@rfetch/azureblob",
+  "version": "0.1.0",
+  "description": "The azureblob backend of rfetch: the Blob service of Microsoft Azure Storage, and Azurite.",
+  "type": "module",
+  "exports": {
+    ".": "./main.js"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22.2.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sntran/rfetch.git",
+    "directory": "backend/azureblob"
+  },
+  "author": "Trần Nguyễn Sơn",
+  "license": "ISC",
+  "dependencies": {
+    "@rfetch/lib": "^0.1.0"
+  }
+}

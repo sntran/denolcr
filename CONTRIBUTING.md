@@ -267,6 +267,18 @@ a remote in its path, as `:archive:s3:bucket/a.zip`, uses `decodeRemotePath`:
 the connection string of that remote can have empty names, for example in
 `url='https://example.com'`.
 
+A service can refuse some names, or change them, for example a name with a
+control character or with a dot at the end. As rclone, a backend for such a
+service changes these names with the option `encoding`: read its value with
+`parseEncoding` of `@rfetch/lib/encoder`, give each name of a request to
+`encodeName`, and each name of a list to `decodeName`. The default value is the
+default of rclone for that backend: then rclone and rfetch keep the same names
+in the service.
+
+A backend that uploads a large file in parts, for example s3 and azureblob,
+reads the body with `Parts` of `@rfetch/lib/parts`: each part has the size of
+the option `chunk_size`, and only one part is in memory.
+
 A backend on another remote, for example alias, gives `fetch` the location
 `encodeLocation(remote) + encodePath(path)`. The option `remote` is a path of
 rclone: `encodeLocation` of `@rfetch/lib/fspath` keeps its `%`, `?` and `#` in
@@ -454,6 +466,13 @@ default). Put the credentials in `RFETCH_S3_ACCESS_KEY_ID` and
 `RCLONE_`. Use a bucket only for the tests: the tests make folders in it and
 delete them.
 
+The tests of `azureblob` use Azurite, the emulator of Azure Storage, with its
+data in memory: they run when `azurite-blob` is in the `PATH`, or when the
+variable `AZURITE` is its path. Get it with `npm install azurite@3.37.0`. The
+tests with rclone use the same Azurite. The tests of `doi` use a local server
+that gives the answers of Zenodo, InvenioRDM and Dataverse: they need no
+network.
+
 ## WebAssembly of crypt
 
 The crypt backend encrypts the blocks of the data with
@@ -505,6 +524,7 @@ message of the commit.
 ## Continuous integration
 
 The workflow `.github/workflows/ci.yml` runs for each push and each pull
-request. It installs rclone and Go, runs `npm test` with Node.js 22, 24 and 26,
-and runs `deno fmt --check`. Before a push, run `npm test` and
-`deno fmt --check`.
+request. It installs rclone, 7-Zip, Go, go-pmtiles, versatiles and Azurite, runs
+`npm test` with Node.js 22, 24 and 26, and runs `deno fmt --check`. A test that
+needs one of these tools skips when the tool is not installed: in the workflow,
+such a skip is an error. Before a push, run `npm test` and `deno fmt --check`.

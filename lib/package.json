@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     "./crc32": "./crc32.js",
+    "./encoder": "./encoder.js",
     "./format": "./format.js",
     "./headers": "./headers.js",
     "./fspath": "./fspath.js",
@@ -16,6 +17,7 @@
     "./obscure": "./obscure.js",
     "./options": "./options.js",
     "./overlay": "./overlay.js",
+    "./parts": "./parts.js",
     "./path": "./path.js",
     "./progress": "./progress.js",
     "./range": "./range.js",
