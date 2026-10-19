@@ -1,5 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { backendSuite } from "@rfetch/lib/testing/suite";
 import { remote } from "@rfetch/lib/testing/remote";
@@ -147,6 +156,33 @@ test("the search policy newest reads the newest file", async () => {
   assert.equal(await fs.get("f.txt").then((r) => r.text()), "new");
   const entries = await fs.list("");
   assert.deepEqual(entries.map(({ Size }) => Size), [3]);
+});
+
+test("the search policy newest compares the times in one second, as rclone", async () => {
+  const root = mkdtempSync(join(tmpdir(), "rfetch-union-newest-"));
+  try {
+    // Two files in the same second: `Last-Modified` cannot tell the newest.
+    for (
+      const [name, content, seconds] of [["a", "a", 0.2], ["b", "bb", 0.7]]
+    ) {
+      mkdirSync(join(root, name, "dir"), { recursive: true });
+      writeFileSync(join(root, name, "dir", "f.txt"), content);
+      const time = 1_700_000_000 + seconds;
+      utimesSync(join(root, name, "dir", "f.txt"), time, time);
+    }
+    for (const order of [["a", "b"], ["b", "a"]]) {
+      const upstreams = order.map((name) => `"${join(root, name)}"`).join(" ");
+      const fs = remote(backend, {
+        params: { upstreams, search_policy: "newest" },
+      });
+      const what = `upstreams ${order}`;
+      assert.equal(await (await fs.get("dir/f.txt")).text(), "bb", what);
+      const [entry] = await fs.list("dir/");
+      assert.equal(entry.Size, 2, what);
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("a new file goes to the upstreams that have its folder (epmfs)", async () => {

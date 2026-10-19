@@ -37,6 +37,7 @@ import { parseList } from "@rfetch/lib/list";
 import { readListing, renderListing } from "@rfetch/lib/listing";
 import { optionsOf, remoteHeaders } from "@rfetch/lib/options";
 import { decodePath, encodePath } from "@rfetch/lib/path";
+import { nanosecondsOf } from "@rfetch/lib/time";
 
 /**
  * The options of the backend, with their types, for example for the flag
@@ -183,10 +184,10 @@ function policyOf(name) {
 
 /**
  * Chooses among upstreams with a policy.
- * @template {{ time?: number }} T
+ * @template {{ time?: bigint }} T
  * @param {Policy} policy
  * @param {T[]} candidates In the order of the upstreams, with the time of
- *   the path in each one, in milliseconds.
+ *   the path in each one, in nanoseconds.
  * @returns {T[]}
  */
 function pick(policy, candidates) {
@@ -199,7 +200,7 @@ function pick(policy, candidates) {
       // As rclone, the first one wins when the times are the same.
       let newest = candidates[0];
       for (const candidate of candidates) {
-        if ((candidate.time ?? 0) > (newest.time ?? 0)) newest = candidate;
+        if ((candidate.time ?? 0n) > (newest.time ?? 0n)) newest = candidate;
       }
       return [newest];
     }
@@ -208,11 +209,13 @@ function pick(policy, candidates) {
   }
 }
 
-/** The time of an answer, from its `Last-Modified`, in milliseconds. */
+/** The time of an answer, from its `Last-Modified`, in nanoseconds. */
 function timeOf(/** @type {Response} */ response) {
-  const time = Date.parse(response.headers.get("Last-Modified") ?? "");
-  return Number.isNaN(time) ? 0 : time;
+  return nanosecondsOf(response.headers.get("Last-Modified")) ?? 0n;
 }
+
+/** One second, in nanoseconds. */
+const SECOND = 1_000_000_000n;
 
 /**
  * The folder of a path.
@@ -302,6 +305,55 @@ async function union(request, env = {}) {
   };
 
   /**
+   * The upstreams that have a path, with the time of the path in each one.
+   * `Last-Modified` has whole seconds, but rclone compares the times to the
+   * nanosecond. Thus for the policy `newest`, when more than one upstream
+   * has the newest second, the lists of the folder of the path give the
+   * times. When a list does not give a time in that second, the times stay
+   * the same, and the first upstream wins, as for two equal times.
+   * @param {Policy} policy
+   * @param {string} path
+   * @param {Found[]} found
+   * @returns {Promise<Array<Found & { time: bigint }>>}
+   */
+  const timed = async (policy, path, found) => {
+    const candidates = found.map((item) => ({
+      ...item,
+      time: timeOf(item.response),
+    }));
+    const folder = parentOf(path);
+    if (policy.pick !== "newest" || folder === "") return candidates;
+    const newest = candidates.reduce(
+      (time, candidate) => candidate.time > time ? candidate.time : time,
+      0n,
+    );
+    const same = candidates.filter(({ time }) => time === newest);
+    if (same.length < 2) return candidates;
+    const name = path.slice(folder.length).replace(/\/$/, "");
+    const times = await Promise.all(same.map(async ({ upstream }) => {
+      const response = await send(upstream, folder, { headers: plain });
+      if (!response.ok) {
+        await response.body?.cancel();
+        return undefined;
+      }
+      const entries = await readListing(
+        response,
+        new URL("http://remote/folder/"),
+      );
+      const entry = entries.find((entry) => entry.Name === name);
+      const time = nanosecondsOf(entry?.ModTime);
+      return time !== undefined && time / SECOND === newest / SECOND
+        ? time
+        : undefined;
+    }));
+    if (times.includes(undefined)) return candidates;
+    same.forEach((candidate, index) => {
+      candidate.time = /** @type {bigint} */ (times[index]);
+    });
+    return candidates;
+  };
+
+  /**
    * The upstreams for a new path, as the create policy of rclone. A policy
    * `ep` uses the upstreams that have the deepest folder of the path. When
    * no upstream has a folder of the path, it uses all the upstreams.
@@ -323,10 +375,7 @@ async function union(request, env = {}) {
         const found = await find(folder, creatable);
         if (found instanceof Response) return found;
         if (found.length > 0) {
-          const candidates = found.map(({ upstream, response }) => ({
-            upstream,
-            time: timeOf(response),
-          }));
+          const candidates = await timed(create, folder, found);
           return pick(create, candidates).map(({ upstream }) => upstream);
         }
       }
@@ -350,7 +399,7 @@ async function union(request, env = {}) {
     }
     const [chosen] = pick(
       config.search,
-      found.map((item) => ({ ...item, time: timeOf(item.response) })),
+      await timed(config.search, path, found),
     );
     if (method === "HEAD") {
       // A folder of union has no body and no size.
@@ -400,7 +449,7 @@ async function union(request, env = {}) {
       // A change of a path that exists, as the action policy of rclone.
       targets = pick(
         config.action,
-        writable.map((item) => ({ ...item, time: timeOf(item.response) })),
+        await timed(config.action, path, writable),
       ).map(({ upstream }) => upstream);
     } else {
       // A new path, or a file that is only in upstreams that union only
@@ -448,7 +497,7 @@ async function union(request, env = {}) {
     }
     const targets = pick(
       config.action,
-      writable.map((item) => ({ ...item, time: timeOf(item.response) })),
+      await timed(config.action, path, writable),
     );
     const responses = await Promise.all(
       targets.map(({ upstream }) =>
@@ -521,13 +570,12 @@ async function list(config, path, headers, send, query) {
     return failed ?? new Response("directory not found", { status: 404 });
   }
 
-  /** @type {Map<string, Array<import("@rfetch/lib/listing").Entry & { time: number }>>} */
+  /** @type {Map<string, Array<import("@rfetch/lib/listing").Entry & { time: bigint }>>} */
   const names = new Map();
   for (const entries of lists) {
     if (entries instanceof Response) continue;
     for (const entry of entries) {
-      const time = Date.parse(entry.ModTime);
-      const item = { ...entry, time: Number.isNaN(time) ? 0 : time };
+      const item = { ...entry, time: nanosecondsOf(entry.ModTime) ?? 0n };
       const same = names.get(entry.Name);
       if (same) same.push(item);
       else names.set(entry.Name, [item]);
