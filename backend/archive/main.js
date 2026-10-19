@@ -29,13 +29,18 @@
  * requests. The time of a folder that is not in the index of a zip file is
  * the time of the request, as rclone.
  */
-import { readListing, renderListing } from "@rfetch/lib/listing";
+import { renderListing } from "@rfetch/lib/listing";
 import { mimeType } from "@rfetch/lib/mime";
 import { optionsOf, remoteHeaders } from "@rfetch/lib/options";
-import { decodePath, encodePath } from "@rfetch/lib/path";
+import {
+  locate as locateIn,
+  partHeaders,
+  passThrough,
+  pathOf,
+} from "@rfetch/lib/overlay";
+import { decodePath } from "@rfetch/lib/path";
 import { notSatisfiable, parseRange, partialHeaders } from "@rfetch/lib/range";
 import { RangedFile, RemoteError } from "@rfetch/lib/ranged";
-import { parse } from "@rfetch/lib/fspath";
 import { sized } from "@rfetch/lib/sized";
 
 import { ArchiveError } from "./entry.js";
@@ -138,38 +143,8 @@ export function formatOf(name) {
  * @throws {SyntaxError} When the path is not correct.
  */
 export function locate(text) {
-  const { name, configString, path } = parse(text);
-  const head = name ? `${configString}:` : "";
-  const names = path.split("/");
-  // An archive with a "/" after it: thus not the last name.
-  for (let index = 0; index < names.length - 1; index++) {
-    const open = names[index] && formatOf(names[index]);
-    if (open) {
-      return {
-        location: head + encodePath(names.slice(0, index + 1).join("/")),
-        inner: names.slice(index + 1).join("/"),
-        open,
-      };
-    }
-  }
-  return { location: head + encodePath(path), inner: null };
-}
-
-/**
- * The path of rclone in the path of a request with no option `remote`. As
- * rclone, the path is the remote and its path, for example
- * `/s3:bucket/files.zip/` for `:archive:s3:bucket/files.zip/`. A path with
- * no remote is a local path, from the root.
- * @param {string} path
- */
-function pathOf(path) {
-  const text = path.slice(1);
-  try {
-    if (text && parse(text).name) return text;
-  } catch {
-    // Not a remote: a local path.
-  }
-  return path;
+  const { format, ...target } = locateIn(text, formatOf);
+  return format ? { ...target, open: format } : target;
 }
 
 /**
@@ -278,40 +253,12 @@ async function archive(request, env = {}) {
 
   if (target.inner === null) {
     // A path out of the archives: the request goes to the remote.
-    /** @type {RequestInit} */
-    const init = { method, headers };
-    if (request.body) {
-      init.body = request.body;
-      init.duplex = "half";
-    }
-    const response = await fetch(target.location, init);
-    if (!response.ok) return response;
-    if (path.endsWith("/") && (method === "GET" || method === "HEAD")) {
-      const answer = new Headers(response.headers);
-      answer.delete("Content-Length");
-      answer.set("Content-Type", "text/html;charset=utf-8");
-      if (method === "HEAD") {
-        await response.body?.cancel();
-        return new Response(null, { status: response.status, headers: answer });
-      }
-      const entries = await readListing(
-        response,
-        new URL("http://remote/folder/"),
-      );
-      return new Response(
-        renderListing(archivesAsFolders(entries), { query: `${searchParams}` }),
-        { status: response.status, headers: answer },
-      );
-    }
-    if (method === "PUT") {
-      const answer = new Headers(response.headers);
-      answer.set("Content-Location", pathname);
-      return new Response(response.body, {
-        status: response.status,
-        headers: answer,
-      });
-    }
-    return response;
+    return await passThrough(
+      request,
+      target.location,
+      headers,
+      archivesAsFolders,
+    );
   }
 
   // A path in an archive.
@@ -320,10 +267,7 @@ async function archive(request, env = {}) {
     return new Response("read only file system", { status: 403 });
   }
   // The headers of a request for a part of the archive.
-  const plain = new Headers(headers);
-  for (const name of ["Range", "If-Range", "Content-Length", "Content-Type"]) {
-    plain.delete(name);
-  }
+  const plain = partHeaders(headers);
   const file = new RangedFile((extra) => {
     const init = new Headers(plain);
     for (const [name, value] of extra) init.set(name, value);

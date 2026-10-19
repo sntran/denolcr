@@ -330,6 +330,10 @@ skipped. The tests of `lib/list.js` compare it with the `encoding/csv` package
 of Go, when `go` is in the `PATH` or when the variable `GO` is its path. The
 tests of `backend/archive/sevenzip_test.js` compare the archive backend with
 7-Zip, when `7zz` is in the `PATH` or when the variable `SEVENZIP` is its path.
+The tests of `backend/tiles/go_pmtiles_test.js` compare the tiles backend with
+go-pmtiles, when `go-pmtiles` is in the `PATH` or when the variable `PMTILES` is
+its path: `go install github.com/protomaps/go-pmtiles@v1.31.2`. They also need
+`node:sqlite`, of Node.js 22.13 or later.
 
 The tests of `s3` use `rclone serve s3`, a server of the S3 API on a local
 folder. They also run on a real service when the variables `S3_TEST_ENDPOINT`

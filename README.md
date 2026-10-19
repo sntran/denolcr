@@ -29,6 +29,8 @@ These backends adapt or modify other storage providers
 - Compress: compress files with gzip
   [:page_facing_up:](https://rclone.org/compress/)
 - Crypt: encrypt files [:page_facing_up:](https://rclone.org/crypt/)
+- Tiles: read the map tiles and the metadata of PMTiles files, as folders
+  `Z/X/Y.mvt`. rclone has no such backend.
 - Union: the merged contents of several remotes
   [:page_facing_up:](https://rclone.org/union/)
 

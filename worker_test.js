@@ -75,6 +75,30 @@ test("reads a file in a zip file of a remote, with the remote in the path", asyn
   );
 });
 
+test("reads a tile of a PMTiles file of a remote", async () => {
+  const { pmtilesFile } = await import("./backend/tiles/testing.js");
+  const put = await send("/:memory:/worker-tiles/map.pmtiles", {
+    method: "PUT",
+    body: pmtilesFile([
+      { z: 0, x: 0, y: 0, data: "world" },
+      { z: 1, x: 1, y: 0, data: "north-east" },
+    ]),
+  });
+  assert.equal(put.status, 201);
+  const tile = await send(
+    "/:tiles::memory:/worker-tiles/map.pmtiles/1/1/0.mvt",
+  );
+  assert.equal(tile.status, 200);
+  assert.equal(await tile.text(), "north-east");
+  const list = await send("/:tiles::memory:/worker-tiles/map.pmtiles/", {
+    headers: { Accept: "application/json" },
+  });
+  assert.deepEqual(
+    (await list.json()).map(({ Path }) => Path),
+    ["0", "1", "metadata.json"],
+  );
+});
+
 test("reads a named remote of the headers", async () => {
   const headers = { RFETCH_CONFIG_MEM_TYPE: "memory" };
   await send("/mem:worker/b.txt", { method: "PUT", body: "b", headers });
@@ -185,6 +209,7 @@ test("has no local backend: a client reads no file of the runtime", async () => 
       ["/:union:hostname", { RFETCH_UNION_UPSTREAMS: "/etc :memory:/x" }],
       ["/:compress:", { RFETCH_COMPRESS_REMOTE: "/etc" }],
       ["/:archive:/etc/", {}],
+      ["/:tiles:/etc/", {}],
       ["/disk:etc/hostname", { RFETCH_CONFIG_DISK_TYPE: "local" }],
     ]
   ) {
