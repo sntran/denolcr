@@ -7,7 +7,8 @@
  * - pyftpdlib, with no TLS, with `AUTH TLS` (explicit FTPS) or with TLS
  *   from the start (implicit FTPS), and with MFMT, which sets the time of a
  *   file. It runs when the Python of PYFTPDLIB_PYTHON, or `python3`, has
- *   pyftpdlib and pyOpenSSL.
+ *   pyftpdlib and pyOpenSSL. From Python 3.12, pyftpdlib also needs
+ *   pyasynchat and pyasyncore.
  *
  * The certificates of TLS come from openssl.
  */
@@ -27,17 +28,21 @@ export const hasRclone = spawnSync(RCLONE, ["version"]).status === 0;
 /** Tells if openssl is installed. */
 export const hasOpenSSL = spawnSync("openssl", ["version"]).status === 0;
 
-/** Tells if pyftpdlib and pyOpenSSL are installed. */
-export const hasPyftpdlib =
-  spawnSync(PYTHON, ["-I", "-c", "import pyftpdlib, OpenSSL"]).status === 0;
+/** Tells if pyftpdlib and pyOpenSSL are installed, with the servers. */
+export const hasPyftpdlib = spawnSync(PYTHON, [
+  "-I",
+  "-c",
+  "from pyftpdlib.handlers import TLS_FTPHandler; import pyftpdlib.servers",
+]).status === 0;
 
 /** The user and the password of the test servers. */
 export const LOGIN = { user: "rfetch-user", pass: "rfetch pass é" };
 
 /**
- * A server of pyftpdlib: the arguments are the folder, the port, the user,
- * the password, the TLS (`explicit`, `implicit` or ""), and the files of
- * the certificate and of the key.
+ * A server of pyftpdlib: the arguments are the folder, the user, the
+ * password, the TLS (`explicit`, `implicit` or ""), and the files of the
+ * certificate and of the key. The server takes a free port, and writes it
+ * on a line: no other process can take the port before the server.
  */
 const PYFTPDLIB_SERVER = `
 import sys
@@ -53,7 +58,7 @@ class ImplicitTLSHandler(TLS_FTPHandler):
         super().handle()
 
 
-folder, port, user, password, tls, cert, key = sys.argv[1:8]
+folder, user, password, tls, cert, key = sys.argv[1:7]
 authorizer = DummyAuthorizer()
 authorizer.add_user(user, password, folder, perm="elradfmwMT")
 handler = {
@@ -67,7 +72,8 @@ if tls:
     handler.tls_data_required = True
 handler.authorizer = authorizer
 handler.encoding = "utf8"
-server = FTPServer(("127.0.0.1", int(port)), handler)
+server = FTPServer(("127.0.0.1", 0), handler)
+print(server.address[1], flush=True)
 server.serve_forever()
 `;
 
@@ -195,7 +201,6 @@ export async function servePyftpdlib({ tls } = {}) {
   mkdirSync(folder);
   const script = join(home, "server.py");
   writeFileSync(script, PYFTPDLIB_SERVER);
-  const port = await freePort();
   const files = tls ? makeCertificate(home) : { cert: "", key: "" };
   const child = spawn(
     PYTHON,
@@ -203,7 +208,6 @@ export async function servePyftpdlib({ tls } = {}) {
       "-I",
       script,
       folder,
-      `${port}`,
       LOGIN.user,
       LOGIN.pass,
       tls ?? "",
@@ -212,10 +216,29 @@ export async function servePyftpdlib({ tls } = {}) {
     ],
     {
       env: { PATH: process.env.PATH, HOME: home, TZ: "UTC" },
-      stdio: "ignore",
+      stdio: ["ignore", "pipe", "pipe"],
     },
   );
-  await waitForPort(port);
+  // The log of the server, for the error of a server that does not start.
+  let log = "";
+  child.stderr.setEncoding("utf8");
+  child.stderr.on("data", (text) => {
+    if (log.length < 16384) log += text;
+  });
+  const port = await new Promise((resolve, reject) => {
+    let output = "";
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (text) => {
+      output += text;
+      const match = /^(\d+)\n/.exec(output);
+      if (match) resolve(Number(match[1]));
+    });
+    child.once("error", reject);
+    child.once("exit", (code) => {
+      rmSync(home, { recursive: true, force: true });
+      reject(new Error(`pyftpdlib stopped with the code ${code}: ${log}`));
+    });
+  });
   return {
     host: "127.0.0.1",
     port,

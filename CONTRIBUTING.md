@@ -484,7 +484,8 @@ TLS, with explicit TLS and with implicit TLS, and with MFMT, which sets the time
 of a file. The certificates come from `openssl` for each run. The tests on
 pyftpdlib run when the Python of the variable `PYFTPDLIB_PYTHON`, or `python3`,
 has pyftpdlib and pyOpenSSL: get them with
-`pip install pyftpdlib==2.2.0 pyOpenSSL==26.4.0`, for example in a venv. The
+`pip install pyftpdlib==2.2.0 pyOpenSSL==26.4.0`, for example in a venv. From
+Python 3.12, pip also installs pyasynchat and pyasyncore for pyftpdlib. The
 tests also compare rfetch with the ftp backend of rclone on the same servers.
 `rclone serve ftp` has no MFMT, and its implicit TLS refuses PBSZ and PROT: the
 ftp backend of rclone and of rfetch cannot use it. The tests in

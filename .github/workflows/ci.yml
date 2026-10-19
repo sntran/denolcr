@@ -126,9 +126,11 @@ jobs:
         run: |
           python3 -m venv "$RUNNER_TEMP/pyftpdlib"
           "$RUNNER_TEMP/pyftpdlib/bin/pip" install --quiet --no-deps \
-            pyftpdlib==2.2.0 pyOpenSSL==26.4.0 cryptography==50.0.2 \
-            cffi==2.1.1 pycparser==3.11 typing_extensions==4.16.0
-          "$RUNNER_TEMP/pyftpdlib/bin/python" -I -c "import pyftpdlib, OpenSSL; print(pyftpdlib.__ver__, OpenSSL.__version__)"
+            pyftpdlib==2.2.0 pyasynchat==1.0.5 pyasyncore==1.0.5 \
+            pyOpenSSL==26.4.0 cryptography==50.0.2 cffi==2.1.1 \
+            pycparser==3.11 typing_extensions==4.16.0
+          "$RUNNER_TEMP/pyftpdlib/bin/pip" check
+          "$RUNNER_TEMP/pyftpdlib/bin/python" -I -c "from pyftpdlib.handlers import TLS_FTPHandler; import pyftpdlib.servers, pyftpdlib, OpenSSL; print(pyftpdlib.__ver__, OpenSSL.__version__)"
           echo "PYFTPDLIB_PYTHON=$RUNNER_TEMP/pyftpdlib/bin/python" >> "$GITHUB_ENV"
 
       - run: npm ci
