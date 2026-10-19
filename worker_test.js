@@ -99,6 +99,30 @@ test("reads a tile of a PMTiles file of a remote", async () => {
   );
 });
 
+test("reads a tile of a VersaTiles file of a remote", async () => {
+  const { versatilesFile } = await import("./backend/tiles/testing.js");
+  const put = await send("/:memory:/worker-tiles/map.versatiles", {
+    method: "PUT",
+    body: versatilesFile([
+      { z: 0, x: 0, y: 0, data: "world" },
+      { z: 1, x: 1, y: 0, data: "north-east" },
+    ]),
+  });
+  assert.equal(put.status, 201);
+  const tile = await send(
+    "/:tiles::memory:/worker-tiles/map.versatiles/1/1/0.mvt",
+  );
+  assert.equal(tile.status, 200);
+  assert.equal(await tile.text(), "north-east");
+  // The stored bytes in brotli, for a client that decodes them.
+  const stored = await send(
+    "/:tiles::memory:/worker-tiles/map.versatiles/0/0/0.mvt",
+    { headers: { "Accept-Encoding": "gzip, br" } },
+  );
+  assert.equal(stored.headers.get("Content-Encoding"), "br");
+  await stored.body?.cancel();
+});
+
 test("reads a named remote of the headers", async () => {
   const headers = { RFETCH_CONFIG_MEM_TYPE: "memory" };
   await send("/mem:worker/b.txt", { method: "PUT", body: "b", headers });

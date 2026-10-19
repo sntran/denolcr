@@ -355,9 +355,10 @@ export class PMTiles {
     return new PMTiles(file, header, root, leafBudget);
   }
 
-  /** The metadata, in JSON, after decompression. */
+  /** The metadata, in JSON, after decompression, or null for no metadata. */
   async metadata() {
     const { metadataOffset, metadataLength, internalCompression } = this.header;
+    if (metadataLength === 0) return null;
     const bytes = await this.file.read(metadataOffset, metadataLength);
     if (bytes.length !== metadataLength) {
       throw malformed("the metadata are out of the file");

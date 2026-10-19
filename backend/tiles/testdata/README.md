@@ -42,3 +42,33 @@ db.close();
 '
 go-pmtiles convert fixture.mbtiles fixture.pmtiles
 ```
+
+`fixture.versatiles` comes from versatiles 4.15.0, the tool of VersaTiles, from
+a folder of tiles. It has the same tiles and the same name as `fixture.pmtiles`,
+and the tool keeps one copy of the tiles `sea` in each block. The tiles and the
+metadata are in brotli. The tool writes the blocks and the tiles in no fixed
+order: each run of the commands gives other bytes, with the same tiles.
+
+The commands:
+
+```sh
+node --input-type=module -e '
+import { mkdirSync, writeFileSync } from "node:fs";
+for (let z = 0; z <= 3; z++) {
+  for (let x = 0; x < 2 ** z; x++) {
+    for (let y = 0; y < 2 ** z; y++) {
+      if (z === 3 && (x * y) % 3 === 1) continue;
+      mkdirSync(`fixture/${z}/${x}`, { recursive: true });
+      writeFileSync(
+        `fixture/${z}/${x}/${y}.pbf`,
+        (x + y) % 4 === 0 ? "sea" : `tile ${z}/${x}/${y}`,
+      );
+    }
+  }
+}
+writeFileSync("fixture/meta.json", JSON.stringify({
+  name: "fixture", vector_layers: [{ id: "a", fields: {} }],
+}));
+'
+versatiles convert --compress brotli "$PWD/fixture" fixture.versatiles
+```

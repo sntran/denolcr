@@ -11,10 +11,13 @@
  *   type that is not known.
  * - `encoding`: the encoding of the stored tiles, as the content codings of
  *   HTTP: `identity`, `gzip`, `br` or `zstd`.
- * - `metadata()`: the metadata, in JSON.
+ * - `metadata()`: the metadata, in JSON, or null for a file with no
+ *   metadata.
  * - `tile(z, x, y)`: the place of a tile in the file, or null.
- * - `zoom(z, limit)`: the tiles of a zoom level, in no order.
+ * - `zoom(z, limit, x)`: the tiles of a zoom level, in no order. With `x`,
+ *   a reader can give only the tiles of the column `x`.
  */
+import * as zlib from "node:zlib";
 
 /** An error in a file of tiles, or a part of a format that rfetch does not read. */
 export class TilesError extends Error {
@@ -37,10 +40,10 @@ export class TilesError extends Error {
  * @property {number} maxZoom
  * @property {string} type
  * @property {string} encoding
- * @property {() => Promise<Uint8Array>} metadata
+ * @property {() => Promise<Uint8Array | null>} metadata
  * @property {(z: number, x: number, y: number) =>
  *   Promise<{ offset: number, length: number } | null>} tile
- * @property {(z: number, limit: number) =>
+ * @property {(z: number, limit: number, x?: number) =>
  *   Promise<Array<{ x: number, y: number, length: number }>>} zoom
  */
 
@@ -58,23 +61,123 @@ const CODINGS = new Map([
 ]);
 
 /**
+ * The decoders of node:zlib, for a runtime with no `DecompressionStream` of
+ * the coding: a Worker of Cloudflare has no brotli and no zstd in
+ * `DecompressionStream`, and Node.js has no zstd in it. Node.js before
+ * 22.15 has no zstd in node:zlib.
+ * @type {Map<string, ((bytes: Uint8Array, options: { maxOutputLength: number }) => Uint8Array) | undefined>}
+ */
+const DECODERS = new Map([
+  ["br", zlib.brotliDecompressSync],
+  ["zstd", zlib.zstdDecompressSync],
+]);
+
+/**
+ * Tells if an error of node:zlib is for an output that is too large: a
+ * RangeError in Node.js and Bun, and "Memory limit exceeded" in a Worker.
+ * @param {unknown} error
+ */
+function isTooLarge(error) {
+  return error instanceof RangeError ||
+    /memory limit|larger than/i.test(/** @type {Error} */ (error)?.message);
+}
+
+/**
+ * Decodes data in memory with node:zlib, to at most 32 MiB.
+ * @param {(bytes: Uint8Array, options: { maxOutputLength: number }) => Uint8Array} decode
+ * @param {Uint8Array} bytes
+ * @param {string} format
+ * @param {string} what
+ */
+function decodeAll(decode, bytes, format, what) {
+  try {
+    return new Uint8Array(decode(bytes, { maxOutputLength: MAX_BYTES }));
+  } catch (error) {
+    if (isTooLarge(error)) {
+      throw new TilesError(
+        `${format}: ${what} has more than ${MAX_BYTES} bytes`,
+        501,
+      );
+    }
+    throw new TilesError(`${format}: ${what} is not correct compressed data`);
+  }
+}
+
+/**
+ * A stream that decodes data with node:zlib: it keeps the data until their
+ * end, at most 32 MiB, and then decodes them. A tile is small.
+ * @param {(bytes: Uint8Array, options: { maxOutputLength: number }) => Uint8Array} decode
+ * @param {string} format
+ * @param {string} what
+ * @returns {TransformStream<Uint8Array, Uint8Array>}
+ */
+function decodeStream(decode, format, what) {
+  /** @type {Uint8Array[]} */
+  const chunks = [];
+  let size = 0;
+  return new TransformStream({
+    transform(chunk) {
+      size += chunk.length;
+      if (size > MAX_BYTES) {
+        throw new TilesError(
+          `${format}: ${what} has more than ${MAX_BYTES} bytes`,
+          501,
+        );
+      }
+      chunks.push(chunk);
+    },
+    flush(controller) {
+      controller.enqueue(decodeAll(decode, join(chunks, size), format, what));
+    },
+  });
+}
+
+/**
+ * Joins chunks of bytes.
+ * @param {Uint8Array[]} chunks
+ * @param {number} size
+ */
+function join(chunks, size) {
+  const result = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return result;
+}
+
+/**
+ * A `DecompressionStream` of a coding, or undefined when the runtime does
+ * not have it.
+ * @param {string} encoding
+ */
+function decompressionStream(encoding) {
+  const [stream] = CODINGS.get(encoding) ?? [];
+  if (!stream) return undefined;
+  try {
+    return new DecompressionStream(/** @type {CompressionFormat} */ (stream));
+  } catch {
+    // The runtime does not have the format.
+    return undefined;
+  }
+}
+
+/**
  * A stream that decodes data, or undefined for `identity`.
  * @param {string} encoding A content coding.
  * @param {string} format The name of the format, for the error.
  * @param {string} what For the error, for example "the tiles".
- * @returns {DecompressionStream | undefined}
+ * @returns {ReadableWritablePair<Uint8Array, Uint8Array> | undefined}
  * @throws {TilesError} 501 when the runtime does not decode the encoding.
  */
 export function decoder(encoding, format, what) {
   if (encoding === "identity") return undefined;
-  const [stream, name] = CODINGS.get(encoding) ?? [undefined, encoding];
-  if (stream) {
-    try {
-      return new DecompressionStream(/** @type {CompressionFormat} */ (stream));
-    } catch {
-      // The runtime does not have the format.
-    }
-  }
+  const stream = decompressionStream(encoding);
+  if (stream) return stream;
+  const decode = DECODERS.get(encoding);
+  if (decode) return decodeStream(decode, format, what);
+  const [, name] = CODINGS.get(encoding) ?? [undefined, encoding];
   throw new TilesError(
     `${format}: the compression ${name} of ${what} is not supported`,
     501,
@@ -113,13 +216,7 @@ export async function decompress(bytes, encoding, format, what) {
     if (error instanceof TilesError) throw error;
     throw new TilesError(`${format}: ${what} is not correct compressed data`);
   }
-  const result = new Uint8Array(size);
-  let offset = 0;
-  for (const chunk of chunks) {
-    result.set(chunk, offset);
-    offset += chunk.length;
-  }
-  return result;
+  return join(chunks, size);
 }
 
 /** The media types of the tiles, by type. */
@@ -130,6 +227,10 @@ const TYPES = new Map([
   ["webp", "image/webp"],
   ["avif", "image/avif"],
   ["mlt", "application/vnd.maplibre-tile"],
+  ["svg", "image/svg+xml"],
+  ["geojson", "application/geo+json"],
+  ["topojson", "application/topo+json"],
+  ["json", "application/json"],
 ]);
 
 /**

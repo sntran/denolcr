@@ -5,15 +5,18 @@
  * remote, with no download of all the file. rclone has no such backend.
  * Each file of tiles is a folder:
  *
- * - `metadata.json`: the metadata of the file, in JSON.
+ * - `metadata.json`: the metadata of the file, in JSON, when the file has
+ *   metadata.
  * - `Z/X/Y.EXT`: the tile Y of the column X at the zoom level Z, for
  *   example `14/8185/5449.mvt`. The extension comes from the type of the
- *   tiles: `.mvt`, `.png`, `.jpg`, `.webp`, `.avif` or `.mlt`, and none
- *   for a type that is not known.
+ *   tiles: `.mvt`, `.png`, `.jpg`, `.webp`, `.avif`, `.mlt`, `.svg`,
+ *   `.geojson`, `.topojson` or `.json`, and none for a type that is not
+ *   known.
  *
  * The formats are known by their names:
  *
  * - PMTiles, version 3: `.pmtiles`. See `pmtiles.js`.
+ * - VersaTiles, version 2: `.versatiles`. See `versatiles.js`.
  *
  * As the archive remote, a named remote tells the remote of the files with
  * the option `remote`, for example `remote = r2:maps`. Then
@@ -25,21 +28,34 @@
  * A tile in gzip, brotli or zstd follows the header `Accept-Encoding` of the
  * request. When the request accepts the encoding, for example from a
  * browser, the answer has the stored bytes with `Content-Encoding`: no CPU
- * time, also for brotli in a Worker. Else the tile is decompressed, for
- * example for `rfetch cat` or a copy, and the file is the tile. In a Worker
- * of Cloudflare, the request has the `Accept-Encoding` of Cloudflare, not
- * of the client: Cloudflare decodes the answer for a client that does not
- * accept the encoding. The size of
- * a decompressed tile is not known before the decompression: thus its size
- * in a list is -1, and a compressed tile has no ranges. A tile with no
- * compression, for example most PNG and JPEG tiles, has its size and
- * ranges.
+ * time. Else the tile is decompressed, for example for `rfetch cat` or a
+ * copy, and the file is the tile. In a Worker of Cloudflare, the request
+ * has the `Accept-Encoding` of Cloudflare, not of the client: Cloudflare
+ * decodes the answer for a client that does not accept the encoding. The
+ * size of a decompressed tile is not known before the decompression: thus
+ * its size in a list is -1, and a compressed tile has no ranges. A tile
+ * with no compression, for example most PNG and JPEG tiles, has its size
+ * and ranges. A Worker has no brotli and no zstd in `DecompressionStream`:
+ * there, rfetch decodes them with node:zlib, which needs the compatibility
+ * flag `nodejs_compat`.
  *
- * Costs: a tile needs one request for the start of the file, one for each
- * leaf directory on its path, and one for its data. A list of a zoom level
- * or of a column reads all the directories of that zoom level: a list of
- * more than 100000 tiles, or one that needs more than 32 leaf directories,
- * gives 501. rfetch keeps no data between requests.
+ * Costs: rfetch keeps no data between requests.
+ *
+ * - PMTiles: a tile needs one request for the start of the file, one for
+ *   each leaf directory on its path, and one for its data. A list of a
+ *   zoom level or of a column reads all the directories of that zoom
+ *   level.
+ * - VersaTiles: a tile needs one request for the start of the file, one
+ *   for the block index, one for the tile index of its block, and one for
+ *   its data. The block index and the tile indexes are in brotli. For
+ *   example, in the file of OpenStreetMap of VersaTiles, the block index
+ *   has 70 KB, and the tile index of a block of the zoom level 14 has
+ *   241 KB, and 768 KiB after the decompression. A list of a zoom level
+ *   reads the tile index of each block of that zoom level, and a list of a
+ *   column the tile index of each block on the column.
+ *
+ * A list of more than 100000 tiles, or one that needs more than 32 leaf
+ * directories or 32 blocks, gives 501.
  */
 import { renderListing } from "@rfetch/lib/listing";
 import { optionsOf, remoteHeaders } from "@rfetch/lib/options";
@@ -51,6 +67,7 @@ import { sized } from "@rfetch/lib/sized";
 
 import { PMTiles } from "./pmtiles.js";
 import { accepts, decoder, TilesError, typeOf } from "./tileset.js";
+import { VersaTiles } from "./versatiles.js";
 
 /**
  * The options of the backend, with their types, for example for the flag
@@ -67,6 +84,7 @@ export const options = {
  */
 const FORMATS = new Map([
   [".pmtiles", (file) => PMTiles.open(file)],
+  [".versatiles", (file) => VersaTiles.open(file)],
 ]);
 
 /**
@@ -232,21 +250,25 @@ async function answer(request, file, tiles, inner) {
   switch (place.kind) {
     case "root": {
       const metadata = await tiles.metadata();
-      const zooms = [];
+      const entries = [];
       for (let z = tiles.minZoom; z <= tiles.maxZoom; z++) {
-        zooms.push(folderOf(`${z}`));
+        entries.push(folderOf(`${z}`));
       }
-      return list([...zooms, {
-        Name: METADATA,
-        IsDir: false,
-        Size: metadata.length,
-        MimeType: "application/json",
-        ModTime: time,
-      }]);
+      if (metadata) {
+        entries.push({
+          Name: METADATA,
+          IsDir: false,
+          Size: metadata.length,
+          MimeType: "application/json",
+          ModTime: time,
+        });
+      }
+      return list(entries);
     }
 
     case "metadata": {
       const metadata = await tiles.metadata();
+      if (!metadata) return notFound("object not found");
       const result = fileHeaders("application/json", metadata.length);
       if (result instanceof Response) return result;
       const { headers, range } = result;
@@ -261,7 +283,11 @@ async function answer(request, file, tiles, inner) {
     case "column": {
       const { z } = place;
       if (!inZooms(z)) return notFound("directory not found");
-      const found = await tiles.zoom(z, LIST_LIMIT);
+      const found = await tiles.zoom(
+        z,
+        LIST_LIMIT,
+        place.kind === "column" ? place.x : undefined,
+      );
       if (place.kind === "zoom") {
         const columns = new Set(found.map(({ x }) => x));
         return list(

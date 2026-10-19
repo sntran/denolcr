@@ -1,8 +1,8 @@
 # The checks of each push and of each pull request:
 #
 # - npm test: the tests, with the oldest Node.js of package.json and the
-#   newer versions. The job installs rclone, 7-Zip, Go and go-pmtiles, thus
-#   the tests that compare rfetch with these tools run too.
+#   newer versions. The job installs rclone, 7-Zip, Go, go-pmtiles and
+#   versatiles, thus the tests that compare rfetch with these tools run too.
 # - deno fmt --check: the format of the files.
 # - wasm: the tests of the crate of backend/crypt/secretbox.wasm, and its
 #   build from its source gives the same bytes as the file in the repository.
@@ -90,16 +90,33 @@ jobs:
           "$HOME/bin/go-pmtiles" version
           echo "PMTILES=$HOME/bin/go-pmtiles" >> "$GITHUB_ENV"
 
+      # versatiles reads and writes VersaTiles files: the tests of the tiles
+      # backend compare rfetch with it.
+      - name: Install versatiles
+        env:
+          VERSION: 4.15.0
+          SHA256: adf3bef84ad006cb1cc37c2837bcae1a0effd94fe021e29d13a0325ab8bb1168
+        run: |
+          mkdir -p "$HOME/bin" "$RUNNER_TEMP/versatiles"
+          cd "$RUNNER_TEMP/versatiles"
+          archive=versatiles-linux-gnu-x86_64.tar.gz
+          curl -fsSLO "https://github.com/versatiles-org/versatiles-rs/releases/download/v$VERSION/$archive"
+          echo "$SHA256  $archive" | sha256sum -c -
+          tar -xzf "$archive" versatiles
+          install -m 755 versatiles "$HOME/bin/versatiles"
+          "$HOME/bin/versatiles" --version
+          echo "VERSATILES=$HOME/bin/versatiles" >> "$GITHUB_ENV"
+
       - run: npm ci
 
-      # A test against rclone, 7-Zip, Go or go-pmtiles skips when the tool is
-      # not installed.
+      # A test against rclone, 7-Zip, Go, go-pmtiles or versatiles skips when
+      # the tool is not installed.
       # Here the tools are installed, thus such a skip is an error.
       - name: npm test
         shell: bash
         run: |
           npm test 2>&1 | tee "$RUNNER_TEMP/test.log"
-          if grep -E "((rclone|7-Zip|Go|go-pmtiles) is not installed|node:sqlite is not in)" "$RUNNER_TEMP/test.log"; then
+          if grep -E "((rclone|7-Zip|Go|go-pmtiles|versatiles) is not installed|node:sqlite is not in)" "$RUNNER_TEMP/test.log"; then
             echo "::error::A test skipped because a tool is not installed."
             exit 1
           fi

@@ -8,26 +8,9 @@ import { brotliDecompressSync, gunzipSync } from "node:zlib";
 
 import { tileId, tileOf } from "./pmtiles.js";
 import { accepts } from "./tileset.js";
-import { COMPRESSIONS, pmtilesFile } from "./testing.js";
+import { allTiles, COMPRESSIONS, pmtilesFile } from "./testing.js";
 
 const decoder = new TextDecoder();
-
-/**
- * The tiles of all the zoom levels from 0 up to `max`.
- * @param {number} max
- * @param {(z: number, x: number, y: number) => string} [data]
- */
-function allTiles(max, data = (z, x, y) => `tile ${z}/${x}/${y}`) {
-  const tiles = [];
-  for (let z = 0; z <= max; z++) {
-    for (let x = 0; x < 2 ** z; x++) {
-      for (let y = 0; y < 2 ** z; y++) {
-        tiles.push({ z, x, y, data: data(z, x, y) });
-      }
-    }
-  }
-  return tiles;
-}
 
 /**
  * Puts a file in the memory backend.

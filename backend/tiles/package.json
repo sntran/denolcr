@@ -1,7 +1,7 @@
 {
   "name": "@rfetch/tiles",
   "version": "0.1.0",
-  "description": "The tiles backend of rfetch: the map tiles and the metadata in the PMTiles files of a remote.",
+  "description": "The tiles backend of rfetch: the map tiles and the metadata in the PMTiles and VersaTiles files of a remote.",
   "type": "module",
   "exports": {
     ".": "./main.js"

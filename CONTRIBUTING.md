@@ -333,7 +333,13 @@ tests of `backend/archive/sevenzip_test.js` compare the archive backend with
 The tests of `backend/tiles/go_pmtiles_test.js` compare the tiles backend with
 go-pmtiles, when `go-pmtiles` is in the `PATH` or when the variable `PMTILES` is
 its path: `go install github.com/protomaps/go-pmtiles@v1.31.2`. They also need
-`node:sqlite`, of Node.js 22.13 or later.
+`node:sqlite`, of Node.js 22.13 or later. The tests of
+`backend/tiles/versatiles_rs_test.js` compare the tiles backend with versatiles
+4.15.0, the tool of VersaTiles, when `versatiles` is in the `PATH` or when the
+variable `VERSATILES` is its path. Get it from the
+[releases of versatiles-rs](https://github.com/versatiles-org/versatiles-rs/releases/tag/v4.15.0),
+or with `cargo install versatiles --version 4.15.0 --locked`. The tests of zstd
+need Node.js 22.15 or later.
 
 The tests of `s3` use `rclone serve s3`, a server of the S3 API on a local
 folder. They also run on a real service when the variables `S3_TEST_ENDPOINT`
