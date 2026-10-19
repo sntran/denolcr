@@ -40,6 +40,41 @@ test("puts and gets a file of a remote on the fly", async () => {
   assert.equal((await send("/:memory:/worker/missing.txt")).status, 404);
 });
 
+test("reads a file in a zip file of a remote, with the remote in the path", async () => {
+  const { zipFile } = await import("./backend/archive/testing.js");
+  const zip = zipFile([
+    { name: "docs/a.txt", data: "in the zip" },
+    { name: "b.txt", data: "b".repeat(1000), method: 0 },
+  ]);
+  const put = await send("/:memory:/worker-zip/files.zip", {
+    method: "PUT",
+    body: zip,
+  });
+  assert.equal(put.status, 201);
+  const file = await send("/:archive::memory:/worker-zip/files.zip/docs/a.txt");
+  assert.equal(file.status, 200);
+  assert.equal(await file.text(), "in the zip");
+  const part = await send("/:archive::memory:/worker-zip/files.zip/b.txt", {
+    headers: { Range: "bytes=10-19" },
+  });
+  assert.equal(part.status, 206);
+  assert.equal(await part.text(), "b".repeat(10));
+  const list = await send("/:archive::memory:/worker-zip/", {
+    headers: { Accept: "application/json" },
+  });
+  assert.deepEqual(
+    (await list.json()).map(({ Path, IsDir }) => [Path, IsDir]),
+    [["files.zip", true]],
+  );
+  const deep = await send("/:archive::memory:/worker-zip/", {
+    headers: { Accept: "application/json", Depth: "infinity" },
+  });
+  assert.deepEqual(
+    (await deep.json()).map(({ Path }) => Path).sort(),
+    ["files.zip", "files.zip/b.txt", "files.zip/docs", "files.zip/docs/a.txt"],
+  );
+});
+
 test("reads a named remote of the headers", async () => {
   const headers = { RFETCH_CONFIG_MEM_TYPE: "memory" };
   await send("/mem:worker/b.txt", { method: "PUT", body: "b", headers });
@@ -149,6 +184,7 @@ test("has no local backend: a client reads no file of the runtime", async () => 
       ["/:combine:x/hostname", { RFETCH_COMBINE_UPSTREAMS: "x=/etc" }],
       ["/:union:hostname", { RFETCH_UNION_UPSTREAMS: "/etc :memory:/x" }],
       ["/:compress:", { RFETCH_COMPRESS_REMOTE: "/etc" }],
+      ["/:archive:/etc/", {}],
       ["/disk:etc/hostname", { RFETCH_CONFIG_DISK_TYPE: "local" }],
     ]
   ) {

@@ -33,6 +33,7 @@
   "homepage": "https://github.com/sntran/rfetch#readme",
   "dependencies": {
     "@rfetch/alias": "^0.1.0",
+    "@rfetch/archive": "^0.1.0",
     "@rfetch/chunker": "^0.1.0",
     "@rfetch/combine": "^0.1.0",
     "@rfetch/compress": "^0.1.0",

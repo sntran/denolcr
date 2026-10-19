@@ -204,7 +204,13 @@ export async function fetch(input, init = {}) {
   // `/tmp/file.txt`. Only such a path gives the root `/` to the local
   // backend. The Worker gives no such path: a path with no remote is a file
   // of its site.
-  let location = new URL(parsed.path, "file:");
+  // The path of a remote is from its root. A "/" before it keeps a remote in
+  // the path as a part of the path, for example `s3:bucket/a.zip` in
+  // `:archive:s3:bucket/a.zip`: else `s3:` is the scheme of a URL.
+  let location = new URL(
+    parsed.path.startsWith("/") ? parsed.path : `/${parsed.path}`,
+    "file:",
+  );
   /** @type {string | undefined} */
   let root;
   if (parsed.name === "") {

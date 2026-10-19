@@ -4,6 +4,7 @@
   "description": "The code that rfetch and its backends share: the list of a folder, paths, ranges, types of files, sizes, the obscure of rclone, and the shared tests of the backends.",
   "type": "module",
   "exports": {
+    "./crc32": "./crc32.js",
     "./format": "./format.js",
     "./fspath": "./fspath.js",
     "./html": "./html.js",
@@ -16,6 +17,7 @@
     "./path": "./path.js",
     "./progress": "./progress.js",
     "./range": "./range.js",
+    "./ranged": "./ranged.js",
     "./rewriter": "./rewriter.js",
     "./size": "./size.js",
     "./sized": "./sized.js",

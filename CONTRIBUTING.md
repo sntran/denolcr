@@ -195,6 +195,10 @@ The answers:
   range that is not correct, gets all the file. Use `parseRange` of
   `@rfetch/lib/range`.
 
+A backend that reads parts of a file of another remote, for example the index at
+the end of a zip file, uses `RangedFile` of `@rfetch/lib/ranged`: each read is
+one request with `Range`, and the file never comes all into memory.
+
 The path of a request has percent-encoding. Use `decodePath` of
 `@rfetch/lib/path` to get the path with no percent-encoding. It gives `null` for
 a path that is not safe, for example `/..%2Fsecret.txt`, which becomes
