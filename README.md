@@ -14,6 +14,8 @@ A [Rclone wrapper for WebAssembly build](./rclone.js) is also available.
 - Memory [:page_facing_up:](https://rclone.org/memory/)
 - S3: Amazon S3 and the services with the same API, for example Cloudflare R2
   [:page_facing_up:](https://rclone.org/s3/)
+- WebDAV: Nextcloud, ownCloud, Fastmail Files, `rclone serve webdav` and other
+  WebDAV servers [:page_facing_up:](https://rclone.org/webdav/)
 
 ### Virtual storage providers
 
@@ -54,6 +56,11 @@ With `Accept: application/json`, a `GET` gives the list of `rfetch lsjson`, and
 `Depth: N` lists N levels. Else a folder is an HTML page, and a file is its
 bytes, with ranges. The prefix `RCLONE_` of rclone also works.
 
+The Worker is also a WebDAV server, as `rfetch serve webdav`: a WebDAV client
+can use the URL of a remote, for example `https://rfetch.pages.dev/r2:bucket/`,
+with the options in its headers. COPY and MOVE can go from a remote to another
+remote.
+
 ## Commands
 
 - `backend`
@@ -69,7 +76,11 @@ bytes, with ranges. The prefix `RCLONE_` of rclone also works.
 - `obscure`
 - `rcat`
 - `reveal`
-- `serve`
+- `serve http`: serve a remote over HTTP, as `rclone serve http`. A client only
+  reads.
+- `serve webdav`: serve a remote over WebDAV, as `rclone serve webdav`. A client
+  reads and writes, unless `--read-only`. With `--user` and `--pass`, a client
+  must log in with them.
 
 ## Runtimes
 

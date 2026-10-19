@@ -24,12 +24,13 @@
  * To get only one file, use [copyurl](../../cmd/copyurl/main.js).
  */
 
-import { parseList } from "@rfetch/lib/list";
+import { parseHeaders } from "@rfetch/lib/headers";
 import { childOf, renderListing } from "@rfetch/lib/listing";
 import { mimeType } from "@rfetch/lib/mime";
 import { optionsOf } from "@rfetch/lib/options";
 import { attributeOf, readElements } from "@rfetch/lib/rewriter";
 import { decodePath, encodePath } from "@rfetch/lib/path";
+import { isOneRange } from "@rfetch/lib/range";
 
 export const options = {
   boolean: [
@@ -135,26 +136,6 @@ async function http(request, env = {}) {
 }
 
 /**
- * Reads the headers option of rclone: a list of names and values, for
- * example `Cookie,name=value,Authorization,"Basic a2V5"`.
- * @param {string} text
- * @returns {Headers}
- * @throws {SyntaxError | TypeError} When the list is not correct, or when a
- *   name or a value is not correct for HTTP.
- */
-function parseHeaders(text) {
-  const list = parseList(text);
-  if (list.length % 2 !== 0) {
-    throw new SyntaxError("odd number of headers supplied");
-  }
-  const headers = new Headers();
-  for (let index = 0; index < list.length; index += 2) {
-    headers.append(list[index], list[index + 1]);
-  }
-  return headers;
-}
-
-/**
  * Gets a file, or only its headers for HEAD. The server gets the `Range` of
  * the request, and the client gets the answer 206 or 416 of the server.
  * @param {URL} url
@@ -170,7 +151,9 @@ async function getFile(url, method, headers, path, request) {
     url,
     method,
     headers,
-    method === "GET" && range !== null ? { Range: range } : {},
+    // The server gets only one range that is correct: else the client gets
+    // all the file.
+    method === "GET" && isOneRange(range) ? { Range: range } : {},
   );
   if (!response.ok) {
     await response.body?.cancel();

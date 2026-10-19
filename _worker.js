@@ -14,13 +14,22 @@
  * A `GET` with `Accept: application/json` gives the list of `rfetch lsjson`.
  * The header `Depth: N` lists N levels, and `Depth: infinity` all of them.
  *
+ * The Worker is also a WebDAV server, as `rfetch serve webdav`: a WebDAV
+ * client can use the URL of a remote, for example
+ * `https://WORKER/:s3:bucket/`. The client gives the options in the headers
+ * `RFETCH_*`, as for the other requests. COPY and MOVE can go from a remote
+ * to another remote.
+ *
  * A path with no remote is a static file of the site.
  */
 // The import also sets the global `fetch`, which reads the paths of remotes.
 import { fetch } from "./fetch.js";
 import { lsjson } from "./cmd/lsjson/main.js";
+import { handle } from "./cmd/serve/webdav/handler.js";
 import { backends } from "./backend/main.js";
 import { parse } from "@rfetch/lib/fspath";
+import { isOption } from "@rfetch/lib/options";
+import { decodeRemotePath } from "@rfetch/lib/path";
 
 // The Worker has no files of its users, and a client tells all the options
 // of its request: the local backend is not a backend of the Worker. Else a
@@ -58,6 +67,23 @@ function locationOf(url) {
 }
 
 /**
+ * The methods of WebDAV that the Worker answers as `rfetch serve webdav`.
+ * DELETE is here too: a WebDAV client can delete a folder with no `/` at
+ * the end of its path.
+ */
+const DAV = [
+  "OPTIONS",
+  "PROPFIND",
+  "PROPPATCH",
+  "MKCOL",
+  "COPY",
+  "MOVE",
+  "LOCK",
+  "UNLOCK",
+  "DELETE",
+];
+
+/**
  * Gives the flags of `lsjson` for the header `Depth`.
  * @param {string | null} depth
  * @returns {Record<string, string> | null} `null` for a value that is not
@@ -91,6 +117,31 @@ export default {
           });
         }
         return await lsjson(location, flags, { headers });
+      }
+
+      if (DAV.includes(method)) {
+        // The options of the client go to each request to the remote.
+        const options = new Headers();
+        for (const [name, value] of headers) {
+          if (isOption(name)) options.set(name, value);
+        }
+        return await handle(request, {
+          locate(pathname) {
+            const target = locationOf(new URL(`${pathname}${url.search}`, url));
+            if (target === null) {
+              throw new SyntaxError("The path has no remote");
+            }
+            return target;
+          },
+          headers: options,
+          root(pathname) {
+            const raw = pathname.slice(1);
+            const { name, path } = parse(raw);
+            if (name === "") throw new SyntaxError("The path has no remote");
+            return `/${raw.slice(0, raw.length - path.length)}`;
+          },
+          decode: decodeRemotePath,
+        });
       }
 
       /** @type {RequestInit} */

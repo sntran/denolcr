@@ -266,3 +266,67 @@ test("has no local backend: a client reads no file of the runtime", async () => 
     assert.match(await response.text(), /Backend local not found/);
   }
 });
+
+test("is a WebDAV server for the remotes in its paths", async () => {
+  const put = await send("/:memory:/worker-dav/a%20b.txt", {
+    method: "PUT",
+    body: "dav",
+  });
+  assert.equal(put.status, 201);
+
+  const options = await send("/:memory:/worker-dav/", { method: "OPTIONS" });
+  assert.equal(options.headers.get("DAV"), "1, 2");
+
+  const list = await send("/:memory:/worker-dav/", {
+    method: "PROPFIND",
+    headers: { Depth: "1" },
+  });
+  assert.equal(list.status, 207);
+  const xml = await list.text();
+  assert.match(xml, /<D:href>\/:memory:\/worker-dav\/<\/D:href>/);
+  assert.match(xml, /<D:href>\/:memory:\/worker-dav\/a%20b\.txt<\/D:href>/);
+
+  assert.equal(
+    (await send("/:memory:/worker-dav/sub", { method: "MKCOL" })).status,
+    201,
+  );
+  // A copy to another remote, and a move in a remote.
+  const copy = await send("/:memory:/worker-dav/a%20b.txt", {
+    method: "COPY",
+    headers: {
+      Destination:
+        "https://rfetch.test/:alias,remote=':memory:/worker-dav/sub':c.txt",
+    },
+  });
+  assert.equal(copy.status, 201);
+  assert.equal(
+    await (await send("/:memory:/worker-dav/sub/c.txt")).text(),
+    "dav",
+  );
+  const move = await send("/:memory:/worker-dav/sub", {
+    method: "MOVE",
+    headers: { Destination: "/:memory:/worker-dav/moved/" },
+  });
+  assert.equal(move.status, 201);
+  assert.equal(
+    await (await send("/:memory:/worker-dav/moved/c.txt")).text(),
+    "dav",
+  );
+  assert.equal((await send("/:memory:/worker-dav/sub/c.txt")).status, 404);
+
+  // A destination with no remote, or the root of a remote, is not possible.
+  for (const destination of ["/x.txt", "/:memory:/"]) {
+    const response = await send("/:memory:/worker-dav/moved/c.txt", {
+      method: "COPY",
+      headers: { Destination: destination },
+    });
+    assert.ok(response.status >= 400, destination);
+    await response.body?.cancel();
+  }
+
+  assert.equal(
+    (await send("/:memory:/worker-dav/moved", { method: "DELETE" })).status,
+    204,
+  );
+  assert.equal((await send("/:memory:/worker-dav/moved/c.txt")).status, 404);
+});

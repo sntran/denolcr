@@ -3,7 +3,7 @@ import { load } from "../../backend/main.js";
 
 /**
  * Serves a remote backend
- * @param {'http'} protocol The protocol to serve.
+ * @param {'http' | 'webdav'} protocol The protocol to serve.
  * @param {string} remote The remote and the path of the folder to serve, for
  *   example `remote:path/to/folder`.
  * @param {Object} flags
@@ -23,4 +23,9 @@ export async function serve(protocol, remote, flags = {}) {
     const { serve } = await import("./http/main.js");
     return serve(remote, flags);
   }
+  if (protocol === "webdav") {
+    const { serve } = await import("./webdav/main.js");
+    return serve(remote, flags);
+  }
+  throw new Error(`rfetch does not serve ${protocol}.`);
 }
