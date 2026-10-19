@@ -35,6 +35,7 @@ export const backends = {
   s3: () => import("@rfetch/s3"),
   tiles: () => import("@rfetch/tiles"),
   union: () => import("@rfetch/union"),
+  webdav: () => import("@rfetch/webdav"),
 };
 
 /**
