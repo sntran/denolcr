@@ -1,11 +1,16 @@
 /**
- * The TCP connections of FTP, with or without TLS. In Node.js, Deno and
- * Bun, the connections are of `node:net` and `node:tls`. In workerd, they
- * are of `cloudflare:sockets`: the TLS of `node:tls` cannot start on a
- * connection of `node:net` there, and `AUTH TLS` of FTP needs that.
+ * The TCP connections of FTP, with or without TLS, of `node:net` and
+ * `node:tls`, in Node.js, Deno, Bun and workerd.
  *
- * A connection reads only when its user asks for data: TLS can start in
- * workerd only when no read waits.
+ * In workerd, `tls.connect({ socket })` starts TLS on a socket of
+ * `node:net` only when no read waits on the socket: else `releaseLock()`
+ * of the reader of the socket throws "Cannot call releaseLock() on a
+ * reader with outstanding read promises". A socket of `node:net` reads all
+ * the time. Thus in workerd, the control connection of explicit FTPS reads
+ * with `onread`, and its callback stops the reads after each chunk, as
+ * Node.js does when the callback gives false. A read that waits starts them
+ * again. Deno does not start TLS on such a socket: the other runtimes read
+ * with the events of the socket.
  */
 
 /** An error of a connection, for example a timeout. */
@@ -22,26 +27,13 @@ export const WORKERD = globalThis.navigator?.userAgent === "Cloudflare-Workers";
  * @property {boolean} [tls] True for TLS from the start.
  * @property {boolean} [startTls] True for TLS later, with `startTls()`.
  * @property {boolean} [checkCertificate] False for no check of the
- *   certificate, only in Node.js, Deno and Bun.
- * @property {boolean} [disableTls13] TLS 1.2 at most, only in Node.js, Deno
- *   and Bun.
+ *   certificate. workerd does not know this option.
+ * @property {boolean} [disableTls13] TLS 1.2 at most. workerd does not
+ *   know this option.
  * @property {unknown} [session] A TLS session to resume, of `node:tls`.
+ * @property {boolean} [backpressure] False for no pause of the socket when
+ *   much data waits, for data that the user reads to its end at once.
  * @property {number} [timeout] The time to connect, in milliseconds.
- */
-
-/**
- * The connection of a runtime.
- * @typedef {Object} Transport
- * @property {(options: ConnectOptions) => Promise<void>} open
- * @property {() => Promise<Uint8Array | null>} read The next chunk, or
- *   null at the end.
- * @property {(bytes: Uint8Array) => Promise<void>} write
- * @property {(options: ConnectOptions) => Promise<void>} startTls
- * @property {unknown} session
- * @property {boolean} ended True when the server closed the connection.
- * @property {(active: boolean) => void} setActive
- * @property {() => Promise<void>} end
- * @property {() => void} close
  */
 
 /** A connection that reads lines and bytes. */
@@ -64,7 +56,7 @@ export class Connection {
    * @throws {ConnectionError}
    */
   static async open(options) {
-    const transport = WORKERD ? new WorkerTransport() : new NodeTransport();
+    const transport = new Transport();
     await transport.open(options);
     return new Connection(transport);
   }
@@ -184,7 +176,7 @@ export class Connection {
 }
 
 /** A connection of `node:net` and `node:tls`. */
-class NodeTransport {
+class Transport {
   /** @type {any} */
   #socket = null;
   /** @type {Uint8Array[]} */
@@ -195,6 +187,10 @@ class NodeTransport {
   #error = null;
   /** @type {(() => void) | null} */
   #wake = null;
+  /** True when the socket reads only while a read waits, with `onread`. */
+  #pull = false;
+  /** True when the socket pauses when much data waits. */
+  #backpressure = true;
   /** @type {unknown} */
   session = undefined;
 
@@ -216,13 +212,44 @@ class NodeTransport {
         session: /** @type {any} */ (options.session),
         ...(options.disableTls13 ? { maxVersion: "TLSv1.2" } : {}),
       })
-      : net.connect({ host, port, noDelay: true });
+      : net.connect({
+        host,
+        port,
+        noDelay: true,
+        // TLS starts later: the socket reads only while a read waits.
+        ...(WORKERD && options.startTls
+          ? {
+            onread: {
+              buffer: () => new Uint8Array(65536),
+              callback: (
+                /** @type {number} */ size,
+                /** @type {Uint8Array} */ buffer,
+              ) => this.#onread(size, buffer),
+            },
+          }
+          : {}),
+      });
+    this.#pull = Boolean(WORKERD && options.startTls && !options.tls);
+    this.#backpressure = options.backpressure !== false;
     await this.#ready(
       socket,
       options.tls ? "secureConnect" : "connect",
       timeout,
     );
     this.#listen(socket);
+  }
+
+  /**
+   * Keeps a chunk of `onread`, and stops the reads of the socket.
+   * @param {number} size
+   * @param {Uint8Array} buffer
+   * @returns {false}
+   */
+  #onread(size, buffer) {
+    this.#chunks.push(Uint8Array.prototype.slice.call(buffer, 0, size));
+    this.#queued += size;
+    this.#notify();
+    return false;
   }
 
   /**
@@ -237,14 +264,16 @@ class NodeTransport {
         socket.destroy();
         reject(new ConnectionError("The connection timed out"));
       }, timeout);
-      socket.once(event, () => {
-        clearTimeout(timer);
-        socket.removeAllListeners("error");
-        resolve(undefined);
-      });
-      socket.once("error", (error) => {
+      /** @param {Error} error */
+      const failed = (error) => {
         clearTimeout(timer);
         reject(new ConnectionError(error.message));
+      };
+      socket.once("error", failed);
+      socket.once(event, () => {
+        clearTimeout(timer);
+        socket.off("error", failed);
+        resolve(undefined);
       });
     });
   }
@@ -252,15 +281,17 @@ class NodeTransport {
   /** @param {any} socket */
   #listen(socket) {
     this.#socket = socket;
-    socket.on("data", (chunk) => {
-      this.#chunks.push(
-        new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.length),
-      );
-      this.#queued += chunk.length;
-      // Too much data that nobody reads stops the reads of the socket.
-      if (this.#queued > 1 << 20) socket.pause();
-      this.#notify();
-    });
+    if (!this.#pull) {
+      socket.on("data", (chunk) => {
+        this.#chunks.push(
+          new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.length),
+        );
+        this.#queued += chunk.length;
+        // Too much data that nobody reads stops the reads of the socket.
+        if (this.#backpressure && this.#queued > 1 << 20) socket.pause();
+        this.#notify();
+      });
+    }
     socket.on("end", () => {
       this.#ended = true;
       this.#notify();
@@ -291,7 +322,7 @@ class NodeTransport {
     }
     const chunk = /** @type {Uint8Array} */ (this.#chunks.shift());
     this.#queued -= chunk.length;
-    if (this.#queued < 1 << 19) this.#socket.resume();
+    if (!this.#pull && this.#queued < 1 << 19) this.#socket.resume();
     return chunk;
   }
 
@@ -314,11 +345,15 @@ class NodeTransport {
 
   /** @param {ConnectOptions} options */
   async startTls(options) {
+    if (this.#chunks.length > 0) {
+      throw new ConnectionError("The server sent data before TLS");
+    }
     const tls = await import("node:tls");
     const plain = this.#socket;
     for (const event of ["data", "end", "close", "error", "session"]) {
       plain.removeAllListeners(event);
     }
+    this.#pull = false;
     const socket = tls.connect({
       socket: plain,
       servername: isIP(options.host) ? undefined : options.host,
@@ -343,93 +378,6 @@ class NodeTransport {
     this.#socket?.destroy();
     this.#ended = true;
     this.#notify();
-  }
-}
-
-/** A connection of `cloudflare:sockets`, in workerd. */
-class WorkerTransport {
-  /** @type {any} */
-  #socket = null;
-  /** @type {any} */
-  #writer = null;
-  /** @type {any} */
-  #reader = null;
-  session = undefined;
-  ended = false;
-
-  /** @param {ConnectOptions} options */
-  async open(options) {
-    if (options.checkCertificate === false) {
-      throw new ConnectionError(
-        "workerd always checks the certificate: no_check_certificate is not possible there",
-      );
-    }
-    if (options.disableTls13) {
-      throw new ConnectionError(
-        "workerd chooses the version of TLS: disable_tls13 is not possible there",
-      );
-    }
-    // @ts-ignore: a module of workerd.
-    const { connect } = await import("cloudflare:sockets");
-    this.#socket = connect(
-      { hostname: options.host, port: options.port },
-      {
-        secureTransport: options.tls
-          ? "on"
-          : options.startTls
-          ? "starttls"
-          : "off",
-      },
-    );
-    try {
-      await this.#socket.opened;
-    } catch (error) {
-      throw new ConnectionError(error.message);
-    }
-    this.#writer = this.#socket.writable.getWriter();
-    this.#reader = this.#socket.readable.getReader();
-  }
-
-  async read() {
-    try {
-      const { done, value } = await this.#reader.read();
-      if (done) this.ended = true;
-      return done ? null : value;
-    } catch (error) {
-      this.ended = true;
-      throw new ConnectionError(error.message);
-    }
-  }
-
-  /** @param {Uint8Array} bytes */
-  async write(bytes) {
-    try {
-      await this.#writer.write(bytes);
-    } catch (error) {
-      throw new ConnectionError(error.message);
-    }
-  }
-
-  /** @param {ConnectOptions} _options */
-  async startTls(_options) {
-    // No read waits: the locks of the streams go, and TLS starts.
-    this.#reader.releaseLock();
-    this.#writer.releaseLock();
-    this.#socket = this.#socket.startTls();
-    this.#writer = this.#socket.writable.getWriter();
-    this.#reader = this.#socket.readable.getReader();
-  }
-
-  /** @param {boolean} _active */
-  setActive(_active) {}
-
-  async end() {
-    await this.#writer.close().catch(() => {});
-  }
-
-  close() {
-    this.ended = true;
-    this.#socket?.close().catch(() => {});
   }
 }
 

@@ -3,9 +3,8 @@
  *
  * The ftp backend reads and writes the files of an FTP server, as the ftp
  * backend of rclone, also with TLS (FTPS). Its client of FTP is in
- * JavaScript, on `node:net` and `node:tls`, thus it runs in Node.js, Deno
- * and Bun. In workerd, the client uses `cloudflare:sockets`, because TLS
- * cannot start on a connection of `node:net` there.
+ * JavaScript, on `node:net` and `node:tls`, thus it runs in Node.js, Deno,
+ * Bun and workerd.
  *
  * A path is from the login folder of the user, as in rclone, for example
  * `:ftp,host=example.com:docs/a.txt`. A path that starts with `/` is from
@@ -66,8 +65,9 @@
  * connection stays open for the next requests of the same remote, for
  * `idle_timeout`. In workerd, each request has its own connection, as a
  * connection cannot go from a request to another. There, a data connection
- * cannot use the TLS session of the control connection: a server that
- * wants it refuses the transfers from workerd.
+ * cannot use the TLS session of the control connection, as `node:tls` of
+ * workerd does not resume sessions: a server that wants it refuses the
+ * transfers from workerd.
  */
 import {
   decodeName,

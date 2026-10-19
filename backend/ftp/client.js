@@ -240,9 +240,11 @@ export class FTPClient {
    * Opens a data connection with EPSV, or with PASV. The host of PASV is
    * not used: the data connection goes to the host of the control
    * connection, as the clients of FTP do now.
+   * @param {boolean} [backpressure] False for data that the client reads to
+   *   its end at once, for example a list.
    * @returns {Promise<Connection>}
    */
-  async #openData() {
+  async #openData(backpressure = true) {
     let port = 0;
     if (this.#epsv) {
       const reply = await this.#send("EPSV");
@@ -272,6 +274,7 @@ export class FTPClient {
         ? this.#control.session
         : undefined,
       timeout: this.#options.timeout,
+      backpressure,
     });
   }
 
@@ -313,11 +316,13 @@ export class FTPClient {
    * @param {string} command
    * @param {(data: Connection) => Promise<T>} transfer Reads the data to its
    *   end, or writes the data and ends the writes.
+   * @param {boolean} [backpressure] False for data that the client reads to
+   *   its end at once.
    * @returns {Promise<T>}
    */
-  transfer(command, transfer) {
+  transfer(command, transfer, backpressure = true) {
     return this.#run(async () => {
-      const data = await this.#openData();
+      const data = await this.#openData(backpressure);
       try {
         const reply = await this.#send(command);
         if (reply.code !== 125 && reply.code !== 150) {
@@ -391,6 +396,30 @@ export class FTPClient {
           }
           ended();
         };
+        // The end of the file: the end of the data connection, or the
+        // answer at the end of the transfer, which comes after the last
+        // byte. Deno 2.9 loses the end of a TLS connection that ends while
+        // the socket is paused.
+        const finishAtEnd = async () => {
+          if (finished) return;
+          finished = true;
+          const last = this.#endReply(this.#options.closeTimeout)
+            .catch(() => null);
+          const drained = (async () => {
+            try {
+              while (await data.read() !== null) {
+                // A file that grows: the bytes after its size go.
+              }
+            } catch {
+              // The data connection closes below.
+            }
+          })();
+          await Promise.race([drained, last]);
+          data.close();
+          const reply = await last;
+          if (!reply || reply.code >= 400) this.broken = true;
+          ended();
+        };
         resolve(
           new ReadableStream({
             async pull(controller) {
@@ -415,12 +444,7 @@ export class FTPClient {
                   if (left > 0) return;
                 }
                 // All the bytes of the range are read.
-                if (toEnd) {
-                  while (await data.read() !== null) {
-                    // A file that grows: the bytes after its size go.
-                  }
-                }
-                await finish(toEnd);
+                await (toEnd ? finishAtEnd() : finish(false));
                 controller.close();
               } catch (error) {
                 await finish(false);
@@ -519,7 +543,7 @@ export class FTPClient {
         chunks.push(chunk);
       }
       return new TextDecoder().decode(await new Blob(chunks).arrayBuffer());
-    });
+    }, false);
     /** @type {import("./list.js").Item[]} */
     const items = [];
     for (const line of text.split(/\r?\n/)) {

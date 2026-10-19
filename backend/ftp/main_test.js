@@ -364,6 +364,47 @@ if (hasPyftpdlib && hasOpenSSL) {
       assert.match(text, /certificate/i);
     });
 
+    test("downloads a large file with TLS, then uses the connection again", async () => {
+      // More than 1 MiB waits in the client: the data connection pauses.
+      const data = new Uint8Array(4 << 20).map((_, i) => i * 13);
+      for (
+        const params of [
+          paramsOf(implicit, { tls: "true", no_check_certificate: "true" }),
+          paramsOf(secure, {
+            explicit_tls: "true",
+            no_check_certificate: "true",
+          }),
+        ]
+      ) {
+        const fs = remote(ftp, { params, root: "/ftp-large/" });
+        const put = await fs.put("big.bin", data);
+        await put.body?.cancel();
+        assert.equal(put.status, 201);
+        const response = await fs.get("big.bin");
+        const reader = /** @type {ReadableStream} */ (response.body)
+          .getReader();
+        /** @type {Uint8Array[]} */
+        const chunks = [];
+        for (
+          let read = await reader.read();
+          !read.done;
+          read = await reader.read()
+        ) {
+          chunks.push(read.value);
+          // A slow reader: the server ends the transfer while the client
+          // waits.
+          if (chunks.length === 1) {
+            await new Promise((resolve) => setTimeout(resolve, 300));
+          }
+        }
+        assert.deepEqual(
+          new Uint8Array(await new Blob(chunks).arrayBuffer()),
+          data,
+        );
+        assert.equal((await fs.delete("")).status, 204);
+      }
+    });
+
     test("does not sign in with no TLS when the server wants TLS", async () => {
       const response = await remote(ftp, { params: paramsOf(secure) }).get("");
       await response.body?.cancel();
