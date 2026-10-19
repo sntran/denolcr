@@ -344,11 +344,38 @@ function isOutside(root, path) {
  */
 async function setTime(path, nanoseconds) {
   const { utimes } = await import("node:fs/promises");
-  // The seconds go in a double, which can be some nanoseconds less than the
-  // time, and the system cuts the time to the microsecond: half of a
-  // microsecond more gives the correct microsecond.
-  const seconds = (Number(nanoseconds / 1000n) + 0.5) / 1e6;
+  const seconds = secondsOf(nanoseconds);
   await utimes(path, seconds, seconds);
+}
+
+/**
+ * The seconds of a time, as a double for `utimes`. The system cuts the part
+ * of a second of the double: Node.js 22 to the microsecond, and Node.js 24
+ * and later to the nanosecond. The double nearest to the time can be in the
+ * microsecond before or after: then the double next to it, in the correct
+ * microsecond, is the value. Each microsecond has two doubles or more, up to
+ * the year 2106.
+ * @param {bigint} nanoseconds The nanoseconds after 1970.
+ * @returns {number}
+ */
+export function secondsOf(nanoseconds) {
+  if (nanoseconds < 0n) return Number(nanoseconds / 1000n) / 1e6;
+  const whole = Number(nanoseconds / 1_000_000_000n);
+  const fraction = Number(nanoseconds % 1_000_000_000n);
+  const microseconds = Math.floor(fraction / 1000);
+  let seconds = whole + fraction / 1e9;
+  // The step between two doubles near the value.
+  const step = 2 ** (Math.floor(Math.log2(Math.max(seconds, 1))) - 52);
+  /** The microsecond that the system gives for a double, as libuv. */
+  const microsecondOf = (value) =>
+    Math.floor(Math.trunc((value - whole) * 1e9) / 1000);
+  for (let i = 0; i < 8 && microsecondOf(seconds) < microseconds; i++) {
+    seconds += step;
+  }
+  for (let i = 0; i < 8 && microsecondOf(seconds) > microseconds; i++) {
+    seconds -= step;
+  }
+  return seconds;
 }
 
 /**
