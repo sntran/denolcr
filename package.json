@@ -41,7 +41,8 @@
     "@rfetch/lib": "^0.1.0",
     "@rfetch/local": "^0.1.0",
     "@rfetch/memory": "^0.1.0",
-    "@rfetch/s3": "^0.1.0"
+    "@rfetch/s3": "^0.1.0",
+    "@rfetch/union": "^0.1.0"
   },
   "devDependencies": {
     "fast-check": "^3.19.0"

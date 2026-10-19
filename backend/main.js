@@ -31,6 +31,7 @@ export const backends = {
   local: () => import("@rfetch/local"),
   memory: () => import("@rfetch/memory"),
   s3: () => import("@rfetch/s3"),
+  union: () => import("@rfetch/union"),
 };
 
 /**

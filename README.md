@@ -24,6 +24,8 @@ These backends adapt or modify other storage providers
 - Combine: several remotes in one tree of folders
   [:page_facing_up:](https://rclone.org/combine/)
 - Crypt: encrypt files [:page_facing_up:](https://rclone.org/crypt/)
+- Union: the merged contents of several remotes
+  [:page_facing_up:](https://rclone.org/union/)
 
 ## rfetch as a service
 
