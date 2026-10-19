@@ -549,8 +549,43 @@ message of the commit.
 ## Continuous integration
 
 The workflow `.github/workflows/ci.yml` runs for each push and each pull
-request. It installs rclone, 7-Zip, Go, go-pmtiles, versatiles and Azurite (the
-runner has openssl), runs `npm test` with Node.js 22, 24 and 26, and runs
-`deno fmt --check`. A test that needs one of these tools skips when the tool is
-not installed: in the workflow, such a skip is an error. Before a push, run
-`npm test` and `deno fmt --check`.
+request. It installs rclone, 7-Zip, Go, go-pmtiles, versatiles, Azurite and
+pyftpdlib (the runner has openssl), runs `npm test` with Node.js 22, 24 and 26,
+and runs `deno fmt --check`. A test that needs one of these tools skips when the
+tool is not installed: in the workflow, such a skip is an error. Before a push,
+run `npm test` and `deno fmt --check`.
+
+## Problems in other tools
+
+These are problems that the tests of rfetch found in other tools. rfetch has a
+workaround for each of them.
+
+- rclone 1.75.1: the ftp backend loses the last bytes of an upload with explicit
+  TLS 1.3. With pyftpdlib 2.2.0, `rclone copyto` of a file of 1 MiB, 8 MiB or 64
+  MiB gives `corrupted on transfer: sizes differ`. With `disable_tls13=true`,
+  the upload is correct. The cause is probably the close of the data connection
+  while data of TLS 1.3 that the client did not read waits: then the connection
+  resets, and the server loses the bytes that it did not read. rfetch had the
+  same problem. Now it ends the writes, reads the answer 226, and then closes
+  the data connection.
+- rclone 1.75.1: `rclone serve ftp` with `--cert` and `--key` is implicit TLS,
+  and it answers 550 to PBSZ and to PROT. The ftp backend of rclone stops at
+  PBSZ, with `550 Action not taken`. rfetch also stops: with no `PROT P`, the
+  data connections are not encrypted.
+- workerd 1.20260926.1 to 1.20261019.1: `tls.connect({ socket })` on a socket of
+  `node:net` throws
+  `Cannot call releaseLock() on a reader with outstanding
+  read promises` when
+  a read waits on the socket. A socket waits for data all the time after it
+  starts to read. No compatibility date or flag changes this: the internal
+  streams of workerd always throw in `releaseLock()` when a read waits. In
+  workerd, the ftp backend reads the control connection of explicit FTPS with
+  the option `onread` of `net.connect`, and its callback stops the reads after
+  each chunk (`backend/ftp/socket.js`).
+- Deno 2.9.6: a socket of `node:tls` loses its end when the server closes the
+  connection while the socket is paused for some time, for example 200 ms: the
+  events `end` and `close` do not come. Node.js and Bun are correct. The ftp
+  backend ends a download at the answer 226 of the server, and does not pause
+  the data connection of a list. In Deno, `tls.connect({ socket })` also does
+  not start TLS on a socket that reads with `onread`: thus only workerd uses
+  `onread`.
