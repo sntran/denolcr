@@ -6,6 +6,7 @@
   "exports": {
     "./crc32": "./crc32.js",
     "./format": "./format.js",
+    "./headers": "./headers.js",
     "./fspath": "./fspath.js",
     "./html": "./html.js",
     "./ini": "./ini.js",
@@ -23,6 +24,7 @@
     "./size": "./size.js",
     "./sized": "./sized.js",
     "./time": "./time.js",
+    "./xml": "./xml.js",
     "./testing/bench": "./testing/bench.js",
     "./testing/remote": "./testing/remote.js",
     "./testing/server": "./testing/server.js",

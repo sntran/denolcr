@@ -7,7 +7,7 @@
 import { fetch, lsjson } from "../mod.js";
 import { readListing, renderListing } from "@rfetch/lib/listing";
 import memory from "@rfetch/memory";
-import { childrenOf, parseXML, textOf } from "../backend/s3/xml.js";
+import { childrenOf, parseXML, textOf } from "@rfetch/lib/xml";
 import { sign, UNSIGNED_PAYLOAD } from "../backend/s3/sigv4.js";
 
 /** The size of a large file. */

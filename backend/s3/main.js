@@ -50,7 +50,13 @@ import {
 } from "@rfetch/lib/range";
 import { parseSize } from "@rfetch/lib/size";
 import { sized } from "@rfetch/lib/sized";
-import { childrenOf, escapeXML, isXMLText, parseXML, textOf } from "./xml.js";
+import {
+  childrenOf,
+  escapeXML,
+  isXMLText,
+  parseXML,
+  textOf,
+} from "@rfetch/lib/xml";
 import { EMPTY_PAYLOAD, sign, UNSIGNED_PAYLOAD, uriEncode } from "./sigv4.js";
 
 export const options = {
