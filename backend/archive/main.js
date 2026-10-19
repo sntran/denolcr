@@ -21,6 +21,9 @@
  * - RAR: `.rar`, RAR4 and RAR5, in store mode. rclone does not know RAR.
  *   A list needs a request for each file after large data, because RAR
  *   has no index.
+ * - 7z: `.7z`, with the methods Copy, LZMA, LZMA2 and Deflate. rclone does
+ *   not know 7z. A compressed file needs the CPU time to decompress its
+ *   folder from the start up to the file: see `sevenzip.js`.
  *
  * An archive is read again for each request: rfetch keeps no data between
  * requests. The time of a folder that is not in the index of a zip file is
@@ -37,6 +40,7 @@ import { sized } from "@rfetch/lib/sized";
 
 import { ArchiveError } from "./entry.js";
 import { openRar } from "./rar.js";
+import { open7z } from "./sevenzip.js";
 import { openZip } from "./zip.js";
 
 /**
@@ -106,6 +110,7 @@ const ZIP = [
 const FORMATS = new Map([
   ...ZIP.map((extension) => [extension, openZip]),
   [".rar", openRar],
+  [".7z", open7z],
 ]);
 
 /**

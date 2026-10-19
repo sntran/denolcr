@@ -1,8 +1,9 @@
 # The test files of the archive backend
 
 RAR 6.20 for Linux of RARLAB made the RAR files. It is the last version that
-writes RAR4 (`-ma4`). The files are in the repository, thus the tests do not
-need RAR. 7-Zip 25.01 tested each file with `7zz t`.
+writes RAR4 (`-ma4`). 7-Zip 25.01 made the 7z files. The files are in the
+repository, thus the unit tests do not need RAR or 7-Zip. 7-Zip 25.01 tested
+each file with `7zz t`.
 
 The folder of the archives has these files. The time of each file is
 2024-05-06T07:08:09Z.
@@ -26,6 +27,17 @@ rar a -r -ma5 -m0 -v10k volumes.rar *
 rar a -ma5 -m0 -pfixture-password password5.rar a.txt
 rar a -ma5 -m0 -hpfixture-password headers5.rar a.txt
 rar a -ma4 -m0 -pfixture-password password4.rar a.txt
+```
+
+```sh
+7zz a -mx0 store.7z *
+7zz a -mx0 -mhc=off plain.7z *
+7zz a lzma2.7z *
+7zz a -m0=LZMA lzma.7z *
+7zz a -m0=Deflate -ms=off deflate.7z *
+7zz a -mx0 -pfixture-password password7z.7z a.txt
+7zz a -mx0 -mhe=on -pfixture-password headers7z.7z a.txt
+7zz a -m0=PPMd ppmd.7z folder/large.txt
 ```
 
 The password of the files with a password is `fixture-password`.

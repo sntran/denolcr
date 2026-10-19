@@ -1,7 +1,7 @@
 {
   "name": "@rfetch/archive",
   "version": "0.1.0",
-  "description": "The archive backend of rfetch: the files in the zip files of a remote, as rclone.",
+  "description": "The archive backend of rfetch: the files in the zip, 7z and RAR files of a remote, as rclone.",
   "type": "module",
   "exports": {
     ".": "./main.js"

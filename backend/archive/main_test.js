@@ -403,13 +403,13 @@ function rarText() {
 }
 
 /**
- * Puts the RAR files of testdata in a folder of memory, and gives a client
- * of the archive remote on that folder.
+ * Puts the RAR files and the 7z files of testdata in a folder of memory,
+ * and gives a client of the archive remote on that folder.
  */
 async function rarFixtures() {
   const folder = new URL("./testdata/", import.meta.url);
   for (
-    const name of readdirSync(folder).filter((name) => name.endsWith(".rar"))
+    const name of readdirSync(folder).filter((name) => /\.(rar|7z)$/.test(name))
   ) {
     await fetch(`:memory:/archive-rar/${name}`, {
       method: "PUT",
@@ -559,4 +559,78 @@ test("archive gives the errors of a RAR file that is not correct", async () => {
     body: rar.subarray(0, 25),
   });
   assert.equal((await fs.get("short.rar/")).status, 500);
+});
+
+test("archive reads the 7z files of 7-Zip", async () => {
+  const fs = await rarFixtures();
+  for (
+    const name of ["store.7z", "plain.7z", "lzma2.7z", "lzma.7z", "deflate.7z"]
+  ) {
+    const root = await fs.list(`${name}/`);
+    assert.deepEqual(
+      root.map(({ Name, IsDir, Size }) => [Name, IsDir, Size]).sort(),
+      [
+        ["a.txt", false, 6],
+        ["empty folder", true, -1],
+        ["empty.txt", false, 0],
+        ["folder", true, -1],
+        ["êé", true, -1],
+      ],
+      name,
+    );
+    assert.equal(
+      new Date(root.find(({ Name }) => Name === "a.txt").ModTime).toISOString(),
+      "2024-05-06T07:08:09.000Z",
+      name,
+    );
+    assert.equal(
+      decoder.decode(await bytesOf(await fs.get(`${name}/êé/Hello, 世界.txt`))),
+      "z\n",
+      name,
+    );
+    assert.equal(
+      decoder.decode(await bytesOf(await fs.get(`${name}/a.txt`))),
+      "hello\n",
+    );
+    assert.equal((await bytesOf(await fs.get(`${name}/empty.txt`))).length, 0);
+    assert.deepEqual(
+      await bytesOf(await fs.get(`${name}/folder/large.txt`)),
+      rarText(),
+      name,
+    );
+    const part = await fs.get(`${name}/folder/large.txt`, {
+      Range: "bytes=19990-",
+    });
+    assert.equal(part.status, 206);
+    assert.deepEqual(await bytesOf(part), rarText().subarray(19990), name);
+    // The same random bytes as in the RAR files.
+    assert.deepEqual(
+      await bytesOf(await fs.get(`${name}/folder/deep/random.bin`)),
+      await bytesOf(await fs.get("store5.rar/folder/deep/random.bin")),
+      name,
+    );
+  }
+});
+
+test("archive gives 501 for the 7z files that it cannot read", async () => {
+  const fs = await rarFixtures();
+  for (
+    const [path, message] of [
+      ["password7z.7z/a.txt", "7z: a file with a password is not supported"],
+      [
+        "headers7z.7z/",
+        "7z: an archive with a password on its headers is not supported",
+      ],
+      ["ppmd.7z/folder/large.txt", "7z: the method PPMd is not supported"],
+    ]
+  ) {
+    const response = await fs.get(path);
+    assert.equal(response.status, 501, path);
+    assert.equal(await response.text(), message, path);
+  }
+  // The list of a file with a password works: only its data are encrypted.
+  assert.deepEqual(
+    (await fs.list("password7z.7z/")).map(({ Name }) => Name),
+    ["a.txt"],
+  );
 });

@@ -20,8 +20,9 @@ A [Rclone wrapper for WebAssembly build](./rclone.js) is also available.
 These backends adapt or modify other storage providers
 
 - Alias: rename existing remotes [:page_facing_up:](https://rclone.org/alias/)
-- Archive: read the files in zip files (also docx, xlsx, epub, jar and kmz) and
-  in RAR files in store mode [:page_facing_up:](https://rclone.org/archive/)
+- Archive: read the files in zip files (also docx, xlsx, epub, jar and kmz), in
+  7z files, and in RAR files in store mode
+  [:page_facing_up:](https://rclone.org/archive/)
 - Chunker [:page_facing_up:](https://rclone.org/chunker/)
 - Combine: several remotes in one tree of folders
   [:page_facing_up:](https://rclone.org/combine/)
