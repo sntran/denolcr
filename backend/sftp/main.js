@@ -26,7 +26,7 @@
  *   `,` between them, as in a file `known_hosts`. The server must have one
  *   of them.
  * - `known_hosts_file`: the location of a file `known_hosts` of OpenSSH.
- *   The file must have the host key of the server. `none` is no check.
+ *   The file must have the host key of the server.
  * - `set_modtime`: `true` by default. Then a `PUT`, a `MOVE` and a `PATCH`
  *   with `X-OC-Mtime` set the time of the file, to the second.
  * - `skip_links`: with `true`, a list has no symbolic link. Else a link is
@@ -44,9 +44,13 @@
  * - `encoding`: the names that change on the server, as rclone, by default
  *   `Slash,Ctl,Del,Dot`.
  *
- * Security: with no `host_keys` and no `known_hosts_file`, the backend
- * accepts each host key of the server, as rclone does. Then a server in the
- * middle can get the password. Set `host_keys` to the key of the server.
+ * Security: the backend checks the host key of the server before it sends
+ * the password or signs with the key of the user. With no `host_keys` and
+ * no `known_hosts_file`, it refuses each server, as ssh refuses a host that
+ * it does not know: the answer 502 gives the host key of the server. Make
+ * sure that this key is the key of the server, then set `host_keys` to it.
+ * rclone accepts each host key in this case: then a server in the middle
+ * can get the password.
  *
  * The algorithms: the key exchanges `curve25519-sha256` and
  * `ecdh-sha2-nistp256`, `-nistp384` and `-nistp521`, the host keys
@@ -436,9 +440,7 @@ async function configOf(values, env) {
     }
   }
   const knownHostsFile = get("known_hosts_file");
-  const knownHosts = knownHostsFile && knownHostsFile !== "none"
-    ? await readLocation(knownHostsFile)
-    : null;
+  const knownHosts = knownHostsFile ? await readLocation(knownHostsFile) : null;
 
   const algorithms = {
     ciphers: chooseAlgorithms(get("ciphers"), Object.keys(CIPHERS), "ciphers"),
@@ -726,7 +728,8 @@ async function connect(config) {
  * @param {Config} config
  * @param {import("./ssh/transport.js").HostKey} key
  * @returns {Promise<boolean>}
- * @throws {SFTPBackendError} When the server has another key.
+ * @throws {SFTPBackendError} When the server has another key, or when the
+ *   backend knows no key of the server.
  */
 async function checkHostKey(config, key) {
   const line = `${key.type} ${toBase64(key.blob)}`;
@@ -755,9 +758,13 @@ async function checkHostKey(config, key) {
         502,
       );
     }
+    return true;
   }
-  // With no host_keys and no known_hosts_file, each key, as rclone.
-  return true;
+  // No key is known: the server can be a server in the middle.
+  throw new SFTPBackendError(
+    `The host key ${key.fingerprint} of the server is not known. Make sure that it is the key of the server, then set host_keys to ${line}`,
+    502,
+  );
 }
 
 /**

@@ -54,8 +54,9 @@ if (hasRclone && hasOpenSSL) {
   const openSSHKeys = await Promise.all(
     Object.values(KEY_PARAMS).map((params) => makeKeys(params)),
   );
+  const otherHostKeys = [makeKey("ecdsa"), makeKey("rsa")];
   const server = await serveSFTP({
-    hostKeys: [hostKey, makeKey("ecdsa"), makeKey("rsa")],
+    hostKeys: [hostKey, ...otherHostKeys],
     authorizedKeys: [
       ...await Promise.all(Object.values(userKeys).map(keyLine)),
       ...await Promise.all(openSSHKeys.map(({ pem }) => keyLine(pem))),
@@ -63,6 +64,11 @@ if (hasRclone && hasOpenSSL) {
   });
   after(() => server.stop());
   const hostKeys = await keyLine(hostKey);
+  /** All the host keys of the server, for each algorithm of host key. */
+  const allHostKeys = [
+    hostKeys,
+    ...await Promise.all(otherHostKeys.map(keyLine)),
+  ].join(",");
   const params = {
     host: server.host,
     port: `${server.port}`,
@@ -132,7 +138,7 @@ if (hasRclone && hasOpenSSL) {
       ) {
         const data = new Uint8Array(100000).map((_, i) => i * 13);
         const other = remote(sftp, {
-          params: { ...params, host_keys: "", ...options },
+          params: { ...params, host_keys: allHostKeys, ...options },
           root: "/sftp-test/",
         });
         const put = await other.put("cipher.bin", data);
@@ -144,6 +150,26 @@ if (hasRclone && hasOpenSSL) {
           JSON.stringify(options),
         );
       }
+    });
+
+    test("refuses each server with no host_keys and no known_hosts_file", async () => {
+      const response = await remote(sftp, {
+        params: { ...params, host_keys: "" },
+      }).get("");
+      const text = await response.text();
+      assert.equal(response.status, 502);
+      // The answer gives the key of the server, for host_keys.
+      const match =
+        /The host key SHA256:\S+ of the server is not known\. .* set host_keys to (\S+ \S+)$/
+          .exec(text);
+      assert.ok(match, text);
+      assert.ok(allHostKeys.split(",").includes(match[1]), match[1]);
+      // That key in host_keys signs in.
+      const again = await remote(sftp, {
+        params: { ...params, host_keys: match[1] },
+      }).get("");
+      await again.body?.cancel();
+      assert.equal(again.status, 200);
     });
 
     test("refuses a host key that is not in host_keys", async () => {
