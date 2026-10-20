@@ -149,7 +149,9 @@ export default {
 
       /** @type {RequestInit} */
       const init = { method, headers };
-      if (request.body) {
+      // workerd gives a body stream to a GET with `Content-Length: 0`, and a
+      // GET or a HEAD with a body is an error of `fetch()`.
+      if (request.body && method !== "GET" && method !== "HEAD") {
         init.body = request.body;
         init.duplex = "half";
       }
