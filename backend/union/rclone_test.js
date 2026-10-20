@@ -12,6 +12,12 @@
  * The policy `epff` of rclone takes the upstream that answers first, thus
  * the tests cannot compare it. rfetch takes the first upstream in the order
  * of the upstreams, as the documentation of rclone tells.
+ *
+ * rclone runs with `--disable About`: then it reads no free space, and the
+ * policies of space, as `epmfs`, take the first upstream, as rfetch. Else
+ * rclone takes the upstream with the most free space. The upstreams are on
+ * one disk, but other tests write on it at the same time, thus rclone can
+ * take `b`.
  */
 import { after, describe, test } from "node:test";
 import assert from "node:assert/strict";
@@ -85,7 +91,8 @@ describe("union and rclone", {
    * @param {string} [input]
    */
   function rclone(args, input) {
-    return spawnSync(RCLONE, ["--config", join(folder, "none.conf"), ...args], {
+    const config = ["--config", join(folder, "none.conf")];
+    return spawnSync(RCLONE, [...config, "--disable", "About", ...args], {
       env: { PATH: process.env.PATH, HOME: folder },
       encoding: "utf8",
       input,
