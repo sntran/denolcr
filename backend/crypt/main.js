@@ -548,6 +548,25 @@ export async function decode(options, ...args) {
 }
 
 /**
+ * The cipher of the names of a crypt remote, for the command `cryptdecode`:
+ * it makes the keys one time for all the names.
+ *
+ * ```js
+ * import { nameCipher } from "./main.js";
+ * const names = await nameCipher({ password, password2 });
+ * names.decrypt(encryptedName);
+ * ```
+ * @param {Object} options
+ * @param {string} options.password The password, obscured.
+ * @param {string} [options.password2] The salt, obscured.
+ * @returns {Promise<{ encrypt: (path: string) => string, decrypt: (path: string) => string }>}
+ */
+export async function nameCipher(options) {
+  const { names } = await cipherOf(options.password, options.password2 ?? "");
+  return names;
+}
+
+/**
  * Makes the keys from a password and a salt, as `Cipher.Key` of rclone: 32
  * bytes for the data, 32 bytes for the names, and 16 bytes of tweak for the
  * names. An empty password gives keys of zero bytes.

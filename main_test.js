@@ -594,10 +594,15 @@ test("the command line", async (t) => {
       assert.deepEqual(JSON.parse(lsjson.stdout).map(({ Name }) => Name), [
         "a#b.txt",
       ]);
-      const copy = await run(folder, ["copy", "c?d.txt", "copy #1.txt"]);
-      assert.equal(copy.code, 0, copy.stderr);
+      const copyto = await run(folder, ["copyto", "c?d.txt", "copy #1.txt"]);
+      assert.equal(copyto.code, 0, copyto.stderr);
       const cat = await run(folder, ["cat", "copy #1.txt"]);
       assert.equal(cat.stdout, "c?d.txt");
+      // As rclone: `copy` puts a file in the target folder.
+      const copy = await run(folder, ["copy", "a#b.txt", "in #2"]);
+      assert.equal(copy.code, 0, copy.stderr);
+      const inside = await run(folder, ["cat", "in #2/a#b.txt"]);
+      assert.equal(inside.stdout, "a#b.txt");
     });
 
     await t.test("serve reads --addr, and a TRACE does not stop it", async () => {
