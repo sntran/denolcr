@@ -89,4 +89,10 @@ import { encodeLocation } from "@rfetch/lib/fspath";
       if (!stdout.write(chunk)) await once(stdout, "drain");
     }
   }
-})();
+})().catch((error) => {
+  // An error after the start of the answer, for example a connection that
+  // closes in the middle of a file, as rclone.
+  stderr.write(`Error: ${error?.message ?? error}
+`);
+  process.exitCode = 1;
+});

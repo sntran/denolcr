@@ -128,7 +128,7 @@ jobs:
         shell: bash
         run: |
           npm test 2>&1 | tee "$RUNNER_TEMP/test.log"
-          if grep -E "((rclone|7-Zip|Go|go-pmtiles|versatiles|Azurite) is not installed|node:sqlite is not in)" "$RUNNER_TEMP/test.log"; then
+          if grep -E "((rclone|7-Zip|Go|go-pmtiles|versatiles|Azurite|openssl) is not installed|node:sqlite is not in)" "$RUNNER_TEMP/test.log"; then
             echo "::error::A test skipped because a tool is not installed."
             exit 1
           fi

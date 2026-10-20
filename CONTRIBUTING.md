@@ -279,6 +279,13 @@ A backend that uploads a large file in parts, for example s3 and azureblob,
 reads the body with `Parts` of `@rfetch/lib/parts`: each part has the size of
 the option `chunk_size`, and only one part is in memory.
 
+The path of a remote is from its root. For sftp, as in rclone, the root is the
+login folder of the user, and a path that starts with `/` is from the root of
+the server: `fetch.js` gives the same pathname for `sftp:a.txt` and for
+`sftp:/a.txt`, thus it tells a backend with `RFETCH_TYPE_ROOT` of `env`, for
+example `RFETCH_SFTP_ROOT`, which is `/` for a path that starts with `/`. A
+config file, a variable, a header or the query cannot set it.
+
 A backend on another remote, for example alias, gives `fetch` the location
 `encodeLocation(remote) + encodePath(path)`. The option `remote` is a path of
 rclone: `encodeLocation` of `@rfetch/lib/fspath` keeps its `%`, `?` and `#` in
@@ -466,6 +473,12 @@ default). Put the credentials in `RFETCH_S3_ACCESS_KEY_ID` and
 `RCLONE_`. Use a bucket only for the tests: the tests make folders in it and
 delete them.
 
+The tests of `sftp` use `rclone serve sftp`, with host keys and user keys that
+openssl makes for each run: they run when rclone and `openssl` are installed.
+They also compare rfetch with the sftp backend of rclone on the same server, for
+example with keys in the format of OpenSSH that the tests write and rclone
+reads. The tests in `backend/sftp/ssh/ssh_test.js` need no server.
+
 The tests of `azureblob` use Azurite, the emulator of Azure Storage, with its
 data in memory: they run when `azurite-blob` is in the `PATH`, or when the
 variable `AZURITE` is its path. Get it with `npm install azurite@3.37.0`. The
@@ -524,7 +537,8 @@ message of the commit.
 ## Continuous integration
 
 The workflow `.github/workflows/ci.yml` runs for each push and each pull
-request. It installs rclone, 7-Zip, Go, go-pmtiles, versatiles and Azurite, runs
-`npm test` with Node.js 22, 24 and 26, and runs `deno fmt --check`. A test that
-needs one of these tools skips when the tool is not installed: in the workflow,
-such a skip is an error. Before a push, run `npm test` and `deno fmt --check`.
+request. It installs rclone, 7-Zip, Go, go-pmtiles, versatiles and Azurite (the
+runner has openssl), runs `npm test` with Node.js 22, 24 and 26, and runs
+`deno fmt --check`. A test that needs one of these tools skips when the tool is
+not installed: in the workflow, such a skip is an error. Before a push, run
+`npm test` and `deno fmt --check`.
