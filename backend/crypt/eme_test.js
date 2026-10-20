@@ -1,5 +1,5 @@
 import { test } from "node:test";
-import { aes256 } from "./aes.js";
+import { aes256, aes256js } from "./aes.js";
 import assert from "node:assert/strict";
 import fc from "fast-check";
 
@@ -96,13 +96,16 @@ const VECTORS = {
   `),
 };
 
-test("the vectors of rfjakob/eme", () => {
-  const cipher = aes256(new Uint8Array(32));
-  const tweak = new Uint8Array(16);
-  for (const [size, expected] of Object.entries(VECTORS)) {
-    const zeros = new Uint8Array(Number(size));
-    assert.deepEqual(encrypt(cipher, tweak, zeros), expected);
-    assert.deepEqual(decrypt(cipher, tweak, expected), zeros);
+test("the vectors of rfjakob/eme, with AES of node:crypto and of JavaScript", () => {
+  for (
+    const cipher of [aes256(new Uint8Array(32)), aes256js(new Uint8Array(32))]
+  ) {
+    const tweak = new Uint8Array(16);
+    for (const [size, expected] of Object.entries(VECTORS)) {
+      const zeros = new Uint8Array(Number(size));
+      assert.deepEqual(new Uint8Array(encrypt(cipher, tweak, zeros)), expected);
+      assert.deepEqual(new Uint8Array(decrypt(cipher, tweak, expected)), zeros);
+    }
   }
 });
 
