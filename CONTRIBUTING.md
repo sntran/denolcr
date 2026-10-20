@@ -144,10 +144,17 @@ code of WebDAV is in `cmd/serve/webdav/handler.js`, and the Worker uses it too:
 
 - PROPFIND reads the headers of HEAD, and the list of a folder for `Depth: 1`.
   `Depth: infinity` gets 403, as RFC 4918 permits.
-- MKCOL is PUT of a folder. COPY and MOVE read each file from the source and put
-  it at the destination. MOVE deletes the source after.
+- MKCOL is PUT of a folder. COPY and MOVE of a file, and MOVE of a folder to a
+  path that does not exist, go to the backend. For a backend that cannot do it,
+  or a destination in another remote, the server reads each file from the source
+  and puts it at the destination, and MOVE deletes the source after.
+- A PUT, a COPY or a MOVE of a file with `X-OC-Mtime` gives that time to the
+  file, with `X-OC-Mtime: accepted` in the answer when the backend keeps it.
+  `rclone serve webdav` gives the time of a COPY to the source: rfetch gives it
+  to the destination, as ownCloud. A PROPPATCH of `lastmodified` with the
+  seconds after 1970 is a PATCH of the backend, as ownCloud.
 - The server keeps no data between requests: LOCK gives a token and locks
-  nothing, and PROPPATCH keeps no property, as `rclone serve webdav`. The
+  nothing, and PROPPATCH keeps no other property, as `rclone serve webdav`. The
   clients of Windows and macOS need LOCK to write.
 - A client writes, unless `--read-only`. With `--user` and `--pass`, a client
   must give them with the Basic authentication. The default address is
@@ -198,9 +205,47 @@ code that only one backend uses is in the folder of that backend, for example
 - `DELETE /folder/`: deletes folder, and all the files and folders in it.
 - `DELETE /file`: deletes file.
 
+A backend can also know these methods, as the features `Copy`, `Move`, `DirMove`
+and `SetModTime` of rclone:
+
+- `COPY /file` with `Destination: /path`: copies the file in the backend, and
+  the bytes do not go through rfetch. The destination is a path in the same
+  root, with percent-encoding, as the path of a request. A file at the
+  destination is replaced, and the folders of the destination are made, as `PUT`
+  does.
+- `MOVE /file` with `Destination: /path`: moves the file, with the same rules.
+- `MOVE /folder/` with `Destination: /path/`: moves the folder with all that is
+  in it, to a path that does not exist. A destination that exists gives 412.
+- `PATCH /file` with `X-OC-Mtime`: sets the time of the file.
+
+The header `X-OC-Mtime` of ownCloud is the time of a file, in seconds after
+1970, with an optional part of a second, for example `1354040105.123456789`. A
+`PUT`, a `COPY` or a `MOVE` of a file with it gives that time to the file, and
+the answer of a backend that keeps it has `X-OC-Mtime: accepted`. Then `GET`,
+`HEAD` and the list give that time. Read it with `modTimeOf` of
+`@rfetch/lib/time`. s3 keeps the time in the metadata of the file, as rclone:
+its list gives the time of the upload, because a list of S3 has no metadata.
+
+A backend that does not know a method gives 405. A backend that cannot do a
+`COPY` or a `MOVE`, for example a `COPY` of a folder, gives 501. Then a command
+reads the source and puts it at the destination.
+
+`fetch.js` gives the backend the path of the destination in its root, from the
+location of the destination, for example `remote:path/b.txt`. The two locations
+must have the same type, the same query and the same options: else `fetch.js`
+gives 502, as WebDAV gives for a destination on another server, and the backend
+gets no request. Thus a `Destination` never takes a backend out of its remote. A
+backend on another remote, for example alias and crypt, gives the location of
+the destination in that remote to `fetch`, as it does for the path of the
+request. A backend that cannot give that location, for example the files in an
+archive, gives 405 to a `COPY` and a `MOVE`: it must not send the `Destination`
+of its client to another remote.
+
 The answers:
 
 - `PUT` gives 201 with the path in `Content-Location`. `DELETE` gives 204.
+- `COPY` and `MOVE` give 201 for a new file, or 204 when the destination was a
+  file. `PATCH` gives 204.
 - A file or a folder that does not exist gives 404.
 - `GET` of a file gives the headers `Content-Type`, `Content-Length`,
   `Last-Modified` and `Accept-Ranges: bytes`.
@@ -289,10 +334,13 @@ the local time zone, and the size and the count with `sizeField` and
 
 The other commands use the operations of `cmd/operations.js`, as the package
 `operations` of rclone: `stat` gives the information of a path, `walk` gives the
-files and the folders in a folder, and `copyFile`, `remove` and `mkdir` change
-the files. An operation that fails throws an `OperationError` with the status of
-the answer, and `failure` gives the answer of the command for it. `log` writes
-the errors and the notices of rclone on the standard error, for example
+files and the folders in a folder, and `copyFile`, `moveFolder`, `setModTime`,
+`remove` and `mkdir` change the files. `copyFile` sends a `COPY` or a `MOVE` to
+the backend first, with the time of the source in `X-OC-Mtime`. For 403, 405,
+501 and 502, it reads the source and puts it at the destination, with the same
+time. An operation that fails throws an `OperationError` with the status of the
+answer, and `failure` gives the answer of the command for it. `log` writes the
+errors and the notices of rclone on the standard error, for example
 `2006/01/02 15:04:05 ERROR : a.txt: sizes differ`, and `--quiet` keeps only the
 errors. A command that has an output and an error, for example
 `check --combined -`, gives the output in the body and the error in
@@ -341,6 +389,9 @@ and deletes it at the end. It tests:
   416, and ranges that the backend does not read.
 - `PUT` over a file, `DELETE` of a file, and `DELETE` of a folder with all that
   is in it.
+- `COPY`, `MOVE`, `PATCH` and `X-OC-Mtime`, as its `features` tell. A backend
+  with no such feature must give 405, 403, 501 or 502, and must not change a
+  file.
 
 Other options are for some backends only:
 
@@ -358,6 +409,12 @@ Other options are for some backends only:
   suite also gives the `params` in the headers `RFETCH_TYPE_NAME` and in the
   variables `RCLONE_TYPE_NAME` of `env`, and makes sure that no link of a list
   has a query.
+- `features`: what the backend can do other than `GET`, `HEAD`, `PUT` and
+  `DELETE`: `copy`, `move` and `dirMove` for `COPY` of a file, `MOVE` of a file
+  and `MOVE` of a folder, `modTime` for `X-OC-Mtime` on `PUT`, `copyModTime` for
+  `X-OC-Mtime` on `COPY` and `MOVE` (by default the value of `modTime`),
+  `setModTime` for `PATCH`, and `listModTime` for the time of `X-OC-Mtime` in
+  the list (by default the value of `modTime`).
 
 Put the tests for what only one backend does in the same file, after the suite.
 For example, the tests of the local backend make sure that a path cannot go out

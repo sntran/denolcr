@@ -14,11 +14,25 @@ backendSuite("combine", backend, {
   type: "combine",
   params: { upstreams: UPSTREAMS },
   parent: "/a/",
+  features: {
+    copy: true,
+    move: true,
+    dirMove: true,
+    modTime: true,
+    setModTime: true,
+  },
 });
 backendSuite("combine", backend, {
   type: "combine",
   params: { upstreams: UPSTREAMS },
   parent: "/b c/",
+  features: {
+    copy: true,
+    move: true,
+    dirMove: true,
+    modTime: true,
+    setModTime: true,
+  },
 });
 
 test("upstreamsOf reads the upstreams as rclone", () => {

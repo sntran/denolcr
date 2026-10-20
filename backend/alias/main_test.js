@@ -38,6 +38,13 @@ test("local path", async () => {
 backendSuite("alias", backend, {
   type: "alias",
   params: { remote: ":memory:/alias" },
+  features: {
+    copy: true,
+    move: true,
+    dirMove: true,
+    modTime: true,
+    setModTime: true,
+  },
 });
 
 test("the links of a list are in the alias", async () => {

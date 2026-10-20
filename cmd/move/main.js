@@ -2,11 +2,11 @@ import { failure } from "../operations.js";
 import { transfer } from "../copy/main.js";
 
 /**
- * Move files from source to dest, as `rclone move`: the copy of `copy`,
- * then the delete of each source file. The folders of the source stay,
- * unless `--delete-empty-src-dirs`.
- *
- * The backends cannot move a file yet: each file goes through rfetch.
+ * Move files from source to dest, as `rclone move`. In the same remote, a
+ * folder moves with one MOVE when dest does not exist, and else each file
+ * moves with MOVE, as rclone. Else each file goes as `copy`, then the source
+ * file goes away. The folders of the source stay, unless
+ * `--delete-empty-src-dirs`.
  *
  * ```js
  * import { move } from "./main.js";

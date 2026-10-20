@@ -11,6 +11,7 @@ import { renderListing } from "@rfetch/lib/listing";
 import { mimeType } from "@rfetch/lib/mime";
 import { decodePath } from "@rfetch/lib/path";
 import { notSatisfiable, parseRange, partialHeaders } from "@rfetch/lib/range";
+import { modTimeOf } from "@rfetch/lib/time";
 
 /**
  * A file: its bytes, its media type, and the time of its last change.
@@ -35,7 +36,18 @@ const files = new Map();
 const folders = new Map([["/", new Set()]]);
 
 /**
- * Serves a memory remote
+ * Serves a memory remote.
+ *
+ * Other than GET, HEAD, PUT and DELETE, it knows:
+ *
+ * - `COPY` of a file, and `MOVE` of a file or a folder, to the path of the
+ *   header `Destination` in this remote. A folder moves only to a path that
+ *   does not exist.
+ * - `PATCH` of a file with the header `X-OC-Mtime`: it sets the time of the
+ *   file.
+ *
+ * A `PUT`, a `COPY` or a `MOVE` with `X-OC-Mtime` gives that time to the
+ * file, and its answer has `X-OC-Mtime: accepted`.
  * @param {Request} request
  * @returns {Promise<Response>}
  */
@@ -47,6 +59,13 @@ async function memory(request) {
   if (path === null) {
     return new Response(null, { status: 400 });
   }
+
+  const modTime = modTimeOf(request);
+  if (modTime === undefined) {
+    return new Response("X-OC-Mtime is not a time", { status: 400 });
+  }
+  /** The time of the request, in milliseconds. */
+  const modified = modTime === null ? undefined : Number(modTime / 1000000n);
 
   const headers = new Headers();
   let status = 200, body = null;
@@ -98,18 +117,17 @@ async function memory(request) {
       files.set(path, {
         bytes: new Uint8Array(await request.arrayBuffer()),
         type: request.headers.get("Content-Type") || mimeType(name),
-        modified: Date.now(),
+        modified: modified ?? Date.now(),
       });
       folders.get(path.slice(0, slash))?.add(name);
+      if (modified !== undefined) headers.set("X-OC-Mtime", "accepted");
     }
 
     status = 201;
     headers.append("Content-Location", pathname);
   } else if (method === "DELETE") {
     if (files.has(path)) {
-      files.delete(path);
-      const slash = path.lastIndexOf("/") + 1;
-      folders.get(path.slice(0, slash))?.delete(path.slice(slash));
+      removeFile(path);
     } else if (folders.has(path)) {
       // Deletes the folder and all in it. The root folder stays.
       removeFolder(path);
@@ -126,15 +144,115 @@ async function memory(request) {
       return new Response(null, { status: 404 });
     }
     status = 204;
+  } else if (method === "COPY" || method === "MOVE") {
+    const target = decodePath(request.headers.get("Destination") ?? "");
+    if (target === null) {
+      return new Response("Destination is not a path", { status: 400 });
+    }
+    return transfer(method, path, target, modified, headers);
+  } else if (method === "PATCH") {
+    const file = files.get(path);
+    if (!file) return new Response(null, { status: 404 });
+    if (modified === undefined) {
+      return new Response("X-OC-Mtime is missing", { status: 400 });
+    }
+    file.modified = modified;
+    headers.set("X-OC-Mtime", "accepted");
+    status = 204;
   } else {
     status = 405;
-    headers.set("Allow", "GET, HEAD, PUT, DELETE");
+    headers.set("Allow", ALLOW);
   }
 
   return new Response(body, {
     status,
     headers,
   });
+}
+
+/** The methods of the backend. */
+const ALLOW = "GET, HEAD, PUT, DELETE, COPY, MOVE, PATCH";
+
+/**
+ * Copies or moves a file, or moves a folder.
+ * @param {"COPY" | "MOVE"} method
+ * @param {string} path The source, with no percent-encoding.
+ * @param {string} target The destination, with no percent-encoding.
+ * @param {number | undefined} modified The time of the copy, in
+ *   milliseconds, or the time of the source.
+ * @param {Headers} headers The headers of the answer.
+ * @returns {Response}
+ */
+function transfer(method, path, target, modified, headers) {
+  const file = files.get(path);
+  if (file) {
+    if (target.endsWith("/") || folders.has(`${target}/`)) {
+      return new Response("Destination is a folder", { status: 409 });
+    }
+    const existed = files.has(target);
+    if (target !== path) {
+      const slash = target.lastIndexOf("/") + 1;
+      makeFolder(target.slice(0, slash));
+      files.set(target, {
+        // A body of a GET is the bytes of the file: the copy has its own
+        // bytes.
+        bytes: method === "COPY" ? file.bytes.slice() : file.bytes,
+        type: file.type,
+        modified: modified ?? file.modified,
+      });
+      folders.get(target.slice(0, slash))?.add(target.slice(slash));
+      if (method === "MOVE") removeFile(path);
+    } else if (modified !== undefined) {
+      file.modified = modified;
+    }
+    if (modified !== undefined) headers.set("X-OC-Mtime", "accepted");
+    return new Response(null, { status: existed ? 204 : 201, headers });
+  }
+  if (!path.endsWith("/") || !folders.has(path)) {
+    return new Response(null, { status: 404 });
+  }
+  // A folder moves to a new path, out of the folder.
+  if (method === "COPY") {
+    return new Response("COPY of a folder is not implemented", {
+      status: 501,
+    });
+  }
+  if (path === "/") return new Response(null, { status: 403 });
+  if (!target.endsWith("/") || target.startsWith(path)) {
+    return new Response("Destination is not a new folder", { status: 400 });
+  }
+  if (folders.has(target) || files.has(target.slice(0, -1))) {
+    return new Response("Destination exists", { status: 412 });
+  }
+  const parent = target.slice(
+    0,
+    target.lastIndexOf("/", target.length - 2) + 1,
+  );
+  makeFolder(parent);
+  for (const [key, value] of [...folders]) {
+    if (!key.startsWith(path)) continue;
+    folders.delete(key);
+    folders.set(`${target}${key.slice(path.length)}`, value);
+  }
+  for (const [key, value] of [...files]) {
+    if (!key.startsWith(path)) continue;
+    files.delete(key);
+    files.set(`${target}${key.slice(path.length)}`, value);
+  }
+  const from = path.slice(0, path.lastIndexOf("/", path.length - 2) + 1);
+  folders.get(from)?.delete(path.slice(from.length));
+  folders.get(parent)?.add(target.slice(parent.length));
+  return new Response(null, { status: 201, headers });
+}
+
+/**
+ * Removes a file from its folder.
+ * @param {string} path
+ */
+function removeFile(path) {
+  files.delete(path);
+  const slash = path.lastIndexOf("/") + 1;
+  folders.get(path.slice(0, slash))?.delete(path.slice(slash));
 }
 
 /**
