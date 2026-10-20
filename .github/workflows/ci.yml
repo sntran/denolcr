@@ -2,8 +2,8 @@
 #
 # - npm test: the tests, with the oldest Node.js of package.json and the
 #   newer versions. The job installs rclone, 7-Zip, Go, go-pmtiles,
-#   versatiles and Azurite, thus the tests that compare rfetch with these
-#   tools, or that run on them, run too.
+#   versatiles, Azurite and pyftpdlib, thus the tests that compare rfetch
+#   with these tools, or that run on them, run too.
 # - deno fmt --check: the format of the files.
 # - wasm: the tests of the crate of backend/crypt/secretbox.wasm, and its
 #   build from its source gives the same bytes as the file in the repository.
@@ -119,16 +119,30 @@ jobs:
           "$RUNNER_TEMP/azurite/node_modules/.bin/azurite-blob" --version
           echo "AZURITE=$RUNNER_TEMP/azurite/node_modules/.bin/azurite-blob" >> "$GITHUB_ENV"
 
+      # pyftpdlib is a server of FTP, with explicit and implicit TLS through
+      # pyOpenSSL: the tests of the ftp backend run on it. The versions of
+      # all the packages are fixed.
+      - name: Install pyftpdlib
+        run: |
+          python3 -m venv "$RUNNER_TEMP/pyftpdlib"
+          "$RUNNER_TEMP/pyftpdlib/bin/pip" install --quiet --no-deps \
+            pyftpdlib==2.2.0 pyasynchat==1.0.5 pyasyncore==1.0.5 \
+            pyOpenSSL==26.4.0 cryptography==50.0.2 cffi==2.1.1 \
+            pycparser==3.11 typing_extensions==4.16.0
+          "$RUNNER_TEMP/pyftpdlib/bin/pip" check
+          "$RUNNER_TEMP/pyftpdlib/bin/python" -I -c "from pyftpdlib.handlers import TLS_FTPHandler; import pyftpdlib.servers, pyftpdlib, OpenSSL; print(pyftpdlib.__ver__, OpenSSL.__version__)"
+          echo "PYFTPDLIB_PYTHON=$RUNNER_TEMP/pyftpdlib/bin/python" >> "$GITHUB_ENV"
+
       - run: npm ci
 
-      # A test against rclone, 7-Zip, Go, go-pmtiles, versatiles or Azurite
-      # skips when the tool is not installed.
+      # A test against rclone, 7-Zip, Go, go-pmtiles, versatiles, Azurite or
+      # pyftpdlib skips when the tool is not installed.
       # Here the tools are installed, thus such a skip is an error.
       - name: npm test
         shell: bash
         run: |
           npm test 2>&1 | tee "$RUNNER_TEMP/test.log"
-          if grep -E "((rclone|7-Zip|Go|go-pmtiles|versatiles|Azurite|openssl) is not installed|node:sqlite is not in)" "$RUNNER_TEMP/test.log"; then
+          if grep -E "((rclone|7-Zip|Go|go-pmtiles|versatiles|Azurite|openssl|pyftpdlib) is not installed|pyftpdlib, pyOpenSSL or openssl is not installed|node:sqlite is not in)" "$RUNNER_TEMP/test.log"; then
             echo "::error::A test skipped because a tool is not installed."
             exit 1
           fi

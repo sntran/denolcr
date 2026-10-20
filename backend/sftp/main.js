@@ -40,7 +40,7 @@
  * - `ciphers`, `key_exchange`, `macs` and `host_key_algorithms`: the
  *   algorithms of SSH, with spaces between them.
  * - `idle_timeout`: the time that a connection waits for a next request,
- *   60 s by default.
+ *   60 s by default, and 0 for no limit.
  * - `encoding`: the names that change on the server, as rclone, by default
  *   `Slash,Ctl,Del,Dot`.
  *
@@ -83,7 +83,7 @@ import { decodePath } from "@rfetch/lib/path";
 import { notSatisfiable, parseRange, partialHeaders } from "@rfetch/lib/range";
 import { parseSize } from "@rfetch/lib/size";
 import { sized } from "@rfetch/lib/sized";
-import { modTimeOf } from "@rfetch/lib/time";
+import { modTimeOf, parseDuration } from "@rfetch/lib/time";
 import { findHostKey } from "./knownhosts.js";
 import { isDirectory, isLink, OPEN, SFTP, SFTPError, STATUS } from "./sftp.js";
 import { CIPHERS, MACS } from "./ssh/cipher.js";
@@ -582,32 +582,6 @@ function chooseAlgorithms(value, known, name) {
 }
 
 /**
- * Reads a duration of Go, for example `1m0s` or `30s`.
- * @param {string} text
- * @returns {number} Milliseconds, or NaN.
- */
-function parseDuration(text) {
-  if (text === "0") return 0;
-  const units = {
-    ns: 1e-6,
-    us: 1e-3,
-    "µs": 1e-3,
-    ms: 1,
-    s: 1000,
-    m: 60000,
-    h: 3600000,
-  };
-  const parts = [...text.matchAll(/(\d+(?:\.\d+)?)(ns|us|µs|ms|s|m|h)/g)];
-  if (parts.length === 0 || parts.map((part) => part[0]).join("") !== text) {
-    return NaN;
-  }
-  return parts.reduce(
-    (sum, [, number, unit]) => sum + Number(number) * units[unit],
-    0,
-  );
-}
-
-/**
  * The SHA-256 of a text, in hexadecimal.
  * @param {string} text
  */
@@ -769,18 +743,19 @@ async function checkHostKey(config, key) {
 
 /**
  * Gives a session back after a request. In the pool, it waits for the
- * next request for `idle_timeout`, and does not keep the process running.
- * Else it closes.
+ * next request for `idle_timeout`, or with no limit for 0, as rclone, and
+ * does not keep the process running. Else it closes.
  * @param {Session} session
  */
 function release(session) {
   session.users--;
   if (session.users > 0) return;
-  if (!POOLED || session.config.idleTimeout === 0) {
+  if (!POOLED) {
     close(session);
     return;
   }
   session.client.setActive(false);
+  if (session.config.idleTimeout === 0) return;
   session.timer = setTimeout(() => close(session), session.config.idleTimeout);
   // @ts-ignore: the timer of Node.js does not keep the process running.
   session.timer.unref?.();
