@@ -10,7 +10,13 @@ import { remote } from "@rfetch/lib/testing/remote";
 import { listen } from "@rfetch/lib/testing/server";
 import { fetch } from "../../mod.js";
 import { mimeType } from "@rfetch/lib/mime";
-import { decode, default as crypt, deriveKey, encode } from "./main.js";
+import {
+  decode,
+  default as crypt,
+  deriveKey,
+  encode,
+  keyError,
+} from "./main.js";
 import memory from "@rfetch/memory";
 
 // The password "123456" and the salt, obscured.
@@ -193,7 +199,18 @@ describe("crypt", () => {
     const bad = remote(crypt, { params: { ...params, password: "!!" } });
     const response = await bad.get("");
     assert.equal(response.status, 400);
-    assert.ok(!(await response.text()).includes("!!"));
+    const text = await response.text();
+    assert.equal(text, "The password is not obscured");
+    assert.ok(!text.includes("!!"));
+  });
+
+  test("gives 500 with the cause for a different error of the keys", async () => {
+    const response = keyError(new Error("aes-256-ecb is not supported"));
+    assert.equal(response.status, 500);
+    assert.equal(
+      await response.text(),
+      "The keys of crypt failed: aes-256-ecb is not supported",
+    );
   });
 
   test("gives an error of the stream for data that is not encrypted", async () => {

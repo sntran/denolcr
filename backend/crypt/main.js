@@ -196,8 +196,8 @@ async function crypt(request, env = {}) {
       options.get("password"),
       options.get("password2") ?? "",
     );
-  } catch {
-    return new Response("The password is not obscured", { status: 400 });
+  } catch (error) {
+    return keyError(error);
   }
 
   const isDirectory = path.endsWith("/");
@@ -674,13 +674,36 @@ function cipherOf(password, salt) {
   return cipher;
 }
 
+/** The error of a password or a salt that `reveal` cannot read. */
+class NotObscured extends Error {}
+
 /**
  * @param {string} obscured
  * @returns {Promise<Uint8Array>}
  */
 async function revealBytes(obscured) {
-  const response = await reveal(obscured);
-  return new Uint8Array(await response.arrayBuffer());
+  try {
+    const response = await reveal(obscured);
+    return new Uint8Array(await response.arrayBuffer());
+  } catch {
+    throw new NotObscured("The password is not obscured");
+  }
+}
+
+/**
+ * The answer for a password that gives no keys. A password that `reveal`
+ * cannot read is not obscured: 400. A different error tells its cause,
+ * with no part of the password: 500. For example, a runtime can have no
+ * AES-256 or no scrypt in `node:crypto`.
+ * @param {unknown} error
+ * @returns {Response}
+ */
+export function keyError(error) {
+  if (error instanceof NotObscured) {
+    return new Response(error.message, { status: 400 });
+  }
+  const cause = error instanceof Error ? error.message : String(error);
+  return new Response(`The keys of crypt failed: ${cause}`, { status: 500 });
 }
 
 export default {
