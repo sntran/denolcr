@@ -8,6 +8,10 @@ A [Rclone wrapper for WebAssembly build](./rclone.js) is also available.
 
 ## Storage providers
 
+- Azure Blob Storage, and Azurite, its emulator
+  [:page_facing_up:](https://rclone.org/azureblob/)
+- DOI: read the files of a dataset with a DOI, on Zenodo, InvenioRDM and
+  Dataverse [:page_facing_up:](https://rclone.org/doi/)
 - Google Drive [:page_facing_up:](https://rclone.org/drive/)
 - HTTP [:page_facing_up:](https://rclone.org/http/)
 - The local filesystem [:page_facing_up:](https://rclone.org/local/)

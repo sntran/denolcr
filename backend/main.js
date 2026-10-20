@@ -24,10 +24,12 @@
 export const backends = {
   alias: () => import("@rfetch/alias"),
   archive: () => import("@rfetch/archive"),
+  azureblob: () => import("@rfetch/azureblob"),
   chunker: () => import("@rfetch/chunker"),
   combine: () => import("@rfetch/combine"),
   compress: () => import("@rfetch/compress"),
   crypt: () => import("@rfetch/crypt"),
+  doi: () => import("@rfetch/doi"),
   drive: () => import("@rfetch/drive"),
   http: () => import("@rfetch/http"),
   local: () => import("@rfetch/local"),
