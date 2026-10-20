@@ -173,6 +173,21 @@ test("the fields of the query are options of the remote", async () => {
   assert.equal(await file.text(), "c");
 });
 
+test("a field or a header with an empty value is not an option", async () => {
+  await send("/:memory:/empty/d.txt", { method: "PUT", body: "d" });
+  const headers = { RFETCH_ALIAS_REMOTE: ":memory:/empty" };
+  // The empty field of the query does not take the place of the header.
+  const file = await send("/:alias:/d.txt?remote=", { headers });
+  assert.equal(file.status, 200);
+  assert.equal(await file.text(), "d");
+  // An empty header is no option: the alias has no remote.
+  const none = await send("/:alias:/d.txt?remote=", {
+    headers: { RFETCH_ALIAS_REMOTE: "" },
+  });
+  assert.equal(none.ok, false);
+  await none.body?.cancel();
+});
+
 test("gives the list of lsjson for Accept: application/json", async () => {
   await send("/:memory:/json/a.txt", { method: "PUT", body: "a" });
   await send("/:memory:/json/sub/b.txt", { method: "PUT", body: "bb" });
