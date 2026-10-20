@@ -84,7 +84,9 @@ const globalFetch = globalThis.fetch;
  *
  * A header of the request with the name of a variable, for example
  * `RFETCH_CONFIG_MYREMOTE_SKIP_LINKS`, takes the place of the variable of the
- * environment. A remote can come only from variables, as in rclone:
+ * environment. A header with an empty value is not a variable: the variable
+ * of the environment, or the default, stays. A remote can come only from
+ * variables, as in rclone:
  * `RFETCH_CONFIG_MYREMOTE_TYPE` and its options. Thus a request can give
  * all its configuration, with no config file.
  *
@@ -221,12 +223,13 @@ async function resolve(input, headers) {
   // The variables, by their names with no prefix, for example
   // `CONFIG_R2_TYPE`: the environment of the process, then the headers of
   // the request, which take their place. In each place, `RFETCH_` takes the
-  // place of `RCLONE_`.
+  // place of `RCLONE_`. A header with an empty value is not a variable.
   /** @type {Record<string, string>} */
   const variables = {};
   const places = [
     variablesOf(env),
-    [...headers].map(([key, value]) => [key.toUpperCase(), value]),
+    [...headers].filter(([, value]) => value !== "")
+      .map(([key, value]) => [key.toUpperCase(), value]),
   ];
   for (const entries of places) {
     for (const prefix of ["RCLONE_", "RFETCH_"]) {

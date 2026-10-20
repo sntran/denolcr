@@ -6,8 +6,8 @@
  * for example `/:s3:bucket/a.txt`, `/r2:bucket/a.txt` or
  * `/:crypt,remote='r2:bucket':a.txt`. The options come in the headers
  * `RFETCH_*`, or `RCLONE_*` for compatibility, for example
- * `RFETCH_S3_ACCESS_KEY_ID` or the remote `RFETCH_CONFIG_R2_TYPE: s3`. The
- * fields of the query are options of the remote too, as the parameters of a
+ * `RFETCH_S3_ACCESS_KEY_ID` or the remote `RFETCH_CONFIG_R2_TYPE: s3`. A
+ * header with an empty value is not an option. The fields of the query are options of the remote too, as the parameters of a
  * connection string. Do not put a secret in the query: a URL can stay in the
  * history of a browser and in logs.
  *
