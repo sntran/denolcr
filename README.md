@@ -63,7 +63,9 @@ curl -H "RFETCH_CONFIG_R2_TYPE: s3" \
 
 With `Accept: application/json`, a `GET` gives the list of `rfetch lsjson`, and
 `Depth: N` lists N levels. Else a folder is an HTML page, and a file is its
-bytes, with ranges. The prefix `RCLONE_` of rclone also works.
+bytes, with ranges. The prefix `RCLONE_` of rclone also works. The fields of the
+query are options too. A header or a field of the query with an empty value is
+not an option: the default of the option stays.
 
 The Worker is also a WebDAV server, as `rfetch serve webdav`: a WebDAV client
 can use the URL of a remote, for example `https://rfetch.pages.dev/r2:bucket/`,

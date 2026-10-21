@@ -8,8 +8,9 @@
  * `RFETCH_*`, or `RCLONE_*` for compatibility, for example
  * `RFETCH_S3_ACCESS_KEY_ID` or the remote `RFETCH_CONFIG_R2_TYPE: s3`. The
  * fields of the query are options of the remote too, as the parameters of a
- * connection string. Do not put a secret in the query: a URL can stay in the
- * history of a browser and in logs.
+ * connection string. A header or a field with an empty value is not an
+ * option. Do not put a secret in the query: a URL can stay in the history of
+ * a browser and in logs.
  *
  * A `GET` with `Accept: application/json` gives the list of `rfetch lsjson`.
  * The header `Depth: N` lists N levels, and `Depth: infinity` all of them.
@@ -60,6 +61,8 @@ function locationOf(url) {
   }
   let params = "";
   for (const [key, value] of url.searchParams) {
+    // A field with an empty value is not an option, as a header.
+    if (value === "") continue;
     params += `,${key}='${value.replaceAll("'", "''")}'`;
   }
   // The remote ends with ":": the parameters go before it.
@@ -146,7 +149,9 @@ export default {
 
       /** @type {RequestInit} */
       const init = { method, headers };
-      if (request.body) {
+      // workerd gives a body stream to a GET with `Content-Length: 0`, and a
+      // GET or a HEAD with a body is an error of `fetch()`.
+      if (request.body && method !== "GET" && method !== "HEAD") {
         init.body = request.body;
         init.duplex = "half";
       }

@@ -275,6 +275,27 @@ test("options in the headers of a request", async (t) => {
     }
   });
 
+  await t.test("a header with an empty value is not a variable", async () => {
+    process.env.RCLONE_CONFIG_EMPTY_TYPE = "alias";
+    process.env.RCLONE_CONFIG_EMPTY_REMOTE = "/tmp/env";
+    try {
+      const response = await fetch("empty:", {
+        method: "TRACE",
+        headers: { RFETCH_CONFIG_EMPTY_REMOTE: "", RFETCH_ALIAS_REMOTE: "" },
+      });
+      const body = await response.text();
+      assert.equal(variableOf(body, "RFETCH_ALIAS_REMOTE"), "/tmp/env");
+    } finally {
+      delete process.env.RCLONE_CONFIG_EMPTY_TYPE;
+      delete process.env.RCLONE_CONFIG_EMPTY_REMOTE;
+    }
+    // An empty type gives no remote.
+    await assert.rejects(
+      fetch("nothing:", { headers: { RFETCH_CONFIG_NOTHING_TYPE: "" } }),
+      /Remote nothing not found/,
+    );
+  });
+
   await t.test("RFETCH_ takes the place of RCLONE_", async () => {
     process.env.RCLONE_CONFIG_BOTH_TYPE = "alias";
     process.env.RCLONE_CONFIG_BOTH_REMOTE = "/tmp/rclone-env";
